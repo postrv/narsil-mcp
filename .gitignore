@@ -56,3 +56,6 @@ coverage/
 *.bak
 *.backup
 *.orig
+
+# AI guidance
+CLAUDE.md
