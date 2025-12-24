@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v6
@@ -74,10 +74,10 @@ jobs:
           cache-on-failure: true
 
       - name: Build
-        run: cargo build --features "$CI_FEATURES"
+        run: cargo build --features "${{ env.CI_FEATURES }}"
 
       - name: Run tests
-        run: cargo test --features "$CI_FEATURES" --verbose
+        run: cargo test --features "${{ env.CI_FEATURES }}" --verbose
 
   # Security audit
   security:
@@ -107,15 +107,23 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: narsil-mcp-linux-x86_64
+            binary: narsil-mcp
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact: narsil-mcp-linux-x86_64-musl
+            binary: narsil-mcp
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: narsil-mcp-macos-x86_64
+            binary: narsil-mcp
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: narsil-mcp-macos-aarch64
+            binary: narsil-mcp
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: narsil-mcp-windows-x86_64
+            binary: narsil-mcp.exe
 
     steps:
       - uses: actions/checkout@v6
@@ -139,6 +147,8 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Strip binary (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           if [[ "${{ matrix.target }}" == *"linux"* ]]; then
             strip target/${{ matrix.target }}/release/narsil-mcp
@@ -150,5 +160,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: target/${{ matrix.target }}/release/narsil-mcp
+          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
           if-no-files-found: error
