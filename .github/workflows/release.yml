@@ -27,7 +27,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test --features "native,neural" --verbose
+        run: cargo test --features "native,neural" --verbose -- --test-threads=1
 
   # Publish to crates.io
   publish:
