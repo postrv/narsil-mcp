@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-615%20passed-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue.svg)](https://modelcontextprotocol.io)
 
-A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 75+ specialized tools.
+A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 76 specialized tools.
 
 ## Why narsil-mcp?
 
@@ -269,8 +269,6 @@ narsil-mcp detects your editor and applies an optimal preset automatically:
 - **Minimal preset:** 61% fewer tokens vs Full
 - **Balanced preset:** 25% fewer tokens vs Full
 
-See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for detailed benchmarks.
-
 #### Presets
 
 Choose a preset based on your use case:
@@ -357,9 +355,8 @@ narsil-mcp config export > my-config.yaml
 ```
 
 **Learn More:**
-- [Configuration Guide](docs/CONFIGURATION.md) (coming soon)
-- [Migration Guide](docs/MIGRATION.md) - Upgrading from v1.0.2
-- [Performance Analysis](docs/PERFORMANCE.md) - Token usage benchmarks
+- [Configuration Guide](docs/configuration.md) - Full configuration reference
+- [Installation Guide](docs/INSTALL.md) - Platform-specific installation
 
 ### Visualization Frontend
 
@@ -1076,11 +1073,9 @@ narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
 
 ## Roadmap
 
-See [docs/IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md) for detailed implementation status.
-
 ### Completed
 
-- [x] Multi-language symbol extraction (14 languages)
+- [x] Multi-language symbol extraction (16 languages)
 - [x] Full-text search with Tantivy (BM25 ranking)
 - [x] Hybrid search (BM25 + TF-IDF with RRF)
 - [x] AST-aware code chunking
@@ -1103,18 +1098,24 @@ See [docs/IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md) for detaile
 - [x] Remote repository support
 - [x] Streaming responses
 
-## What's New in 1.0
+## What's New
 
-This release marks production readiness with 359 tests, comprehensive benchmarks, and security hardening:
+### v1.1.x (Current)
+
+- **Multi-platform distribution** - Install via Homebrew, Scoop, npm, Cargo, or direct download
+- **Configurable tool presets** - Minimal, balanced, full, and security-focused presets
+- **Automatic editor detection** - Optimal defaults for Zed, VS Code, Claude Desktop
+- **Interactive setup wizard** - `narsil-mcp config init` for easy configuration
+- **Swift and Verilog support** - Now supporting 16 languages
+- **Improved performance** - Faster startup with background indexing
+
+### v1.0.x
 
 - **Neural semantic search** - Find similar code using Voyage AI or OpenAI embeddings
 - **Type inference** - Infer types in Python/JavaScript/TypeScript without external tools
 - **Multi-language taint analysis** - Security scanning for PHP, Java, C#, Ruby, Kotlin
-- **Parallel hybrid search** - BM25 + TF-IDF run concurrently via rayon
 - **WASM build** - Run in browser for code playgrounds and educational tools
-- **4 new languages** - Bash, Ruby, Kotlin, PHP support
 - **111 bundled security rules** - OWASP, CWE, crypto, secrets detection
-- **Security hardening** - Path traversal prevention, secret redaction, file size limits
 - **IDE configs included** - Claude Desktop, Cursor, VS Code, Zed templates
 
 ## License
