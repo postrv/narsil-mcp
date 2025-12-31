@@ -787,7 +787,7 @@ impl CodeIntelEngine {
                 return Ok(());
             }
 
-            output.push_str(&format!("{}ðŸ“ {}/\n", indent, name));
+            output.push_str(&format!("{}{} {}/\n", indent, "\u{1f4c1}", name));
 
             let mut entries: Vec<_> = std::fs::read_dir(current)?.filter_map(|e| e.ok()).collect();
             entries.sort_by_key(|e| (!e.path().is_dir(), e.file_name()));
@@ -6634,20 +6634,34 @@ fn format_size(bytes: u64) -> String {
 
 fn get_file_icon(name: &str) -> &'static str {
     match name.rsplit('.').next() {
-        Some("rs") => "ðŸ¦€",
-        Some("py") => "ðŸ",
-        Some("js" | "jsx") => "ðŸ“œ",
-        Some("ts" | "tsx") => "ðŸ“˜",
-        Some("go") => "ðŸ¹",
-        Some("java") => "â˜•",
-        Some("c" | "h") => "âš™ï¸",
-        Some("cpp" | "hpp" | "cc") => "âš™ï¸",
-        Some("md") => "ðŸ“",
-        Some("json") => "ðŸ“‹",
-        Some("toml" | "yaml" | "yml") => "âš™ï¸",
-        Some("html") => "ðŸŒ",
-        Some("css" | "scss") => "ðŸŽ¨",
-        _ => "ðŸ“„",
+        // Rust Crab (\u{1f980})
+        Some("rs") => "\u{1f980}",
+        // Python Snake (\u{1f40d})
+        Some("py") => "\u{1f40d}",
+        // Lua Moon (\u{1f319})
+        Some("lua") => "\u{1f319}",
+        // Scroll (\u{1f4dc})
+        Some("js" | "jsx") => "\u{1f4dc}",
+        // Blue Book (\u{1f4d8})
+        Some("ts" | "tsx") => "\u{1f4d8}",
+        // Hamster Face (\u{1f439})
+        Some("go") => "\u{1f439}",
+        // Hot Beverage (\u{2615})
+        Some("java") => "\u{2615}",
+        // Gear (\u{2699}\u{fe0f})
+        Some("c" | "h" | "cpp" | "hpp" | "cc") => "\u{2699}\u{fe0f}",
+        // Memo (\u{1f4dd})
+        Some("md") => "\u{1f4dd}",
+        // Clipboard (\u{1f4cb})
+        Some("json") => "\u{1f4cb}",
+        // Gear (\u{2699}\u{fe0f})
+        Some("toml" | "yaml" | "yml") => "\u{2699}\u{fe0f}",
+        // Globe with Meridians (\u{1f310})
+        Some("html") => "\u{1f310}",
+        // Artist Palette (\u{1f3a8})
+        Some("css" | "scss") => "\u{1f3a8}",
+        // Page Facing Up (\u{1f4c4})
+        _ => "\u{1f4c4}",
     }
 }
 
