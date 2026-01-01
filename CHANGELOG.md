@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-01-01
+
+### Fixed
+
+- **`--http` timeout with Zed editor** - The HTTP server and MCP server were mutually exclusive, causing timeouts when `--http` was enabled. Now HTTP server runs in background via `tokio::spawn` while MCP always runs on the main task, allowing both to operate concurrently.
+
+- **`--preset` CLI flag missing** - Added the `--preset` flag that was documented but never implemented. This allows overriding editor-detected presets (e.g., `--preset full` forces all tools on Zed which defaults to minimal).
+
+- **`prompts/get` method not found** - Implemented the MCP `prompts/get` method with full prompt templates for `explain_codebase` and `find_implementation` prompts. Previously only `prompts/list` was implemented.
+
+### Added
+
+- Comprehensive test coverage for CLI preset behavior (6 new tests)
+- Test coverage for `prompts/get` functionality (6 new tests)
+- Test coverage for HTTP/MCP concurrent operation pattern (6 new tests)
+
+### Changed
+
+- Documentation updated to clarify `--http` runs alongside MCP (not instead of)
+- Added Scoop installation note about optional features (ONNX, frontend) requiring source build
+
 ## [1.1.1] - 2025-12-28
 
 ### Added
