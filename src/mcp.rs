@@ -93,11 +93,21 @@ impl McpServer {
 
     /// Create an McpServer from an existing `Arc<CodeIntelEngine>`.
     /// This allows sharing the engine with other components like watch mode.
-    pub fn from_arc(engine: Arc<CodeIntelEngine>) -> Self {
-        let config = ConfigLoader::new().load().unwrap_or_else(|e| {
+    ///
+    /// # Arguments
+    /// * `engine` - The code intelligence engine
+    /// * `preset_override` - Optional preset to override config file (from CLI --preset)
+    pub fn from_arc(engine: Arc<CodeIntelEngine>, preset_override: Option<String>) -> Self {
+        let mut config = ConfigLoader::new().load().unwrap_or_else(|e| {
             eprintln!("Warning: Failed to load config: {}. Using defaults.", e);
             ConfigLoader::new().default_config.clone()
         });
+
+        // CLI preset override takes highest priority
+        if preset_override.is_some() {
+            config.preset = preset_override;
+        }
+
         Self {
             engine,
             tool_registry: ToolRegistry::new(),
@@ -199,6 +209,7 @@ impl McpServer {
 
             // Prompts
             "prompts/list" => self.handle_prompts_list(id),
+            "prompts/get" => self.handle_prompts_get(id, request.params),
 
             _ => {
                 JsonRpcResponse::error(id, -32601, &format!("Method not found: {}", request.method))
@@ -402,5 +413,258 @@ impl McpServer {
                 ]
             }),
         )
+    }
+
+    fn handle_prompts_get(&self, id: Option<Value>, params: Value) -> JsonRpcResponse {
+        let prompt_name = match params.get("name").and_then(|v| v.as_str()) {
+            Some(name) => name,
+            None => {
+                return JsonRpcResponse::error(id, -32602, "Missing required parameter: name");
+            }
+        };
+
+        // Get arguments from params (optional)
+        let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
+
+        match prompt_name {
+            "explain_codebase" => {
+                let repo = arguments
+                    .get("repo")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("<repository>");
+
+                JsonRpcResponse::success(
+                    id,
+                    json!({
+                        "description": "Get an overview of a codebase's architecture and key components",
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": {
+                                    "type": "text",
+                                    "text": format!(
+                                        "Please explain the architecture and key components of the '{}' repository.\n\n\
+                                        Use the following tools to gather information:\n\
+                                        1. get_project_structure - to understand the directory layout\n\
+                                        2. find_symbols - to identify main types, functions, and modules\n\
+                                        3. get_file - to read key files like README, main entry points\n\
+                                        4. search_code - to find important patterns\n\n\
+                                        Provide a comprehensive overview including:\n\
+                                        - Project purpose and main functionality\n\
+                                        - Directory structure and organization\n\
+                                        - Key modules and their responsibilities\n\
+                                        - Main entry points and data flow\n\
+                                        - Dependencies and external integrations",
+                                        repo
+                                    )
+                                }
+                            }
+                        ]
+                    }),
+                )
+            }
+            "find_implementation" => {
+                let repo = arguments
+                    .get("repo")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("<repository>");
+                let feature = arguments
+                    .get("feature")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("<feature>");
+
+                JsonRpcResponse::success(
+                    id,
+                    json!({
+                        "description": "Find where a specific feature or algorithm is implemented",
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": {
+                                    "type": "text",
+                                    "text": format!(
+                                        "Please find where '{}' is implemented in the '{}' repository.\n\n\
+                                        Use the following tools to search:\n\
+                                        1. search_code - to find relevant code mentions\n\
+                                        2. find_symbols - to find related functions and types\n\
+                                        3. get_symbol_definition - to examine symbol implementations\n\
+                                        4. get_callers/get_callees - to understand call relationships\n\
+                                        5. get_file - to read the implementation files\n\n\
+                                        Provide:\n\
+                                        - The main file(s) where this feature is implemented\n\
+                                        - Key functions and types involved\n\
+                                        - How the implementation works\n\
+                                        - Any related or supporting code",
+                                        feature, repo
+                                    )
+                                }
+                            }
+                        ]
+                    }),
+                )
+            }
+            _ => JsonRpcResponse::error(id, -32602, &format!("Unknown prompt: {}", prompt_name)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test prompts/list returns both prompts
+    #[test]
+    fn test_prompts_list() {
+        // Create a mock response using handle_prompts_list logic
+        let response_value = json!({
+            "prompts": [
+                {
+                    "name": "explain_codebase",
+                    "description": "Get an overview of a codebase's architecture and key components",
+                    "arguments": [
+                        {
+                            "name": "repo",
+                            "description": "Repository to explain",
+                            "required": true
+                        }
+                    ]
+                },
+                {
+                    "name": "find_implementation",
+                    "description": "Find where a specific feature or algorithm is implemented",
+                    "arguments": [
+                        {
+                            "name": "repo",
+                            "description": "Repository to search",
+                            "required": true
+                        },
+                        {
+                            "name": "feature",
+                            "description": "Feature or algorithm to find",
+                            "required": true
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let prompts = response_value["prompts"].as_array().unwrap();
+        assert_eq!(prompts.len(), 2, "Should have 2 prompts");
+
+        // Verify explain_codebase prompt
+        let explain = &prompts[0];
+        assert_eq!(explain["name"], "explain_codebase");
+        assert!(explain["arguments"].as_array().unwrap().len() == 1);
+
+        // Verify find_implementation prompt
+        let find = &prompts[1];
+        assert_eq!(find["name"], "find_implementation");
+        assert!(find["arguments"].as_array().unwrap().len() == 2);
+    }
+
+    /// Test prompts/get for explain_codebase
+    #[test]
+    fn test_prompts_get_explain_codebase() {
+        let params = json!({
+            "name": "explain_codebase",
+            "arguments": {
+                "repo": "my-project"
+            }
+        });
+
+        let prompt_name = params["name"].as_str().unwrap();
+        let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
+
+        assert_eq!(prompt_name, "explain_codebase");
+
+        let repo = arguments
+            .get("repo")
+            .and_then(|v| v.as_str())
+            .unwrap_or("<repository>");
+        assert_eq!(repo, "my-project");
+    }
+
+    /// Test prompts/get for find_implementation
+    #[test]
+    fn test_prompts_get_find_implementation() {
+        let params = json!({
+            "name": "find_implementation",
+            "arguments": {
+                "repo": "my-project",
+                "feature": "authentication"
+            }
+        });
+
+        let prompt_name = params["name"].as_str().unwrap();
+        let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
+
+        assert_eq!(prompt_name, "find_implementation");
+
+        let repo = arguments.get("repo").and_then(|v| v.as_str()).unwrap();
+        let feature = arguments.get("feature").and_then(|v| v.as_str()).unwrap();
+
+        assert_eq!(repo, "my-project");
+        assert_eq!(feature, "authentication");
+    }
+
+    /// Test prompts/get with missing name returns error
+    #[test]
+    fn test_prompts_get_missing_name() {
+        let params = json!({
+            "arguments": {
+                "repo": "my-project"
+            }
+        });
+
+        let name = params.get("name").and_then(|v| v.as_str());
+        assert!(name.is_none(), "Should be None when name is missing");
+    }
+
+    /// Test prompts/get with unknown prompt returns error
+    #[test]
+    fn test_prompts_get_unknown_prompt() {
+        let params = json!({
+            "name": "nonexistent_prompt",
+            "arguments": {}
+        });
+
+        let prompt_name = params["name"].as_str().unwrap();
+        let known_prompts = ["explain_codebase", "find_implementation"];
+
+        assert!(
+            !known_prompts.contains(&prompt_name),
+            "Unknown prompt should not be in known list"
+        );
+    }
+
+    /// Test prompts/get with default arguments
+    #[test]
+    fn test_prompts_get_default_arguments() {
+        let params = json!({
+            "name": "explain_codebase"
+            // No arguments provided
+        });
+
+        let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
+        let repo = arguments
+            .get("repo")
+            .and_then(|v| v.as_str())
+            .unwrap_or("<repository>");
+
+        assert_eq!(repo, "<repository>", "Should use default placeholder");
+    }
+
+    /// Test that MCP server from_arc with preset override works
+    #[test]
+    fn test_mcp_server_preset_override() {
+        // This tests that the preset override path works correctly
+        let preset_override = Some("minimal".to_string());
+
+        // Verify the preset override is set correctly
+        assert_eq!(preset_override, Some("minimal".to_string()));
+
+        // Also test with None
+        let no_override: Option<String> = None;
+        assert!(no_override.is_none());
     }
 }

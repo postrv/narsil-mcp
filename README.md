@@ -370,10 +370,12 @@ Build with the `frontend` feature to embed the visualization UI in the binary:
 # Build with embedded frontend
 cargo build --release --features frontend
 
-# Run with HTTP server
+# Run with HTTP server (MCP server still works on stdio)
 ./target/release/narsil-mcp --repos ~/project --http --call-graph
 
 # Open http://localhost:3000 in your browser
+# You can also use this with editor integration (Zed, VS Code, etc.)
+# The MCP server runs on stdio while HTTP server runs in background
 ```
 
 **Option 2: Development Mode**

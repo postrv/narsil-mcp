@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Plans:
+BACKEND_SERVICE_PLAN.md

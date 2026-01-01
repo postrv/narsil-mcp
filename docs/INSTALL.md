@@ -37,6 +37,8 @@ scoop bucket add narsil https://github.com/postrv/scoop-narsil
 scoop install narsil-mcp
 ```
 
+> **Note:** Scoop installs a pre-built binary without optional features (ONNX neural embeddings, frontend visualization). For full features, build from source with `--all-features` or use Cargo install.
+
 **Cargo** (requires Rust):
 ```bash
 cargo install narsil-mcp
@@ -115,16 +117,28 @@ cargo install --path .
 
 ### Build with Features
 
+Optional features can be enabled at build time:
+
+| Feature | Description |
+|---------|-------------|
+| `frontend` | Embedded web visualization frontend |
+| `neural-onnx` | Local ONNX neural embeddings (no API key needed) |
+
 ```bash
 # Build with frontend visualization
 cargo build --release --features frontend
 
-# Build with neural embeddings (ONNX)
+# Build with neural embeddings (ONNX) - local, no API key required
 cargo build --release --features neural-onnx
+
+# Build with multiple features
+cargo build --release --features "frontend neural-onnx"
 
 # Build with all features
 cargo build --release --all-features
 ```
+
+> **Pre-built binaries** (Homebrew, Scoop, npm, releases) include the basic feature set. For ONNX or frontend features, build from source.
 
 ## Troubleshooting
 

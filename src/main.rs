@@ -134,6 +134,11 @@ struct ServerArgs {
     /// HTTP server port (default: 3000)
     #[arg(long, default_value = "3000")]
     http_port: u16,
+
+    /// Tool preset (minimal, balanced, full, security-focused)
+    /// Overrides the preset from config file
+    #[arg(long)]
+    preset: Option<String>,
 }
 
 #[tokio::main]
@@ -288,16 +293,23 @@ async fn main() -> Result<()> {
         drop(shutdown_tx);
     }
 
-    // Start HTTP server if enabled
+    // Start HTTP server in background if enabled (for visualization frontend)
+    // The MCP server still runs on stdio for editor communication
     if server_args.http {
         info!("Starting HTTP server on port {}", server_args.http_port);
-        let http_server = http_server::HttpServer::new(Arc::clone(&engine), server_args.http_port);
-        http_server.run().await?;
-    } else {
-        // Start the MCP server on stdio
-        let server = mcp::McpServer::from_arc(engine);
-        server.run().await?;
+        let http_engine = Arc::clone(&engine);
+        let http_port = server_args.http_port;
+        tokio::spawn(async move {
+            let http_server = http_server::HttpServer::new(http_engine, http_port);
+            if let Err(e) = http_server.run().await {
+                warn!("HTTP server error: {}", e);
+            }
+        });
     }
+
+    // Always start the MCP server on stdio (for editor communication)
+    let server = mcp::McpServer::from_arc(engine, server_args.preset);
+    server.run().await?;
 
     Ok(())
 }

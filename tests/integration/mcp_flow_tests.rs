@@ -300,3 +300,146 @@ fn test_vim_editors() {
         );
     }
 }
+
+/// Test that CLI --preset flag overrides editor-based preset detection
+///
+/// This tests the behavior added for Issue #: CLI preset flag should
+/// take priority over automatic editor detection.
+#[test]
+fn test_cli_preset_overrides_editor_detection() {
+    use narsil_mcp::config::schema::ToolConfig;
+
+    // Simulate Zed (would normally get minimal preset)
+    let client_info = ClientInfo {
+        name: "zed".to_string(),
+        version: Some("0.120.0".to_string()),
+    };
+
+    // But config has preset=full (simulating --preset full CLI flag)
+    let config = ToolConfig {
+        preset: Some("full".to_string()),
+        ..Default::default()
+    };
+
+    let options = EngineOptions::default();
+    let filter = ToolFilter::new(config, &options, Some(client_info));
+    let enabled_tools = filter.get_enabled_tools();
+
+    // Should get full preset (50-60 tools), NOT minimal preset (20-30)
+    assert!(
+        enabled_tools.len() >= 50 && enabled_tools.len() <= 60,
+        "CLI preset=full should override Zed's default minimal preset, got {} tools",
+        enabled_tools.len()
+    );
+}
+
+/// Test that CLI --preset flag works with all valid presets
+#[test]
+fn test_cli_preset_all_values() {
+    use narsil_mcp::config::schema::ToolConfig;
+
+    let options = EngineOptions::default();
+
+    // Test minimal preset via CLI
+    let config = ToolConfig {
+        preset: Some("minimal".to_string()),
+        ..Default::default()
+    };
+    let filter = ToolFilter::new(config, &options, None);
+    let minimal_tools = filter.get_enabled_tools();
+    assert!(
+        minimal_tools.len() >= 20 && minimal_tools.len() <= 30,
+        "minimal preset should have 20-30 tools, got {}",
+        minimal_tools.len()
+    );
+
+    // Test balanced preset via CLI
+    let config = ToolConfig {
+        preset: Some("balanced".to_string()),
+        ..Default::default()
+    };
+    let filter = ToolFilter::new(config, &options, None);
+    let balanced_tools = filter.get_enabled_tools();
+    assert!(
+        balanced_tools.len() >= 30 && balanced_tools.len() <= 50,
+        "balanced preset should have 30-50 tools, got {}",
+        balanced_tools.len()
+    );
+
+    // Test full preset via CLI
+    let config = ToolConfig {
+        preset: Some("full".to_string()),
+        ..Default::default()
+    };
+    let filter = ToolFilter::new(config, &options, None);
+    let full_tools = filter.get_enabled_tools();
+    assert!(
+        full_tools.len() >= 50 && full_tools.len() <= 60,
+        "full preset should have 50-60 tools, got {}",
+        full_tools.len()
+    );
+
+    // Test security-focused preset via CLI
+    let config = ToolConfig {
+        preset: Some("security-focused".to_string()),
+        ..Default::default()
+    };
+    let filter = ToolFilter::new(config, &options, None);
+    let security_tools = filter.get_enabled_tools();
+    assert!(
+        security_tools.len() >= 25 && security_tools.len() <= 40,
+        "security-focused preset should have 25-40 tools, got {}",
+        security_tools.len()
+    );
+}
+
+/// Test that CLI --preset with invalid value falls back to full
+#[test]
+fn test_cli_preset_invalid_value_fallback() {
+    use narsil_mcp::config::schema::ToolConfig;
+
+    let config = ToolConfig {
+        preset: Some("invalid-preset-name".to_string()),
+        ..Default::default()
+    };
+
+    let options = EngineOptions::default();
+    let filter = ToolFilter::new(config, &options, None);
+    let enabled_tools = filter.get_enabled_tools();
+
+    // Invalid preset should fall back to Full
+    assert!(
+        enabled_tools.len() >= 50 && enabled_tools.len() <= 60,
+        "Invalid preset should fall back to Full, got {} tools",
+        enabled_tools.len()
+    );
+}
+
+/// Test preset priority: CLI preset > config file preset > editor detection
+#[test]
+fn test_preset_priority_chain() {
+    use narsil_mcp::config::schema::ToolConfig;
+
+    // Claude Desktop (would get full preset via editor detection)
+    let client_info = ClientInfo {
+        name: "claude-desktop".to_string(),
+        version: None,
+    };
+
+    // Config specifies minimal (simulating --preset minimal CLI flag)
+    let config = ToolConfig {
+        preset: Some("minimal".to_string()),
+        ..Default::default()
+    };
+
+    let options = EngineOptions::default();
+    let filter = ToolFilter::new(config, &options, Some(client_info));
+    let enabled_tools = filter.get_enabled_tools();
+
+    // Config preset should win over Claude Desktop's default full preset
+    assert!(
+        enabled_tools.len() >= 20 && enabled_tools.len() <= 30,
+        "Config preset (minimal) should override Claude Desktop (full), got {} tools",
+        enabled_tools.len()
+    );
+}
