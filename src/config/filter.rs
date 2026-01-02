@@ -152,15 +152,22 @@ impl ToolFilter {
         }
 
         // Prioritize tools by performance impact (Low > Medium > High)
+        // Use tool name as secondary key for deterministic ordering
+        // (DashMap iteration order is non-deterministic)
         tools.sort_by_key(|tool_name| {
             TOOL_METADATA
                 .get(tool_name)
-                .map(|meta| match meta.performance {
-                    PerformanceImpact::Low => 0,
-                    PerformanceImpact::Medium => 1,
-                    PerformanceImpact::High => 2,
+                .map(|meta| {
+                    (
+                        match meta.performance {
+                            PerformanceImpact::Low => 0,
+                            PerformanceImpact::Medium => 1,
+                            PerformanceImpact::High => 2,
+                        },
+                        *tool_name, // Secondary sort by name for determinism
+                    )
                 })
-                .unwrap_or(999) // Unknown tools go last
+                .unwrap_or((999, *tool_name)) // Unknown tools go last
         });
 
         // Take top N tools

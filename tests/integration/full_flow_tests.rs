@@ -453,7 +453,9 @@ async fn test_performance_budget_max_tool_count() -> Result<()> {
     // list_repos should be included as it's a low-impact tool
     assert!(
         enabled_tools.contains(&"list_repos") || enabled_tools.contains(&"find_symbols"),
-        "Should include at least one core tool"
+        "Should include at least one core tool. Got {} tools: {:?}",
+        enabled_tools.len(),
+        enabled_tools
     );
 
     Ok(())
