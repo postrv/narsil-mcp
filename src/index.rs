@@ -774,15 +774,17 @@ impl CodeIntelEngine {
 
         let indent = "  ".repeat(depth);
         let name = current.file_name().and_then(|n| n.to_str()).unwrap_or(".");
+        let is_root = depth == 0;
 
         if current.is_dir() {
             // Skip hidden and common non-essential directories
-            if name.starts_with('.')
-                || name == "node_modules"
-                || name == "target"
-                || name == "__pycache__"
-                || name == "venv"
-                || name == ".git"
+            if !is_root
+                && (name.starts_with('.')
+                    || name == "node_modules"
+                    || name == "target"
+                    || name == "__pycache__"
+                    || name == "venv"
+                    || name == ".git")
             {
                 return Ok(());
             }
