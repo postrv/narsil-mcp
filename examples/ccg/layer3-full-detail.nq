@@ -1,0 +1,272 @@
+# Code Context Graph - Layer 3: Full Detail
+# Repository: github.com/example/myproject@a1b2c3d
+# Format: N-Quads (RDF 1.1)
+# Note: In production, this file would be gzipped as .nq.gz
+# Note: Layer 3 includes everything from Layer 2 plus security, taint, and data flow
+
+@prefix narsil: <https://narsilmcp.com/ontology/v1#> .
+@prefix ccg: <https://codecontextgraph.com/ontology/v1#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+@base <https://codecontextgraph.com/repo/github.com/example/myproject@a1b2c3d> .
+
+# ===== SECURITY FINDINGS =====
+
+# HIGH severity: SQL injection vulnerability
+<finding:cwe-89-storage-query-78> a narsil:Vulnerability ;
+    narsil:ruleId "CWE-89-001" ;
+    narsil:cweId "CWE-89" ;
+    narsil:owaspCategory "A03:2021" ;
+    narsil:severity "HIGH" ;
+    narsil:inFile <file:src/storage/query.rs> ;
+    narsil:atLine 78 ;
+    narsil:affectsSymbol <sym:Storage::query> ;
+    narsil:message "Potential SQL injection: user input concatenated into query string" ;
+    narsil:remediation "Use parameterized queries with placeholders instead of string concatenation" ;
+    narsil:evidence "format!(\"SELECT * FROM {} WHERE id = {}\", table, user_id)" .
+
+# MEDIUM severity: Path traversal
+<finding:cwe-22-api-file-145> a narsil:Vulnerability ;
+    narsil:ruleId "CWE-22-001" ;
+    narsil:cweId "CWE-22" ;
+    narsil:owaspCategory "A01:2021" ;
+    narsil:severity "MEDIUM" ;
+    narsil:inFile <file:src/api/file.rs> ;
+    narsil:atLine 145 ;
+    narsil:affectsSymbol <sym:FileHandler::get_file> ;
+    narsil:message "Path traversal vulnerability: user-supplied path not sanitized" ;
+    narsil:remediation "Canonicalize path and verify it stays within allowed directory" ;
+    narsil:evidence "let path = base_dir.join(&user_path)" .
+
+# MEDIUM severity: Missing authentication
+<finding:cwe-306-api-admin-52> a narsil:Vulnerability ;
+    narsil:ruleId "CWE-306-001" ;
+    narsil:cweId "CWE-306" ;
+    narsil:owaspCategory "A07:2021" ;
+    narsil:severity "MEDIUM" ;
+    narsil:inFile <file:src/api/admin.rs> ;
+    narsil:atLine 52 ;
+    narsil:affectsSymbol <sym:AdminHandler::delete_user> ;
+    narsil:message "Administrative function lacks authentication check" ;
+    narsil:remediation "Add authentication middleware and verify admin role" .
+
+# MEDIUM severity: Sensitive data exposure
+<finding:cwe-200-auth-log-89> a narsil:Vulnerability ;
+    narsil:ruleId "CWE-200-001" ;
+    narsil:cweId "CWE-200" ;
+    narsil:owaspCategory "A02:2021" ;
+    narsil:severity "MEDIUM" ;
+    narsil:inFile <file:src/auth/mod.rs> ;
+    narsil:atLine 89 ;
+    narsil:affectsSymbol <sym:AuthProvider::authenticate> ;
+    narsil:message "Password logged in debug statement" ;
+    narsil:remediation "Remove password from log statements, log only user identifier" ;
+    narsil:evidence "debug!(\"Login attempt for {} with password {}\", user, password)" .
+
+# LOW severity: Weak random
+<finding:cwe-330-auth-token-34> a narsil:Vulnerability ;
+    narsil:ruleId "CWE-330-001" ;
+    narsil:cweId "CWE-330" ;
+    narsil:severity "LOW" ;
+    narsil:inFile <file:src/auth/token.rs> ;
+    narsil:atLine 34 ;
+    narsil:affectsSymbol <sym:TokenGenerator::generate> ;
+    narsil:message "Using non-cryptographic random number generator for token generation" ;
+    narsil:remediation "Use rand::rngs::OsRng or similar CSPRNG" .
+
+# INFO: TODO comment
+<finding:info-todo-engine-156> a narsil:SecurityFinding ;
+    narsil:ruleId "INFO-TODO-001" ;
+    narsil:severity "INFO" ;
+    narsil:inFile <file:src/engine/mod.rs> ;
+    narsil:atLine 156 ;
+    narsil:message "TODO comment found: 'TODO: add rate limiting'" .
+
+# ===== TAINT ANALYSIS =====
+
+# Taint source: User input from HTTP request
+<taint-source:api-handler-25> a narsil:TaintSource ;
+    narsil:sourceType "user_input" ;
+    narsil:inFile <file:src/api/handler.rs> ;
+    narsil:atLine 25 ;
+    narsil:variable "user_id" ;
+    narsil:description "User-supplied ID from query parameter" .
+
+# Taint sink: SQL query execution
+<taint-sink:storage-query-78> a narsil:TaintSink ;
+    narsil:sinkType "sql_query" ;
+    narsil:inFile <file:src/storage/query.rs> ;
+    narsil:atLine 78 ;
+    narsil:variable "query" ;
+    narsil:description "SQL query execution with user data" .
+
+# Taint flow: user input to SQL query (SQL injection path)
+<taint-flow:sqli-path-1> a narsil:TaintFlow ;
+    narsil:source <taint-source:api-handler-25> ;
+    narsil:sink <taint-sink:storage-query-78> ;
+    narsil:relatedFinding <finding:cwe-89-storage-query-78> ;
+    narsil:path (
+        <sym:ApiHandler::get_item>
+        <sym:ItemService::find_by_id>
+        <sym:Storage::query>
+    ) ;
+    narsil:description "User input flows from HTTP parameter to SQL query without sanitization" .
+
+# Taint source: File path from request
+<taint-source:api-file-140> a narsil:TaintSource ;
+    narsil:sourceType "user_input" ;
+    narsil:inFile <file:src/api/file.rs> ;
+    narsil:atLine 140 ;
+    narsil:variable "user_path" ;
+    narsil:description "User-supplied file path" .
+
+# Taint sink: File system access
+<taint-sink:api-file-145> a narsil:TaintSink ;
+    narsil:sinkType "file_read" ;
+    narsil:inFile <file:src/api/file.rs> ;
+    narsil:atLine 145 ;
+    narsil:variable "full_path" ;
+    narsil:description "File system read operation" .
+
+# Taint flow: path traversal
+<taint-flow:path-traversal-1> a narsil:TaintFlow ;
+    narsil:source <taint-source:api-file-140> ;
+    narsil:sink <taint-sink:api-file-145> ;
+    narsil:relatedFinding <finding:cwe-22-api-file-145> ;
+    narsil:path (
+        <sym:FileHandler::get_file>
+    ) ;
+    narsil:description "User-supplied path flows to file system without validation" .
+
+# ===== DATA FLOW ANALYSIS =====
+
+# Data flow graph for Engine::process
+<dfg:Engine::process> a narsil:DataFlowGraph ;
+    narsil:forSymbol <sym:Engine::process> ;
+    narsil:hasDefinition [
+        narsil:variable "tokens" ;
+        narsil:atLine 56 ;
+        narsil:defType "assignment"
+    ] ;
+    narsil:hasDefinition [
+        narsil:variable "validated" ;
+        narsil:atLine 62 ;
+        narsil:defType "assignment"
+    ] ;
+    narsil:hasDefinition [
+        narsil:variable "result" ;
+        narsil:atLine 78 ;
+        narsil:defType "assignment"
+    ] ;
+    narsil:hasUse [
+        narsil:variable "input" ;
+        narsil:atLine 56 ;
+        narsil:useType "read"
+    ] ;
+    narsil:hasUse [
+        narsil:variable "tokens" ;
+        narsil:atLine 62 ;
+        narsil:useType "read"
+    ] ;
+    narsil:hasUse [
+        narsil:variable "validated" ;
+        narsil:atLine 78 ;
+        narsil:useType "read"
+    ] .
+
+# Data flow graph for Storage::query
+<dfg:Storage::query> a narsil:DataFlowGraph ;
+    narsil:forSymbol <sym:Storage::query> ;
+    narsil:hasDefinition [
+        narsil:variable "query" ;
+        narsil:atLine 78 ;
+        narsil:defType "format_string" ;
+        narsil:isTainted true
+    ] ;
+    narsil:hasUse [
+        narsil:variable "user_id" ;
+        narsil:atLine 78 ;
+        narsil:useType "interpolation" ;
+        narsil:isTainted true
+    ] .
+
+# ===== SOURCE SNIPPETS =====
+
+# Source snippet for high-complexity function
+<sym:Engine::process> narsil:sourceSnippet """
+pub async fn process(&self, input: &str) -> Result<ProcessResult, EngineError> {
+    // Parse the input
+    let tokens = Parser::parse(input)?;
+
+    // Validate the tokens
+    self.validate(&tokens)?;
+
+    // Process each token
+    let mut results = Vec::new();
+    for token in tokens {
+        match token.kind {
+            TokenKind::Command => {
+                let cmd = self.execute_command(&token)?;
+                results.push(cmd);
+            }
+            TokenKind::Data => {
+                let data = self.transform_data(&token)?;
+                results.push(data);
+            }
+            TokenKind::Reference => {
+                let resolved = self.resolve_reference(&token).await?;
+                results.push(resolved);
+            }
+            _ => continue,
+        }
+    }
+
+    // Store the results
+    self.storage.save(&self.session_id, &results).await?;
+
+    Ok(ProcessResult::new(results))
+}
+""" .
+
+# Source snippet for vulnerability location
+<sym:Storage::query> narsil:sourceSnippet """
+pub async fn query(&self, table: &str, user_id: &str) -> Result<Vec<Row>, StorageError> {
+    // VULNERABLE: String concatenation with user input
+    let query = format!(\"SELECT * FROM {} WHERE id = {}\", table, user_id);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(&self.pool)
+        .await?;
+
+    Ok(rows)
+}
+""" .
+
+# ===== GIT BLAME (Optional) =====
+
+<blame:storage-query-78> a narsil:GitBlame ;
+    narsil:file <file:src/storage/query.rs> ;
+    narsil:line 78 ;
+    narsil:commit "def456789" ;
+    narsil:author "developer@example.com" ;
+    narsil:date "2025-11-15T14:30:00Z" ;
+    narsil:message "Add dynamic table support" .
+
+# ===== NAMED GRAPHS (N-Quads format) =====
+
+# In N-Quads, each triple can have a graph URI as the fourth element
+# Example: <subject> <predicate> <object> <graph> .
+
+# Security findings in security graph
+<finding:cwe-89-storage-query-78> a narsil:Vulnerability <repo:security> .
+<finding:cwe-22-api-file-145> a narsil:Vulnerability <repo:security> .
+<finding:cwe-306-api-admin-52> a narsil:Vulnerability <repo:security> .
+
+# Taint flows in dataflow graph
+<taint-flow:sqli-path-1> a narsil:TaintFlow <repo:dataflow> .
+<taint-flow:path-traversal-1> a narsil:TaintFlow <repo:dataflow> .
+
+# Call graph in calls graph
+<sym:Engine::process> narsil:calls <sym:Parser::parse> <repo:calls> .
+<sym:Engine::process> narsil:calls <sym:Storage::save> <repo:calls> .

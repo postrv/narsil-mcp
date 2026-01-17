@@ -6901,6 +6901,521 @@ impl CodeIntelEngine {
             taint_sinks,
         })
     }
+
+    // ========================================================================
+    // SPARQL Query Methods
+    // ========================================================================
+
+    /// Execute a SPARQL query against the knowledge graph.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The SPARQL query to execute
+    /// * `timeout_ms` - Optional timeout in milliseconds (default: 30000)
+    /// * `limit` - Optional maximum number of results (default: 1000)
+    /// * `offset` - Optional offset for pagination (default: 0)
+    /// * `format` - Output format: json, markdown, or csv (default: json)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The graph feature is not enabled
+    /// - No knowledge graph is available
+    /// - The query is invalid
+    /// - The query times out
+    #[cfg(feature = "graph")]
+    pub async fn sparql_query(
+        &self,
+        query: &str,
+        timeout_ms: Option<u64>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        format: Option<&str>,
+    ) -> Result<String> {
+        use crate::persistence::sparql::{OutputFormat, QueryOptions, SparqlEngine};
+        use std::str::FromStr;
+
+        let graph = self
+            .knowledge_graph
+            .as_ref()
+            .ok_or_else(|| anyhow!("Knowledge graph not enabled. Start with --graph flag."))?;
+
+        let output_format = format
+            .map(OutputFormat::from_str)
+            .transpose()?
+            .unwrap_or_default();
+
+        let options = QueryOptions::default()
+            .with_timeout_ms(timeout_ms.unwrap_or(30_000))
+            .with_limit(limit.unwrap_or(1000))
+            .with_offset(offset.unwrap_or(0))
+            .with_format(output_format);
+
+        let engine = SparqlEngine::new(graph);
+
+        // Determine query type and execute
+        let query_trimmed = query.trim().to_uppercase();
+        if query_trimmed.starts_with("ASK") {
+            let result = engine.query_ask(query, &options)?;
+            let output = format!(
+                "# SPARQL ASK Query Result\n\n**Result**: {}\n\n*Executed in {}ms*",
+                if result.result { "true" } else { "false" },
+                result.execution_time_ms
+            );
+            Ok(output)
+        } else {
+            let result = engine.query_select(query, &options)?;
+            SparqlEngine::format_result(&result, output_format)
+        }
+    }
+
+    /// List available SPARQL query templates.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the graph feature is not enabled.
+    #[cfg(feature = "graph")]
+    pub async fn list_sparql_templates(&self) -> Result<String> {
+        use crate::persistence::sparql::templates;
+
+        let all_templates = templates::all();
+
+        let mut output = String::new();
+        output.push_str("# SPARQL Query Templates\n\n");
+        output.push_str(&format!(
+            "**{} templates available**\n\n",
+            all_templates.len()
+        ));
+
+        for template in all_templates {
+            output.push_str(&format!("## `{}`\n\n", template.name));
+            output.push_str(&format!("{}\n\n", template.description));
+
+            if !template.parameters.is_empty() {
+                output.push_str("**Parameters:**\n");
+                for param in template.parameters {
+                    output.push_str(&format!("- `${}`\n", param));
+                }
+                output.push('\n');
+            } else {
+                output.push_str("*No parameters required*\n\n");
+            }
+        }
+
+        Ok(output)
+    }
+
+    /// Execute a SPARQL query template with parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `template_name` - Name of the template to execute
+    /// * `params` - JSON object with parameter values
+    /// * `timeout_ms` - Optional timeout in milliseconds
+    /// * `limit` - Optional maximum number of results
+    /// * `format` - Output format: json, markdown, or csv
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The template is not found
+    /// - Required parameters are missing
+    /// - The query fails
+    #[cfg(feature = "graph")]
+    pub async fn run_sparql_template(
+        &self,
+        template_name: &str,
+        params: std::collections::HashMap<String, String>,
+        timeout_ms: Option<u64>,
+        limit: Option<usize>,
+        format: Option<&str>,
+    ) -> Result<String> {
+        use crate::persistence::sparql::{templates, OutputFormat, QueryOptions, SparqlEngine};
+        use std::str::FromStr;
+
+        let graph = self
+            .knowledge_graph
+            .as_ref()
+            .ok_or_else(|| anyhow!("Knowledge graph not enabled. Start with --graph flag."))?;
+
+        let template = templates::get(template_name)
+            .ok_or_else(|| anyhow!("Template not found: {}", template_name))?;
+
+        let output_format = format
+            .map(OutputFormat::from_str)
+            .transpose()?
+            .unwrap_or_default();
+
+        let options = QueryOptions::default()
+            .with_timeout_ms(timeout_ms.unwrap_or(30_000))
+            .with_limit(limit.unwrap_or(1000))
+            .with_format(output_format);
+
+        let engine = SparqlEngine::new(graph);
+        let result = engine.query_template(template, &params, &options)?;
+
+        let mut output = String::new();
+        output.push_str(&format!("# Template: `{}`\n\n", template_name));
+        output.push_str(&format!("{}\n\n", template.description));
+        output.push_str("---\n\n");
+        output.push_str(&SparqlEngine::format_result(&result, output_format)?);
+
+        Ok(output)
+    }
+
+    // ========================================================================
+    // Code Context Graph (CCG) Methods
+    // ========================================================================
+
+    /// Get CCG manifest (Layer 0) for a repository.
+    ///
+    /// Returns a JSON-LD manifest with repository identity, symbol counts,
+    /// security summary, and layer URIs.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - Repository name
+    /// * `include_security` - Whether to include security summary
+    /// * `base_url` - Base URL for layer URIs
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The repository is not found
+    /// - The graph feature is not enabled
+    #[cfg(feature = "graph")]
+    pub async fn get_ccg_manifest(
+        &self,
+        repo: &str,
+        include_security: bool,
+        base_url: Option<&str>,
+    ) -> Result<String> {
+        use crate::ccg::{CcgGenerator, CcgOptions, Layer};
+
+        let input = self.build_ccg_input(repo).await?;
+
+        let mut options = CcgOptions::default();
+        if !include_security {
+            options = options.without_security_summary();
+        }
+        if let Some(url) = base_url {
+            options = options.with_base_url(url);
+        }
+
+        let generator = CcgGenerator::new();
+        let output = generator.generate_layer(Layer::Manifest, &input, &options)?;
+
+        Ok(output.content)
+    }
+
+    /// Export CCG manifest (Layer 0) to a file.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - Repository name
+    /// * `include_security` - Whether to include security summary
+    /// * `base_url` - Base URL for layer URIs
+    /// * `output_path` - Optional output file path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if file writing fails.
+    #[cfg(feature = "graph")]
+    pub async fn export_ccg_manifest(
+        &self,
+        repo: &str,
+        include_security: bool,
+        base_url: Option<&str>,
+        output_path: Option<&str>,
+    ) -> Result<String> {
+        let content = self
+            .get_ccg_manifest(repo, include_security, base_url)
+            .await?;
+
+        if let Some(path) = output_path {
+            std::fs::write(path, &content)?;
+            Ok(format!(
+                "Manifest exported to: {}\nSize: {} bytes",
+                path,
+                content.len()
+            ))
+        } else {
+            Ok(content)
+        }
+    }
+
+    /// Export CCG architecture (Layer 1) for a repository.
+    #[cfg(feature = "graph")]
+    pub async fn export_ccg_architecture(
+        &self,
+        repo: &str,
+        output_path: Option<&str>,
+    ) -> Result<String> {
+        use crate::ccg::{CcgGenerator, CcgOptions, Layer};
+
+        let input = self.build_ccg_input(repo).await?;
+        let options = CcgOptions::default();
+
+        let generator = CcgGenerator::new();
+        let output = generator.generate_layer(Layer::Architecture, &input, &options)?;
+
+        if let Some(path) = output_path {
+            std::fs::write(path, &output.content)?;
+            Ok(format!(
+                "Architecture exported to: {}\nSize: {} bytes",
+                path, output.size_bytes
+            ))
+        } else {
+            Ok(output.content)
+        }
+    }
+
+    /// Export CCG symbol index (Layer 2) for a repository.
+    #[cfg(feature = "graph")]
+    pub async fn export_ccg_index(&self, repo: &str, output_path: Option<&str>) -> Result<String> {
+        use crate::ccg::{CcgGenerator, CcgOptions, Layer};
+
+        let input = self.build_ccg_input(repo).await?;
+        let options = CcgOptions::default();
+
+        let generator = CcgGenerator::new();
+        let output = generator.generate_layer(Layer::SymbolIndex, &input, &options)?;
+
+        if let Some(path) = output_path {
+            // Write base64-encoded gzipped content
+            std::fs::write(path, &output.content)?;
+            Ok(format!(
+                "Symbol index exported to: {}\nCompressed size: {} bytes\nSymbol count: {}",
+                path,
+                output.size_bytes,
+                output
+                    .metadata
+                    .get("symbol_count")
+                    .unwrap_or(&serde_json::json!(0))
+            ))
+        } else {
+            // Return metadata summary since content is binary
+            Ok(format!(
+                "# CCG Symbol Index (Layer 2)\n\nCompressed size: {} bytes\nSymbol count: {}\nCall edges: {}\n\n*Content is gzip-compressed and base64-encoded*",
+                output.size_bytes,
+                output.metadata.get("symbol_count").unwrap_or(&serde_json::json!(0)),
+                output.metadata.get("call_edge_count").unwrap_or(&serde_json::json!(0))
+            ))
+        }
+    }
+
+    /// Export CCG full detail (Layer 3) for a repository.
+    #[cfg(feature = "graph")]
+    pub async fn export_ccg_full(&self, repo: &str, output_path: Option<&str>) -> Result<String> {
+        use crate::ccg::{CcgGenerator, CcgOptions, Layer};
+
+        let input = self.build_ccg_input(repo).await?;
+        let options = CcgOptions::default();
+
+        let generator = CcgGenerator::new();
+        let output = generator.generate_layer(Layer::FullDetail, &input, &options)?;
+
+        if let Some(path) = output_path {
+            std::fs::write(path, &output.content)?;
+            Ok(format!(
+                "Full detail exported to: {}\nCompressed size: {} bytes",
+                path, output.size_bytes
+            ))
+        } else {
+            Ok(format!(
+                "# CCG Full Detail (Layer 3)\n\nCompressed size: {} bytes\nSymbol count: {}\nCall edges: {}\nImport edges: {}\nFindings: {}\n\n*Content is gzip-compressed and base64-encoded*",
+                output.size_bytes,
+                output.metadata.get("symbol_count").unwrap_or(&serde_json::json!(0)),
+                output.metadata.get("call_edge_count").unwrap_or(&serde_json::json!(0)),
+                output.metadata.get("import_edge_count").unwrap_or(&serde_json::json!(0)),
+                output.metadata.get("finding_count").unwrap_or(&serde_json::json!(0))
+            ))
+        }
+    }
+
+    /// Export all CCG layers bundled to a directory.
+    #[cfg(feature = "graph")]
+    pub async fn export_ccg(
+        &self,
+        repo: &str,
+        output_dir: Option<&str>,
+        base_url: Option<&str>,
+        include_security: bool,
+    ) -> Result<String> {
+        use crate::ccg::{CcgGenerator, CcgOptions};
+
+        let input = self.build_ccg_input(repo).await?;
+
+        let mut options = CcgOptions::default();
+        if !include_security {
+            options = options.without_security_summary();
+        }
+        if let Some(url) = base_url {
+            options = options.with_base_url(url);
+        }
+
+        let generator = CcgGenerator::new();
+        let bundle = generator.generate_bundle(&input, &options)?;
+
+        if let Some(dir) = output_dir {
+            std::fs::create_dir_all(dir)?;
+
+            // Write each layer
+            for (layer, output) in &bundle.layers {
+                let filename = match layer {
+                    crate::ccg::Layer::Manifest => "manifest.json",
+                    crate::ccg::Layer::Architecture => "architecture.json",
+                    crate::ccg::Layer::SymbolIndex => "symbol-index.nq.gz.b64",
+                    crate::ccg::Layer::FullDetail => "full-detail.nq.gz.b64",
+                };
+                let path = format!("{}/{}", dir, filename);
+                std::fs::write(&path, &output.content)?;
+            }
+
+            Ok(format!(
+                "# CCG Bundle Exported\n\nDirectory: {}\nTotal size: {} bytes\nLayers: {}\nL0+L1 within budget: {}",
+                dir,
+                bundle.total_size_bytes,
+                bundle.layers.len(),
+                bundle.manifest_layers_within_budget()
+            ))
+        } else {
+            Ok(format!(
+                "# CCG Bundle Summary\n\nRepository: {}\nTotal size: {} bytes\nLayers: {}\nL0+L1 within budget: {}\nGenerated at: {}",
+                bundle.repo,
+                bundle.total_size_bytes,
+                bundle.layers.len(),
+                bundle.manifest_layers_within_budget(),
+                bundle.generated_at
+            ))
+        }
+    }
+
+    /// Query CCG Layer 3 using SPARQL.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - Repository name (reserved for repo-specific CCG querying)
+    /// * `query` - SPARQL query string
+    /// * `timeout_ms` - Optional query timeout in milliseconds
+    /// * `limit` - Optional result limit
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the SPARQL query fails.
+    #[cfg(feature = "graph")]
+    pub async fn query_ccg(
+        &self,
+        _repo: &str,
+        query: &str,
+        timeout_ms: Option<u64>,
+        limit: Option<usize>,
+    ) -> Result<String> {
+        // For now, delegate to sparql_query since L3 is stored in the knowledge graph.
+        // The _repo parameter is reserved for repo-specific CCG querying in the future.
+        self.sparql_query(query, timeout_ms, limit, None, Some("markdown"))
+            .await
+    }
+
+    /// Build CCG input from repository data.
+    #[cfg(feature = "graph")]
+    async fn build_ccg_input(&self, repo: &str) -> Result<crate::ccg::CcgInput> {
+        use crate::ccg::{
+            CallEdgeInfo, CcgInput, FileInfo, ImportEdgeInfo, SecurityFindingInfo, SymbolInfo,
+        };
+
+        // Get repo metadata
+        let repo_meta = self
+            .repos
+            .get(repo)
+            .ok_or_else(|| anyhow!("Repository not found: {}", repo))?;
+
+        // Build file info from file cache, filtered by repo path
+        let repo_path = repo_meta.path.clone();
+        drop(repo_meta); // Release the borrow before iterating file_cache
+
+        let files: Vec<FileInfo> = self
+            .file_cache
+            .iter()
+            .filter(|entry| entry.key().starts_with(&repo_path))
+            .map(|entry| {
+                let path = entry.key();
+                let path_str = path.to_string_lossy().to_string();
+                let relative_path = path
+                    .strip_prefix(&repo_path)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| path_str.clone());
+                let language = detect_language_from_path(&path_str);
+                let size_bytes = entry.value().len();
+                FileInfo {
+                    path: relative_path,
+                    language,
+                    size_bytes,
+                }
+            })
+            .collect();
+
+        // Build symbol info
+        let symbols: Vec<SymbolInfo> = self
+            .symbols
+            .get(repo)
+            .map(|s| {
+                s.iter()
+                    .map(|sym| SymbolInfo {
+                        name: sym.name.clone(),
+                        kind: format!("{:?}", sym.kind),
+                        file: sym.file_path.clone(),
+                        start_line: sym.start_line,
+                        end_line: sym.end_line,
+                        signature: sym.signature.clone(),
+                        doc_comment: sym.doc_comment.clone(),
+                        is_public: true, // Would need visibility analysis
+                        complexity: None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Build call edges from call graph (if available)
+        let call_edges: Vec<CallEdgeInfo> = self
+            .call_graphs
+            .get(repo)
+            .map(|cg| {
+                cg.iter_nodes()
+                    .flat_map(|node| {
+                        let node = node.value();
+                        node.calls
+                            .iter()
+                            .map(|edge| CallEdgeInfo {
+                                caller: node.name.clone(),
+                                caller_file: node.file_path.clone(),
+                                callee: edge.target.clone(),
+                                callee_file: edge.file_path.clone(),
+                                line: edge.line,
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Build import edges - for now empty, would need import graph
+        let import_edges: Vec<ImportEdgeInfo> = Vec::new();
+
+        // Get security findings
+        let security_findings: Vec<SecurityFindingInfo> = Vec::new();
+        // Would need to run security scan and cache results
+
+        Ok(CcgInput {
+            repo_name: repo.to_string(),
+            repo_url: None,
+            files,
+            symbols,
+            call_edges,
+            import_edges,
+            security_findings,
+        })
+    }
 }
 
 /// Parse imports from file content

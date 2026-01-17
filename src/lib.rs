@@ -29,6 +29,10 @@ pub mod type_inference;
 #[cfg(feature = "graph")]
 pub mod persistence;
 
+// Code Context Graph generation (requires graph feature)
+#[cfg(feature = "graph")]
+pub mod ccg;
+
 // Native-only modules (require tokio, octocrab, lsp, etc.)
 #[cfg(feature = "native")]
 pub mod git;

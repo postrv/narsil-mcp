@@ -1,0 +1,115 @@
+{
+  "@context": "https://codecontextgraph.com/schema/v1",
+  "@type": "Architecture",
+  "@id": "https://codecontextgraph.com/repo/github.com/example/myproject@a1b2c3d/layer/1",
+
+  "modules": [
+    {
+      "name": "engine",
+      "path": "src/engine/",
+      "purpose": "Core processing engine for data transformation",
+      "exports": ["Engine", "EngineConfig", "ProcessResult"],
+      "dependsOn": ["parser", "storage"],
+      "loc": 2800
+    },
+    {
+      "name": "parser",
+      "path": "src/parser/",
+      "purpose": "Input format parsing and validation",
+      "exports": ["Parser", "ParseError", "Token"],
+      "dependsOn": [],
+      "loc": 1500
+    },
+    {
+      "name": "storage",
+      "path": "src/storage/",
+      "purpose": "Persistent storage abstraction",
+      "exports": ["Storage", "StorageConfig", "StorageError"],
+      "dependsOn": [],
+      "loc": 1200
+    },
+    {
+      "name": "api",
+      "path": "src/api/",
+      "purpose": "HTTP API endpoints",
+      "exports": ["Server", "Router", "Response"],
+      "dependsOn": ["engine", "auth"],
+      "loc": 1800
+    },
+    {
+      "name": "auth",
+      "path": "src/auth/",
+      "purpose": "Authentication and authorization",
+      "exports": ["AuthProvider", "Session", "Permission"],
+      "dependsOn": ["storage"],
+      "loc": 900
+    },
+    {
+      "name": "utils",
+      "path": "src/utils/",
+      "purpose": "Shared utility functions",
+      "exports": ["hash", "timestamp", "validate"],
+      "dependsOn": [],
+      "loc": 300
+    }
+  ],
+
+  "publicAPI": [
+    {
+      "symbol": "Engine::new",
+      "signature": "pub fn new(config: EngineConfig) -> Result<Self, EngineError>",
+      "doc": "Creates a new Engine instance with the given configuration"
+    },
+    {
+      "symbol": "Engine::process",
+      "signature": "pub async fn process(&self, input: &str) -> Result<ProcessResult, EngineError>",
+      "doc": "Processes the input string and returns the transformation result"
+    },
+    {
+      "symbol": "Parser::parse",
+      "signature": "pub fn parse(input: &str) -> Result<Vec<Token>, ParseError>",
+      "doc": "Parses the input string into a sequence of tokens"
+    },
+    {
+      "symbol": "Server::serve",
+      "signature": "pub async fn serve(addr: SocketAddr) -> Result<(), ServerError>",
+      "doc": "Starts the HTTP server on the specified address"
+    },
+    {
+      "symbol": "Storage::connect",
+      "signature": "pub async fn connect(config: StorageConfig) -> Result<Self, StorageError>",
+      "doc": "Establishes a connection to the storage backend"
+    }
+  ],
+
+  "patterns": {
+    "architectural": ["Repository", "Builder", "Strategy"],
+    "detected": [
+      {
+        "pattern": "Dependency Injection",
+        "location": "src/engine/mod.rs",
+        "coverage": "85%"
+      },
+      {
+        "pattern": "Result/Option Error Handling",
+        "coverage": "98%"
+      },
+      {
+        "pattern": "Async/Await",
+        "location": "src/api/",
+        "coverage": "100%"
+      }
+    ]
+  },
+
+  "moduleDependencyGraph": {
+    "nodes": ["engine", "parser", "storage", "api", "auth", "utils"],
+    "edges": [
+      ["engine", "parser"],
+      ["engine", "storage"],
+      ["api", "engine"],
+      ["api", "auth"],
+      ["auth", "storage"]
+    ]
+  }
+}

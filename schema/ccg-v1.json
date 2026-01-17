@@ -1,0 +1,305 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@vocab": "https://codecontextgraph.com/ontology/v1#",
+    "ccg": "https://codecontextgraph.com/ontology/v1#",
+    "narsil": "https://narsilmcp.com/ontology/v1#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "owl": "http://www.w3.org/2002/07/owl#",
+    "acl": "http://www.w3.org/ns/auth/acl#",
+    "foaf": "http://xmlns.com/foaf/0.1/",
+
+    "Manifest": "ccg:Manifest",
+    "Architecture": "ccg:Architecture",
+    "Diff": "ccg:Diff",
+    "Constraint": "ccg:Constraint",
+
+    "repository": {
+      "@id": "ccg:repository",
+      "@type": "@id"
+    },
+    "name": {
+      "@id": "ccg:name",
+      "@type": "xsd:string"
+    },
+    "url": {
+      "@id": "ccg:url",
+      "@type": "@id"
+    },
+    "commit": {
+      "@id": "ccg:commit",
+      "@type": "xsd:string"
+    },
+    "analyzedAt": {
+      "@id": "ccg:analyzedAt",
+      "@type": "xsd:dateTime"
+    },
+
+    "languages": {
+      "@id": "ccg:languages",
+      "@container": "@index"
+    },
+    "files": {
+      "@id": "ccg:fileCount",
+      "@type": "xsd:integer"
+    },
+    "loc": {
+      "@id": "ccg:linesOfCode",
+      "@type": "xsd:integer"
+    },
+
+    "symbols": {
+      "@id": "ccg:symbols"
+    },
+    "total": {
+      "@id": "ccg:totalCount",
+      "@type": "xsd:integer"
+    },
+    "functions": {
+      "@id": "ccg:functionCount",
+      "@type": "xsd:integer"
+    },
+    "structs": {
+      "@id": "ccg:structCount",
+      "@type": "xsd:integer"
+    },
+    "classes": {
+      "@id": "ccg:classCount",
+      "@type": "xsd:integer"
+    },
+    "methods": {
+      "@id": "ccg:methodCount",
+      "@type": "xsd:integer"
+    },
+    "traits": {
+      "@id": "ccg:traitCount",
+      "@type": "xsd:integer"
+    },
+    "interfaces": {
+      "@id": "ccg:interfaceCount",
+      "@type": "xsd:integer"
+    },
+    "enums": {
+      "@id": "ccg:enumCount",
+      "@type": "xsd:integer"
+    },
+
+    "security": {
+      "@id": "ccg:security"
+    },
+    "critical": {
+      "@id": "ccg:criticalCount",
+      "@type": "xsd:integer"
+    },
+    "high": {
+      "@id": "ccg:highCount",
+      "@type": "xsd:integer"
+    },
+    "medium": {
+      "@id": "ccg:mediumCount",
+      "@type": "xsd:integer"
+    },
+    "low": {
+      "@id": "ccg:lowCount",
+      "@type": "xsd:integer"
+    },
+    "info": {
+      "@id": "ccg:infoCount",
+      "@type": "xsd:integer"
+    },
+
+    "quality": {
+      "@id": "ccg:quality"
+    },
+    "avgCyclomaticComplexity": {
+      "@id": "ccg:avgCyclomaticComplexity",
+      "@type": "xsd:decimal"
+    },
+    "maxCyclomaticComplexity": {
+      "@id": "ccg:maxCyclomaticComplexity",
+      "@type": "xsd:integer"
+    },
+    "hotspots": {
+      "@id": "ccg:hotspots",
+      "@container": "@list"
+    },
+
+    "entryPoints": {
+      "@id": "ccg:entryPoints",
+      "@container": "@list"
+    },
+    "symbol": {
+      "@id": "ccg:symbol",
+      "@type": "xsd:string"
+    },
+    "file": {
+      "@id": "ccg:file",
+      "@type": "xsd:string"
+    },
+    "line": {
+      "@id": "ccg:line",
+      "@type": "xsd:integer"
+    },
+
+    "layers": {
+      "@id": "ccg:layers"
+    },
+    "architecture": {
+      "@id": "ccg:architectureLayer",
+      "@type": "@id"
+    },
+    "symbolIndex": {
+      "@id": "ccg:symbolIndexLayer",
+      "@type": "@id"
+    },
+    "fullDetail": {
+      "@id": "ccg:fullDetailLayer",
+      "@type": "@id"
+    },
+    "sparqlEndpoint": {
+      "@id": "ccg:sparqlEndpoint",
+      "@type": "@id"
+    },
+
+    "modules": {
+      "@id": "ccg:modules",
+      "@container": "@list"
+    },
+    "path": {
+      "@id": "ccg:path",
+      "@type": "xsd:string"
+    },
+    "purpose": {
+      "@id": "ccg:purpose",
+      "@type": "xsd:string"
+    },
+    "exports": {
+      "@id": "ccg:exports",
+      "@container": "@list"
+    },
+    "dependsOn": {
+      "@id": "ccg:dependsOn",
+      "@container": "@list"
+    },
+
+    "publicAPI": {
+      "@id": "ccg:publicAPI",
+      "@container": "@list"
+    },
+    "signature": {
+      "@id": "ccg:signature",
+      "@type": "xsd:string"
+    },
+    "doc": {
+      "@id": "ccg:documentation",
+      "@type": "xsd:string"
+    },
+
+    "patterns": {
+      "@id": "ccg:patterns"
+    },
+    "architectural": {
+      "@id": "ccg:architecturalPatterns",
+      "@container": "@list"
+    },
+    "detected": {
+      "@id": "ccg:detectedPatterns",
+      "@container": "@list"
+    },
+    "pattern": {
+      "@id": "ccg:patternName",
+      "@type": "xsd:string"
+    },
+    "location": {
+      "@id": "ccg:location",
+      "@type": "xsd:string"
+    },
+    "coverage": {
+      "@id": "ccg:coverage",
+      "@type": "xsd:string"
+    },
+
+    "moduleDependencyGraph": {
+      "@id": "ccg:moduleDependencyGraph"
+    },
+    "nodes": {
+      "@id": "ccg:nodes",
+      "@container": "@list"
+    },
+    "edges": {
+      "@id": "ccg:edges",
+      "@container": "@list"
+    },
+
+    "base": {
+      "@id": "ccg:base",
+      "@type": "@id"
+    },
+    "target": {
+      "@id": "ccg:target",
+      "@type": "@id"
+    },
+    "changes": {
+      "@id": "ccg:changes"
+    },
+    "added": {
+      "@id": "ccg:added",
+      "@container": "@list"
+    },
+    "removed": {
+      "@id": "ccg:removed",
+      "@container": "@list"
+    },
+    "renamed": {
+      "@id": "ccg:renamed",
+      "@container": "@list"
+    },
+    "moved": {
+      "@id": "ccg:moved",
+      "@container": "@list"
+    },
+    "old": {
+      "@id": "ccg:oldValue",
+      "@type": "xsd:string"
+    },
+    "new": {
+      "@id": "ccg:newValue",
+      "@type": "xsd:string"
+    },
+    "from": {
+      "@id": "ccg:from",
+      "@type": "xsd:string"
+    },
+    "to": {
+      "@id": "ccg:to",
+      "@type": "xsd:string"
+    },
+
+    "constraints": {
+      "@id": "ccg:constraints",
+      "@container": "@list"
+    },
+    "type": {
+      "@id": "ccg:constraintType",
+      "@type": "xsd:string"
+    },
+    "scope": {
+      "@id": "ccg:scope",
+      "@type": "xsd:string"
+    },
+    "value": {
+      "@id": "ccg:value",
+      "@type": "xsd:integer"
+    },
+    "module": {
+      "@id": "ccg:module",
+      "@type": "xsd:string"
+    },
+
+    "dependencies": {
+      "@id": "ccg:dependencies"
+    }
+  }
+}

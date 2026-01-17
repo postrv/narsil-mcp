@@ -519,7 +519,7 @@ async fn test_feature_flag_validation() -> Result<()> {
 #[tokio::test]
 async fn test_metadata_completeness() -> Result<()> {
     // Verify all tools in TOOL_METADATA have required fields
-    assert_eq!(TOOL_METADATA.len(), 76, "Expected 76 tools in metadata");
+    assert_eq!(TOOL_METADATA.len(), 90, "Expected 90 tools in metadata");
 
     for (name, meta) in TOOL_METADATA.iter() {
         // Name should match key

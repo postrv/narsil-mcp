@@ -31,10 +31,15 @@ mod graph;
 mod transform;
 
 #[cfg(feature = "graph")]
+pub mod sparql;
+
+#[cfg(feature = "graph")]
 pub use graph::*;
 
 #[cfg(feature = "graph")]
 pub use transform::*;
+
+// sparql types are accessed via the module path when needed
 
 // Re-export common types for use without the feature flag
 pub mod ontology;

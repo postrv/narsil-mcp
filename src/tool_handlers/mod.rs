@@ -12,6 +12,7 @@ use crate::index::CodeIntelEngine;
 
 mod analysis;
 mod callgraph;
+mod ccg;
 mod git;
 pub mod graph;
 mod lsp;
@@ -19,6 +20,7 @@ mod remote;
 mod repo;
 mod search;
 mod security;
+mod sparql;
 mod supply_chain;
 mod symbols;
 
@@ -153,6 +155,24 @@ impl ToolRegistry {
 
         // Register graph visualization handler
         registry.register(Box::new(graph::GetCodeGraphHandler));
+
+        // Register SPARQL handlers
+        registry.register(Box::new(sparql::SparqlQueryHandler));
+        registry.register(Box::new(sparql::ListSparqlTemplatesHandler));
+        registry.register(Box::new(sparql::RunSparqlTemplateHandler));
+
+        // Register CCG handlers
+        registry.register(Box::new(ccg::GetCcgManifestHandler));
+        registry.register(Box::new(ccg::ExportCcgManifestHandler));
+        registry.register(Box::new(ccg::ExportCcgArchitectureHandler));
+        registry.register(Box::new(ccg::ExportCcgIndexHandler));
+        registry.register(Box::new(ccg::ExportCcgFullHandler));
+        registry.register(Box::new(ccg::ExportCcgHandler));
+        registry.register(Box::new(ccg::QueryCcgHandler));
+        registry.register(Box::new(ccg::GetCcgAclHandler));
+        registry.register(Box::new(ccg::GetCcgAccessInfoHandler));
+        registry.register(Box::new(ccg::ImportCcgHandler));
+        registry.register(Box::new(ccg::ImportCcgFromRegistryHandler));
 
         registry
     }

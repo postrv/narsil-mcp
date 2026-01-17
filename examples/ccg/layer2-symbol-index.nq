@@ -1,0 +1,218 @@
+# Code Context Graph - Layer 2: Symbol Index
+# Repository: github.com/example/myproject@a1b2c3d
+# Format: N-Quads (RDF 1.1)
+# Note: In production, this file would be gzipped as .nq.gz
+
+@prefix narsil: <https://narsilmcp.com/ontology/v1#> .
+@prefix ccg: <https://codecontextgraph.com/ontology/v1#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+# Repository base URI
+@base <https://codecontextgraph.com/repo/github.com/example/myproject@a1b2c3d> .
+
+# ===== Struct Definitions =====
+
+<sym:Engine> a narsil:Struct ;
+    narsil:name "Engine" ;
+    narsil:definedIn <file:src/engine/mod.rs> ;
+    narsil:startLine 25 ;
+    narsil:endLine 180 ;
+    narsil:isPublic true ;
+    narsil:docComment "The main processing engine that transforms input data." .
+
+<sym:EngineConfig> a narsil:Struct ;
+    narsil:name "EngineConfig" ;
+    narsil:definedIn <file:src/engine/config.rs> ;
+    narsil:startLine 10 ;
+    narsil:endLine 35 ;
+    narsil:isPublic true ;
+    narsil:docComment "Configuration options for the Engine." .
+
+<sym:Parser> a narsil:Struct ;
+    narsil:name "Parser" ;
+    narsil:definedIn <file:src/parser/mod.rs> ;
+    narsil:startLine 15 ;
+    narsil:endLine 95 ;
+    narsil:isPublic true ;
+    narsil:docComment "Input parser that tokenizes and validates input strings." .
+
+<sym:Token> a narsil:Struct ;
+    narsil:name "Token" ;
+    narsil:definedIn <file:src/parser/token.rs> ;
+    narsil:startLine 5 ;
+    narsil:endLine 45 ;
+    narsil:isPublic true .
+
+<sym:Storage> a narsil:Struct ;
+    narsil:name "Storage" ;
+    narsil:definedIn <file:src/storage/mod.rs> ;
+    narsil:startLine 20 ;
+    narsil:endLine 150 ;
+    narsil:isPublic true ;
+    narsil:docComment "Abstraction layer for persistent storage operations." .
+
+<sym:Server> a narsil:Struct ;
+    narsil:name "Server" ;
+    narsil:definedIn <file:src/api/server.rs> ;
+    narsil:startLine 30 ;
+    narsil:endLine 200 ;
+    narsil:isPublic true ;
+    narsil:docComment "HTTP server for the API endpoints." .
+
+# ===== Method Definitions =====
+
+<sym:Engine::new> a narsil:Method ;
+    narsil:name "new" ;
+    narsil:hasParent <sym:Engine> ;
+    narsil:definedIn <file:src/engine/mod.rs> ;
+    narsil:signature "pub fn new(config: EngineConfig) -> Result<Self, EngineError>" ;
+    narsil:startLine 35 ;
+    narsil:endLine 52 ;
+    narsil:isPublic true ;
+    narsil:complexity 5 ;
+    narsil:cognitiveComplexity 3 .
+
+<sym:Engine::process> a narsil:Method ;
+    narsil:name "process" ;
+    narsil:hasParent <sym:Engine> ;
+    narsil:definedIn <file:src/engine/mod.rs> ;
+    narsil:signature "pub async fn process(&self, input: &str) -> Result<ProcessResult, EngineError>" ;
+    narsil:startLine 54 ;
+    narsil:endLine 120 ;
+    narsil:isPublic true ;
+    narsil:isAsync true ;
+    narsil:complexity 12 ;
+    narsil:cognitiveComplexity 8 .
+
+<sym:Engine::validate> a narsil:Method ;
+    narsil:name "validate" ;
+    narsil:hasParent <sym:Engine> ;
+    narsil:definedIn <file:src/engine/mod.rs> ;
+    narsil:signature "fn validate(&self, tokens: &[Token]) -> Result<(), ValidationError>" ;
+    narsil:startLine 122 ;
+    narsil:endLine 145 ;
+    narsil:isPublic false ;
+    narsil:complexity 6 ;
+    narsil:cognitiveComplexity 4 .
+
+<sym:Parser::parse> a narsil:Method ;
+    narsil:name "parse" ;
+    narsil:hasParent <sym:Parser> ;
+    narsil:definedIn <file:src/parser/mod.rs> ;
+    narsil:signature "pub fn parse(input: &str) -> Result<Vec<Token>, ParseError>" ;
+    narsil:startLine 25 ;
+    narsil:endLine 75 ;
+    narsil:isPublic true ;
+    narsil:complexity 8 ;
+    narsil:cognitiveComplexity 6 .
+
+<sym:Parser::tokenize> a narsil:Method ;
+    narsil:name "tokenize" ;
+    narsil:hasParent <sym:Parser> ;
+    narsil:definedIn <file:src/parser/mod.rs> ;
+    narsil:signature "fn tokenize(&self, input: &str) -> Vec<Token>" ;
+    narsil:startLine 77 ;
+    narsil:endLine 95 ;
+    narsil:isPublic false ;
+    narsil:complexity 4 ;
+    narsil:cognitiveComplexity 3 .
+
+<sym:Storage::connect> a narsil:Method ;
+    narsil:name "connect" ;
+    narsil:hasParent <sym:Storage> ;
+    narsil:definedIn <file:src/storage/mod.rs> ;
+    narsil:signature "pub async fn connect(config: StorageConfig) -> Result<Self, StorageError>" ;
+    narsil:startLine 30 ;
+    narsil:endLine 55 ;
+    narsil:isPublic true ;
+    narsil:isAsync true ;
+    narsil:complexity 4 ;
+    narsil:cognitiveComplexity 2 .
+
+<sym:Storage::save> a narsil:Method ;
+    narsil:name "save" ;
+    narsil:hasParent <sym:Storage> ;
+    narsil:definedIn <file:src/storage/mod.rs> ;
+    narsil:signature "pub async fn save(&self, key: &str, data: &[u8]) -> Result<(), StorageError>" ;
+    narsil:startLine 57 ;
+    narsil:endLine 80 ;
+    narsil:isPublic true ;
+    narsil:isAsync true ;
+    narsil:complexity 3 ;
+    narsil:cognitiveComplexity 2 .
+
+<sym:Server::serve> a narsil:Method ;
+    narsil:name "serve" ;
+    narsil:hasParent <sym:Server> ;
+    narsil:definedIn <file:src/api/server.rs> ;
+    narsil:signature "pub async fn serve(addr: SocketAddr) -> Result<(), ServerError>" ;
+    narsil:startLine 45 ;
+    narsil:endLine 120 ;
+    narsil:isPublic true ;
+    narsil:isAsync true ;
+    narsil:complexity 7 ;
+    narsil:cognitiveComplexity 5 .
+
+# ===== Trait Definitions =====
+
+<sym:Processor> a narsil:Trait ;
+    narsil:name "Processor" ;
+    narsil:definedIn <file:src/engine/traits.rs> ;
+    narsil:startLine 5 ;
+    narsil:endLine 15 ;
+    narsil:isPublic true ;
+    narsil:docComment "Trait for types that can process input data." .
+
+<sym:Storable> a narsil:Trait ;
+    narsil:name "Storable" ;
+    narsil:definedIn <file:src/storage/traits.rs> ;
+    narsil:startLine 3 ;
+    narsil:endLine 12 ;
+    narsil:isPublic true .
+
+# ===== Enum Definitions =====
+
+<sym:ParseError> a narsil:Enum ;
+    narsil:name "ParseError" ;
+    narsil:definedIn <file:src/parser/error.rs> ;
+    narsil:startLine 5 ;
+    narsil:endLine 25 ;
+    narsil:isPublic true .
+
+<sym:EngineError> a narsil:Enum ;
+    narsil:name "EngineError" ;
+    narsil:definedIn <file:src/engine/error.rs> ;
+    narsil:startLine 5 ;
+    narsil:endLine 30 ;
+    narsil:isPublic true .
+
+# ===== Call Graph Edges =====
+
+# Engine::process calls
+<sym:Engine::process> narsil:calls <sym:Parser::parse> .
+<sym:Engine::process> narsil:calls <sym:Engine::validate> .
+<sym:Engine::process> narsil:calls <sym:Storage::save> .
+
+# Engine::new calls
+<sym:Engine::new> narsil:calls <sym:Storage::connect> .
+
+# Parser::parse calls
+<sym:Parser::parse> narsil:calls <sym:Parser::tokenize> .
+
+# Server::serve calls
+<sym:Server::serve> narsil:calls <sym:Engine::new> .
+<sym:Server::serve> narsil:calls <sym:Engine::process> .
+
+# ===== Type Relationships =====
+
+<sym:Engine> narsil:implements <sym:Processor> .
+<sym:ProcessResult> narsil:implements <sym:Storable> .
+
+# ===== Module Imports =====
+
+<file:src/engine/mod.rs> narsil:imports <file:src/parser/mod.rs> .
+<file:src/engine/mod.rs> narsil:imports <file:src/storage/mod.rs> .
+<file:src/api/server.rs> narsil:imports <file:src/engine/mod.rs> .
+<file:src/api/server.rs> narsil:imports <file:src/auth/mod.rs> .
+<file:src/auth/mod.rs> narsil:imports <file:src/storage/mod.rs> .

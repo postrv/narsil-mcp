@@ -49,7 +49,7 @@ narsil-mcp --repos ~/project
 export NARSIL_PRESET=balanced
 narsil-mcp --repos ~/project --git --call-graph
 
-# Apply full preset (all 76 tools)
+# Apply full preset (all 79 tools)
 export NARSIL_PRESET=full
 narsil-mcp --repos ~/project --git --call-graph --neural
 ```
@@ -265,7 +265,7 @@ narsil-mcp --repos ~/project --git --call-graph
 - Research and exploration
 
 **Includes:**
-- ALL 76 tools
+- ALL 79 tools
 - All search modes (including neural with `--neural`)
 - Full security scanning
 - Supply chain analysis
@@ -472,7 +472,7 @@ narsil-mcp config export --resolved
 
 ## Categories
 
-narsil-mcp organizes its 76 tools into 12 categories:
+narsil-mcp organizes its 79 tools into 12 categories:
 
 ### Repository (10 tools)
 

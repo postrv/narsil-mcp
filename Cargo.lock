@@ -1885,6 +1885,7 @@ dependencies = [
  "criterion",
  "dashmap",
  "directories",
+ "flate2",
  "getrandom 0.2.16",
  "glob",
  "ignore",

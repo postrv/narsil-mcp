@@ -73,7 +73,7 @@ narsil-mcp --repos ~/project --git --call-graph
 - Research and exploration
 
 **Includes:**
-- ALL 76 tools
+- ALL 79 tools
 - All search modes (including neural with `--neural`)
 - Full security scanning
 - Supply chain analysis

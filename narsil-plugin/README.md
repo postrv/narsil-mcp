@@ -16,7 +16,7 @@ A Claude Code plugin that provides code intelligence capabilities through the na
 
 ### Skill
 
-The plugin includes a skill that helps Claude effectively use narsil-mcp's 76 tools:
+The plugin includes a skill that helps Claude effectively use narsil-mcp's 79 tools:
 
 - **Parameter naming** - Corrects common mistakes (use `repo`, not `repo_path`)
 - **Tool selection** - Picks the right tool for each task

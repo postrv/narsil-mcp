@@ -6,6 +6,8 @@
 
 mod cache;
 mod callgraph;
+#[cfg(feature = "graph")]
+mod ccg;
 mod cfg;
 mod chunking;
 mod config;

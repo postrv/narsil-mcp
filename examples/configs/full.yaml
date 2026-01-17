@@ -1,7 +1,7 @@
 # Full Preset Configuration
 # All tools enabled (Claude Desktop, comprehensive analysis)
 #
-# This preset includes ALL 76 tools:
+# This preset includes ALL 79 tools:
 # - Repository and file operations
 # - Symbol search and navigation
 # - All search modes (BM25, TF-IDF, hybrid, neural)

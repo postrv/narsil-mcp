@@ -1,6 +1,6 @@
 /// Tests for tool metadata registry
 ///
-/// These tests verify that all 76 tools have complete metadata
+/// These tests verify that all 86 tools have complete metadata
 /// and that the metadata system works correctly.
 use narsil_mcp::tool_metadata::{
     FeatureFlag, PerformanceImpact, StabilityLevel, ToolCategory, TOOL_METADATA,
@@ -9,11 +9,11 @@ use std::collections::HashSet;
 
 #[test]
 fn test_tool_metadata_complete() {
-    // All 76 tools should have metadata
+    // All 90 tools should have metadata
     assert_eq!(
         TOOL_METADATA.len(),
-        76,
-        "Expected 76 tools to have metadata"
+        90,
+        "Expected 90 tools to have metadata"
     );
 
     // Each tool should have complete, valid metadata
@@ -277,10 +277,10 @@ fn test_category_counts() {
         12,
         "Analysis category should have 12 tools"
     );
-    // Graph category has 1-2 tools
-    let graph_count = count_by_category(ToolCategory::Graph);
-    assert!(
-        (1..=2).contains(&graph_count),
-        "Graph category should have 1-2 tools"
+    // Graph category has 15 tools (1 visualization + 3 SPARQL + 11 CCG)
+    assert_eq!(
+        count_by_category(ToolCategory::Graph),
+        15,
+        "Graph category should have 15 tools"
     );
 }

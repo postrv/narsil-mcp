@@ -535,7 +535,7 @@ For **Claude Code** users, we provide a plugin with slash commands and a skill f
 | `/narsil:analyze-function` | Deep dive on specific functions |
 | `/narsil:find-feature` | Find where features are implemented |
 | `/narsil:supply-chain` | Analyze supply chain security |
-| **Skill** | Guides Claude on using 76 tools effectively |
+| **Skill** | Guides Claude on using 79 tools effectively |
 | **MCP Config** | Auto-starts narsil-mcp with sensible defaults |
 
 See [narsil-plugin/README.md](narsil-plugin/README.md) for full documentation.

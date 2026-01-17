@@ -384,7 +384,7 @@ preset: "{}"
     match preset.as_str() {
         "minimal" => println!("  20-30 tools for fast, lightweight editing"),
         "balanced" => println!("  40-50 tools for full-featured IDE development"),
-        "full" => println!("  All 76 tools for comprehensive analysis"),
+        "full" => println!("  All 79 tools for comprehensive analysis"),
         "security-focused" => println!("  ~35 tools for security auditing"),
         _ => {}
     }

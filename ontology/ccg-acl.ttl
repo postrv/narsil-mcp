@@ -1,0 +1,176 @@
+@prefix ccg-acl: <https://codecontextgraph.com/acl/v1#> .
+@prefix acl: <http://www.w3.org/ns/auth/acl#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# ===== Ontology Metadata =====
+
+<https://codecontextgraph.com/acl/v1> a owl:Ontology ;
+    rdfs:label "CCG Access Control Ontology" ;
+    rdfs:comment """
+        WebACL-based access control vocabulary for Code Context Graphs (CCG).
+        Implements the Triple-Heart Model for tiered access:
+        - Red Heart (Public): foaf:Agent
+        - Yellow Heart (Authenticated): acl:AuthenticatedAgent
+        - Blue Heart (Private): Specific agents via acl:agent
+    """ ;
+    owl:versionInfo "1.0" ;
+    owl:imports <http://www.w3.org/ns/auth/acl> .
+
+# ===== Access Tier Classes =====
+
+ccg-acl:AccessTier a owl:Class ;
+    rdfs:label "Access Tier" ;
+    rdfs:comment "Base class for CCG access tiers (Triple-Heart Model)" .
+
+ccg-acl:PublicTier a owl:Class ;
+    rdfs:subClassOf ccg-acl:AccessTier ;
+    rdfs:label "Public Tier (Red Heart)" ;
+    rdfs:comment """
+        Public access tier. Accessible by any agent (foaf:Agent).
+        Use case: Repository discovery, basic structure, language information.
+        Typically grants access to Layer 0 (Manifest).
+    """ .
+
+ccg-acl:AuthenticatedTier a owl:Class ;
+    rdfs:subClassOf ccg-acl:AccessTier ;
+    rdfs:label "Authenticated Tier (Yellow Heart)" ;
+    rdfs:comment """
+        Authenticated access tier. Accessible by any authenticated agent (acl:AuthenticatedAgent).
+        Use case: Capability indexes, symbol counts, metrics.
+        Typically grants access to Layers 0-1 (Manifest, Architecture).
+    """ .
+
+ccg-acl:PrivateTier a owl:Class ;
+    rdfs:subClassOf ccg-acl:AccessTier ;
+    rdfs:label "Private Tier (Blue Heart)" ;
+    rdfs:comment """
+        Private access tier. Accessible only by specific agents via acl:agent.
+        Use case: Full analysis data, security findings, sensitive code details.
+        Typically grants access to all layers (L0-L3).
+    """ .
+
+# ===== CCG Layer Resources =====
+
+ccg-acl:CcgLayer a owl:Class ;
+    rdfs:label "CCG Layer" ;
+    rdfs:comment "A CCG layer resource that can have access control applied" .
+
+ccg-acl:ManifestLayer a owl:Class ;
+    rdfs:subClassOf ccg-acl:CcgLayer ;
+    rdfs:label "Manifest Layer (L0)" ;
+    rdfs:comment "Layer 0: Minimal manifest (~1-2 KB JSON-LD)" .
+
+ccg-acl:ArchitectureLayer a owl:Class ;
+    rdfs:subClassOf ccg-acl:CcgLayer ;
+    rdfs:label "Architecture Layer (L1)" ;
+    rdfs:comment "Layer 1: Architecture overview (~10-50 KB JSON-LD)" .
+
+ccg-acl:SymbolIndexLayer a owl:Class ;
+    rdfs:subClassOf ccg-acl:CcgLayer ;
+    rdfs:label "Symbol Index Layer (L2)" ;
+    rdfs:comment "Layer 2: Symbol index (~100-500 KB N-Quads gzipped)" .
+
+ccg-acl:FullDetailLayer a owl:Class ;
+    rdfs:subClassOf ccg-acl:CcgLayer ;
+    rdfs:label "Full Detail Layer (L3)" ;
+    rdfs:comment "Layer 3: Full detail (~1-20 MB N-Quads gzipped)" .
+
+# ===== Properties =====
+
+ccg-acl:accessTier a owl:ObjectProperty ;
+    rdfs:domain acl:Authorization ;
+    rdfs:range ccg-acl:AccessTier ;
+    rdfs:label "access tier" ;
+    rdfs:comment "The access tier associated with this authorization" .
+
+ccg-acl:layerNumber a owl:DatatypeProperty ;
+    rdfs:domain ccg-acl:CcgLayer ;
+    rdfs:range xsd:integer ;
+    rdfs:label "layer number" ;
+    rdfs:comment "The numeric identifier of the layer (0-3)" .
+
+ccg-acl:heartColor a owl:DatatypeProperty ;
+    rdfs:domain ccg-acl:AccessTier ;
+    rdfs:range xsd:string ;
+    rdfs:label "heart color" ;
+    rdfs:comment "The color of the heart emoji for this tier (Red, Yellow, Blue)" .
+
+ccg-acl:heartEmoji a owl:DatatypeProperty ;
+    rdfs:domain ccg-acl:AccessTier ;
+    rdfs:range xsd:string ;
+    rdfs:label "heart emoji" ;
+    rdfs:comment "The emoji representation of this tier's heart" .
+
+# ===== Predefined Instances =====
+
+# Access Tier Instances
+ccg-acl:public a ccg-acl:PublicTier ;
+    rdfs:label "Public" ;
+    ccg-acl:heartColor "Red" ;
+    ccg-acl:heartEmoji "\U0001F534" .  # Red circle emoji
+
+ccg-acl:authenticated a ccg-acl:AuthenticatedTier ;
+    rdfs:label "Authenticated" ;
+    ccg-acl:heartColor "Yellow" ;
+    ccg-acl:heartEmoji "\U0001F7E1" .  # Yellow circle emoji
+
+ccg-acl:private a ccg-acl:PrivateTier ;
+    rdfs:label "Private" ;
+    ccg-acl:heartColor "Blue" ;
+    ccg-acl:heartEmoji "\U0001F535" .  # Blue circle emoji
+
+# Layer Number Assertions
+ccg-acl:ManifestLayer ccg-acl:layerNumber 0 .
+ccg-acl:ArchitectureLayer ccg-acl:layerNumber 1 .
+ccg-acl:SymbolIndexLayer ccg-acl:layerNumber 2 .
+ccg-acl:FullDetailLayer ccg-acl:layerNumber 3 .
+
+# ===== Default Access Patterns =====
+
+# Template: Public Manifest Access
+ccg-acl:PublicManifestAccess a acl:Authorization ;
+    rdfs:label "Public Manifest Access Template" ;
+    rdfs:comment "Template for granting public access to CCG manifest (L0)" ;
+    acl:agentClass foaf:Agent ;
+    acl:mode acl:Read ;
+    ccg-acl:accessTier ccg-acl:public .
+
+# Template: Authenticated Architecture Access
+ccg-acl:AuthenticatedArchitectureAccess a acl:Authorization ;
+    rdfs:label "Authenticated Architecture Access Template" ;
+    rdfs:comment "Template for granting authenticated access to CCG architecture (L1)" ;
+    acl:agentClass acl:AuthenticatedAgent ;
+    acl:mode acl:Read ;
+    ccg-acl:accessTier ccg-acl:authenticated .
+
+# Template: Private Symbol Index Access
+ccg-acl:PrivateSymbolIndexAccess a acl:Authorization ;
+    rdfs:label "Private Symbol Index Access Template" ;
+    rdfs:comment "Template for granting private access to CCG symbol index (L2)" ;
+    acl:mode acl:Read ;
+    ccg-acl:accessTier ccg-acl:private .
+
+# Template: Private Full Detail Access
+ccg-acl:PrivateFullDetailAccess a acl:Authorization ;
+    rdfs:label "Private Full Detail Access Template" ;
+    rdfs:comment "Template for granting private access to CCG full detail (L3)" ;
+    acl:mode acl:Read ;
+    ccg-acl:accessTier ccg-acl:private .
+
+# ===== Triple-Heart Model Configuration =====
+
+ccg-acl:TripleHeartModel a owl:NamedIndividual ;
+    rdfs:label "Triple-Heart Model" ;
+    rdfs:comment """
+        The default CCG access control model with three tiers:
+        - Public (Red Heart): Layer 0 (Manifest)
+        - Authenticated (Yellow Heart): Layers 0-1 (Manifest, Architecture)
+        - Private (Blue Heart): Layers 0-3 (All layers)
+
+        This model balances discoverability with security by making
+        repository metadata public while protecting detailed code analysis.
+    """ .

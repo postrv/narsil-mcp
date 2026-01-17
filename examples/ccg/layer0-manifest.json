@@ -1,0 +1,71 @@
+{
+  "@context": "https://codecontextgraph.com/schema/v1",
+  "@type": "Manifest",
+  "@id": "https://codecontextgraph.com/repo/github.com/example/myproject@a1b2c3d",
+
+  "repository": {
+    "name": "myproject",
+    "url": "https://github.com/example/myproject",
+    "commit": "a1b2c3d4e5f6789012345678901234567890abcd",
+    "analyzedAt": "2026-01-17T10:30:00Z"
+  },
+
+  "languages": {
+    "rust": {
+      "files": 25,
+      "loc": 8500
+    },
+    "toml": {
+      "files": 2,
+      "loc": 120
+    }
+  },
+
+  "symbols": {
+    "total": 312,
+    "functions": 145,
+    "structs": 28,
+    "classes": 0,
+    "methods": 125,
+    "traits": 8,
+    "interfaces": 0,
+    "enums": 6
+  },
+
+  "security": {
+    "critical": 0,
+    "high": 1,
+    "medium": 3,
+    "low": 7,
+    "info": 12
+  },
+
+  "quality": {
+    "avgCyclomaticComplexity": 4.2,
+    "maxCyclomaticComplexity": 18,
+    "hotspots": [
+      "src/parser/mod.rs",
+      "src/engine/index.rs"
+    ]
+  },
+
+  "entryPoints": [
+    {
+      "symbol": "main",
+      "file": "src/main.rs",
+      "line": 1
+    },
+    {
+      "symbol": "Engine::new",
+      "file": "src/engine/mod.rs",
+      "line": 45
+    }
+  ],
+
+  "layers": {
+    "architecture": "https://codecontextgraph.com/ccg/github.com/example/myproject@a1b2c3d/architecture.json",
+    "symbolIndex": "https://codecontextgraph.com/ccg/github.com/example/myproject@a1b2c3d/symbol-index.nq.gz",
+    "fullDetail": "https://codecontextgraph.com/ccg/github.com/example/myproject@a1b2c3d/full-detail.nq.gz",
+    "sparqlEndpoint": "https://codecontextgraph.com/sparql/github.com/example/myproject@a1b2c3d"
+  }
+}
