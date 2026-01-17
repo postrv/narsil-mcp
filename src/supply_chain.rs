@@ -17,12 +17,11 @@ pub type DependencyId = String;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
-#[allow(clippy::upper_case_acronyms)]
-pub enum SBOMFormat {
+pub enum SbomFormat {
     #[default]
     CycloneDX,
-    SPDX,
-    JSON,
+    Spdx,
+    Json,
 }
 
 /// Supported package manager ecosystems
@@ -247,52 +246,51 @@ pub struct LicenseReport {
     pub summary: String,
 }
 
-/// Software Bill of Materials
+/// Software Bill of Materials (SBOM)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::upper_case_acronyms)]
-pub struct SBOM {
-    pub format: SBOMFormat,
+pub struct Sbom {
+    pub format: SbomFormat,
     pub spec_version: String,
     pub serial_number: String,
     pub version: u32,
-    pub metadata: SBOMMetadata,
-    pub components: Vec<SBOMComponent>,
-    pub dependencies: Vec<SBOMDependency>,
+    pub metadata: SbomMetadata,
+    pub components: Vec<SbomComponent>,
+    pub dependencies: Vec<SbomDependency>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SBOMMetadata {
+pub struct SbomMetadata {
     pub timestamp: String,
     pub tools: Vec<String>,
-    pub component: Option<SBOMComponent>, // The root project
+    pub component: Option<SbomComponent>, // The root project
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SBOMComponent {
+pub struct SbomComponent {
     pub bom_ref: String,
     pub component_type: String, // "library", "application", "framework"
     pub name: String,
     pub version: String,
     pub purl: Option<String>,
     pub licenses: Vec<String>,
-    pub hashes: Vec<SBOMHash>,
-    pub external_references: Vec<SBOMExternalRef>,
+    pub hashes: Vec<SbomHash>,
+    pub external_references: Vec<SbomExternalRef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SBOMHash {
+pub struct SbomHash {
     pub alg: String, // "SHA-256", "SHA-512", etc.
     pub content: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SBOMExternalRef {
+pub struct SbomExternalRef {
     pub ref_type: String, // "vcs", "website", "issue-tracker"
     pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SBOMDependency {
+pub struct SbomDependency {
     pub ref_id: String,
     pub depends_on: Vec<String>,
 }
@@ -1230,7 +1228,7 @@ impl SupplyChainAnalyzer {
         project_path: &Path,
         project_name: &str,
         project_version: &str,
-        format: SBOMFormat,
+        format: SbomFormat,
         compact: bool,
     ) -> Result<String, String> {
         let deps = self.parse_dependencies(project_path)?;
@@ -1238,9 +1236,9 @@ impl SupplyChainAnalyzer {
         let sbom = self.create_sbom(project_name, project_version, deps, format);
 
         match format {
-            SBOMFormat::CycloneDX => self.render_cyclonedx(&sbom, compact),
-            SBOMFormat::SPDX => self.render_spdx(&sbom, compact),
-            SBOMFormat::JSON => {
+            SbomFormat::CycloneDX => self.render_cyclonedx(&sbom, compact),
+            SbomFormat::Spdx => self.render_spdx(&sbom, compact),
+            SbomFormat::Json => {
                 if compact {
                     serde_json::to_string(&sbom)
                         .map_err(|e| format!("Failed to serialize SBOM: {}", e))
@@ -1257,12 +1255,12 @@ impl SupplyChainAnalyzer {
         project_name: &str,
         project_version: &str,
         deps: Vec<Dependency>,
-        format: SBOMFormat,
-    ) -> SBOM {
+        format: SbomFormat,
+    ) -> Sbom {
         let timestamp = chrono::Utc::now().to_rfc3339();
         let serial = format!("urn:uuid:{}", uuid::Uuid::new_v4());
 
-        let root_component = SBOMComponent {
+        let root_component = SbomComponent {
             bom_ref: format!("{}@{}", project_name, project_version),
             component_type: "application".to_string(),
             name: project_name.to_string(),
@@ -1273,9 +1271,9 @@ impl SupplyChainAnalyzer {
             external_references: Vec::new(),
         };
 
-        let components: Vec<SBOMComponent> = deps
+        let components: Vec<SbomComponent> = deps
             .iter()
-            .map(|dep| SBOMComponent {
+            .map(|dep| SbomComponent {
                 bom_ref: format!("{}@{}", dep.name, dep.version),
                 component_type: "library".to_string(),
                 name: dep.name.clone(),
@@ -1285,7 +1283,7 @@ impl SupplyChainAnalyzer {
                 hashes: dep
                     .checksum
                     .iter()
-                    .map(|h| SBOMHash {
+                    .map(|h| SbomHash {
                         alg: "SHA-256".to_string(),
                         content: h.clone(),
                     })
@@ -1293,7 +1291,7 @@ impl SupplyChainAnalyzer {
                 external_references: dep
                     .source
                     .iter()
-                    .map(|s| SBOMExternalRef {
+                    .map(|s| SbomExternalRef {
                         ref_type: "vcs".to_string(),
                         url: s.clone(),
                     })
@@ -1301,24 +1299,24 @@ impl SupplyChainAnalyzer {
             })
             .collect();
 
-        let dependencies: Vec<SBOMDependency> = deps
+        let dependencies: Vec<SbomDependency> = deps
             .iter()
-            .map(|dep| SBOMDependency {
+            .map(|dep| SbomDependency {
                 ref_id: format!("{}@{}", dep.name, dep.version),
                 depends_on: dep.dependencies.clone(),
             })
             .collect();
 
-        SBOM {
+        Sbom {
             format,
             spec_version: match format {
-                SBOMFormat::CycloneDX => "1.5".to_string(),
-                SBOMFormat::SPDX => "2.3".to_string(),
-                SBOMFormat::JSON => "1.0".to_string(),
+                SbomFormat::CycloneDX => "1.5".to_string(),
+                SbomFormat::Spdx => "2.3".to_string(),
+                SbomFormat::Json => "1.0".to_string(),
             },
             serial_number: serial,
             version: 1,
-            metadata: SBOMMetadata {
+            metadata: SbomMetadata {
                 timestamp,
                 tools: vec!["narsil-mcp".to_string()],
                 component: Some(root_component),
@@ -1328,7 +1326,7 @@ impl SupplyChainAnalyzer {
         }
     }
 
-    fn render_cyclonedx(&self, sbom: &SBOM, compact: bool) -> Result<String, String> {
+    fn render_cyclonedx(&self, sbom: &Sbom, compact: bool) -> Result<String, String> {
         let mut output = serde_json::json!({
             "$schema": "https://cyclonedx.org/schema/bom-1.5.schema.json",
             "bomFormat": "CycloneDX",
@@ -1387,7 +1385,7 @@ impl SupplyChainAnalyzer {
         }
     }
 
-    fn render_spdx(&self, sbom: &SBOM, compact: bool) -> Result<String, String> {
+    fn render_spdx(&self, sbom: &Sbom, compact: bool) -> Result<String, String> {
         let doc_namespace = format!(
             "https://spdx.org/spdxdocs/{}-{}",
             sbom.metadata
@@ -2080,7 +2078,7 @@ serde = "1.0"
 
         let analyzer = SupplyChainAnalyzer::new();
         let sbom = analyzer
-            .generate_sbom(dir.path(), "test", "0.1.0", SBOMFormat::CycloneDX, false)
+            .generate_sbom(dir.path(), "test", "0.1.0", SbomFormat::CycloneDX, false)
             .unwrap();
 
         assert!(sbom.contains("CycloneDX"));
@@ -2103,7 +2101,7 @@ tokio = "1.0"
 
         let analyzer = SupplyChainAnalyzer::new();
         let sbom = analyzer
-            .generate_sbom(dir.path(), "test", "1.0.0", SBOMFormat::SPDX, false)
+            .generate_sbom(dir.path(), "test", "1.0.0", SbomFormat::Spdx, false)
             .unwrap();
 
         assert!(sbom.contains("SPDX-2.3"));
@@ -2119,7 +2117,7 @@ tokio = "1.0"
 
         let analyzer = SupplyChainAnalyzer::new();
         let sbom = analyzer
-            .generate_sbom(dir.path(), "test", "1.0.0", SBOMFormat::JSON, false)
+            .generate_sbom(dir.path(), "test", "1.0.0", SbomFormat::Json, false)
             .unwrap();
 
         let parsed: serde_json::Value = serde_json::from_str(&sbom).unwrap();
@@ -2410,7 +2408,7 @@ thiserror = "1.0"
                 dir.path(),
                 "test-project",
                 "0.1.0",
-                SBOMFormat::CycloneDX,
+                SbomFormat::CycloneDX,
                 true, // compact
             )
             .unwrap();
@@ -2421,7 +2419,7 @@ thiserror = "1.0"
                 dir.path(),
                 "test-project",
                 "0.1.0",
-                SBOMFormat::CycloneDX,
+                SbomFormat::CycloneDX,
                 false, // not compact
             )
             .unwrap();
@@ -2758,7 +2756,7 @@ serde = "1.0"
         let analyzer = SupplyChainAnalyzer::new();
 
         // Test compact for all formats
-        for format in [SBOMFormat::CycloneDX, SBOMFormat::SPDX, SBOMFormat::JSON] {
+        for format in [SbomFormat::CycloneDX, SbomFormat::Spdx, SbomFormat::Json] {
             let compact = analyzer
                 .generate_sbom(dir.path(), "test", "0.1.0", format, true)
                 .unwrap();

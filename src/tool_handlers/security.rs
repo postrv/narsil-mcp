@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde_json::Value;
 
 use super::{ArgExtractor, ToolHandler};
-use crate::index::CodeIntelEngine;
+use crate::index::{CodeIntelEngine, SecurityScanOptions};
 
 /// Handler for scan_security tool
 ///
@@ -19,23 +19,15 @@ impl ToolHandler for ScanSecurityHandler {
 
     async fn execute(&self, engine: &CodeIntelEngine, args: Value) -> Result<String> {
         let repo = args.get_str("repo").unwrap_or("");
-        let path = args.get_str("path");
-        let severity_threshold = args.get_str("severity_threshold");
-        let ruleset = args.get_str("ruleset");
-        let exclude_tests = args.get_bool("exclude_tests");
-        let max_findings = args.get_u64("max_findings").map(|v| v as usize);
-        let offset = args.get_u64("offset").map(|v| v as usize);
-        engine
-            .scan_security(
-                repo,
-                path,
-                severity_threshold,
-                ruleset,
-                exclude_tests,
-                max_findings,
-                offset,
-            )
-            .await
+        let opts = SecurityScanOptions {
+            path: args.get_str("path"),
+            severity_threshold: args.get_str("severity_threshold"),
+            ruleset: args.get_str("ruleset"),
+            exclude_tests: args.get_bool("exclude_tests"),
+            max_findings: args.get_u64("max_findings").map(|v| v as usize),
+            offset: args.get_u64("offset").map(|v| v as usize),
+        };
+        engine.scan_security(repo, opts).await
     }
 }
 

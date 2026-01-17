@@ -51,9 +51,8 @@ pub struct Excerpt {
     /// Ending line (1-indexed)
     pub end_line: usize,
 
-    /// Lines that matched the query
-    #[allow(dead_code)]
-    pub match_lines: Vec<usize>,
+    /// Lines that matched the query (stored for potential highlighting)
+    pub _match_lines: Vec<usize>,
 
     /// Relevance score (0-1)
     pub relevance: f32,
@@ -114,7 +113,7 @@ pub fn extract_excerpts(
                 content,
                 start_line: clamped_start + 1,
                 end_line: clamped_end,
-                match_lines: matches,
+                _match_lines: matches,
                 relevance,
             }
         })

@@ -343,7 +343,6 @@ impl CallGraph {
         metrics
     }
 
-    #[allow(clippy::only_used_in_recursion)]
     fn walk_for_metrics(
         &self,
         cursor: &mut tree_sitter::TreeCursor,
@@ -666,7 +665,6 @@ impl CallGraph {
     }
 
     /// Export call graph in DOT format for visualization
-    #[allow(dead_code)]
     pub fn to_dot(&self, filter_file: Option<&str>) -> String {
         let mut dot = String::from("digraph CallGraph {\n");
         dot.push_str("  rankdir=LR;\n");

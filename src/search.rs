@@ -506,7 +506,8 @@ impl ConcurrentSearchIndex {
         }
     }
 
-    #[allow(dead_code)]
+    /// Add a single document to the search index.
+    /// Used by WASM interface for incremental indexing.
     pub fn add_document(&self, doc: SearchDocument) {
         self.inner.write().add_document(doc);
     }

@@ -1,8 +1,5 @@
 //! Symbol types and classification for code intelligence
 
-// Allow dead code for UI helper methods
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 
 /// The kind of symbol (data structure, function, etc.)
@@ -40,7 +37,6 @@ pub enum SymbolKind {
 
 impl SymbolKind {
     /// Check if this is a data structure type
-    #[allow(dead_code)]
     pub fn is_data_structure(&self) -> bool {
         matches!(
             self,
@@ -54,7 +50,6 @@ impl SymbolKind {
     }
 
     /// Check if this is a callable
-    #[allow(dead_code)]
     pub fn is_callable(&self) -> bool {
         matches!(
             self,
@@ -128,61 +123,9 @@ impl Symbol {
     }
 
     /// Get line count
-    #[allow(dead_code)]
     pub fn line_count(&self) -> usize {
         self.end_line.saturating_sub(self.start_line) + 1
     }
-}
-
-/// A reference to a symbol in the codebase
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SymbolReference {
-    /// The symbol being referenced
-    pub symbol_name: String,
-
-    /// File containing the reference
-    pub file_path: String,
-
-    /// Line number of the reference
-    pub line: usize,
-
-    /// Column number
-    pub column: usize,
-
-    /// The line text
-    pub line_text: String,
-
-    /// Is this the definition site?
-    pub is_definition: bool,
-}
-
-/// Dependency information for a file or module
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DependencyInfo {
-    /// What this file imports
-    pub imports: Vec<Import>,
-
-    /// What imports this file
-    pub imported_by: Vec<String>,
-}
-
-/// An import statement
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Import {
-    /// The import path/module name
-    pub path: String,
-
-    /// Specific items imported (if any)
-    pub items: Vec<String>,
-
-    /// Line number of import
-    pub line: usize,
-
-    /// The raw import statement
-    pub raw: String,
 }
 
 #[cfg(test)]

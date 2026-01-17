@@ -1,10 +1,7 @@
 //! LSP integration for enhanced code intelligence
 //!
-//! This is a Phase 3 feature - connecting to language servers for richer
-//! type information, hover docs, and go-to-definition.
-
-// Allow dead code for Phase 3 LSP features
-#![allow(dead_code)]
+//! This module provides integration with Language Server Protocol servers for
+//! richer type information, hover docs, and go-to-definition capabilities.
 
 use anyhow::{anyhow, Context, Result};
 use dashmap::DashMap;
@@ -286,21 +283,17 @@ impl LspManager {
                 .to_string(),
         };
 
-        #[allow(deprecated)]
+        // Use struct update syntax to avoid explicitly setting deprecated fields (root_uri, root_path)
         let init_params = InitializeParams {
             process_id: Some(std::process::id()),
-            root_uri: None, // Deprecated, use workspace_folders
             capabilities: ClientCapabilities::default(),
-            initialization_options: None,
             trace: Some(TraceValue::Off),
             workspace_folders: Some(vec![workspace_folder]),
             client_info: Some(ClientInfo {
                 name: "narsil-mcp".to_string(),
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
             }),
-            locale: None,
-            root_path: None, // Deprecated, use workspace_folders
-            work_done_progress_params: Default::default(),
+            ..Default::default()
         };
 
         let params_value = serde_json::to_value(&init_params)?;

@@ -63,6 +63,25 @@ pub struct CodeExcerpt {
     pub relevance_score: f32,
 }
 
+/// Options for security scanning operations
+///
+/// Consolidates parameters for `scan_security` to avoid too-many-arguments.
+#[derive(Debug, Clone, Default)]
+pub struct SecurityScanOptions<'a> {
+    /// Optional path filter to scan only matching files
+    pub path: Option<&'a str>,
+    /// Minimum severity threshold (critical, high, medium, low, info)
+    pub severity_threshold: Option<&'a str>,
+    /// Comma-separated ruleset tags to filter by
+    pub ruleset: Option<&'a str>,
+    /// Whether to exclude test files from scanning
+    pub exclude_tests: Option<bool>,
+    /// Maximum number of findings to return (for pagination)
+    pub max_findings: Option<usize>,
+    /// Number of findings to skip (for pagination)
+    pub offset: Option<usize>,
+}
+
 /// Options for configuring the CodeIntelEngine
 #[derive(Debug, Clone)]
 pub struct EngineOptions {
@@ -104,9 +123,8 @@ impl Default for EngineOptions {
 
 /// The main code intelligence engine
 pub struct CodeIntelEngine {
-    /// Base path for index storage
-    #[allow(dead_code)]
-    index_path: PathBuf,
+    /// Base path for index storage (stored for potential future use)
+    _index_path: PathBuf,
     /// Registered repository paths
     repo_paths: Vec<PathBuf>,
     /// Cached repo metadata
@@ -153,7 +171,10 @@ pub struct CodeIntelEngine {
 
 impl CodeIntelEngine {
     /// Create a new engine with default options (no git, no call graphs, no persistence)
-    #[allow(dead_code)]
+    ///
+    /// # Arguments
+    /// * `index_path` - Directory path for storing index data
+    /// * `repo_paths` - List of repository paths to index
     pub async fn new(index_path: PathBuf, repo_paths: Vec<PathBuf>) -> Result<Self> {
         Self::with_options(index_path, repo_paths, EngineOptions::default()).await
     }
@@ -252,7 +273,7 @@ impl CodeIntelEngine {
         let total_repos = expanded_repos.len();
 
         let engine = Self {
-            index_path: expanded_index,
+            _index_path: expanded_index,
             repo_paths: expanded_repos.clone(),
             repos: DashMap::new(),
             symbols: DashMap::new(),
@@ -727,23 +748,6 @@ impl CodeIntelEngine {
         })
     }
 
-    /// Phase C3: Check if streaming should be enabled for the given result count.
-    ///
-    /// Returns true if:
-    /// - Streaming is enabled in options
-    /// - Result count exceeds the auto_stream_threshold
-    #[allow(dead_code)]
-    pub fn should_stream(&self, result_count: usize) -> bool {
-        self.options.streaming_config.enabled
-            && result_count > self.options.streaming_config.auto_stream_threshold
-    }
-
-    /// Phase C3: Get a reference to the streaming configuration
-    #[allow(dead_code)]
-    pub fn streaming_config(&self) -> &StreamingConfig {
-        &self.options.streaming_config
-    }
-
     /// Get a reference to the engine options
     pub fn options(&self) -> &EngineOptions {
         &self.options
@@ -874,16 +878,14 @@ impl CodeIntelEngine {
         let mut output = String::new();
         output.push_str(&format!("# Project Structure: {}\n\n```\n", repo));
 
-        self.build_tree(&path, &path, 0, max_depth, &mut output)?;
+        self.build_tree(&path, 0, max_depth, &mut output)?;
 
         output.push_str("```\n");
         Ok(output)
     }
 
-    #[allow(clippy::only_used_in_recursion)]
     fn build_tree(
         &self,
-        root: &Path,
         current: &Path,
         depth: usize,
         max_depth: usize,
@@ -915,7 +917,7 @@ impl CodeIntelEngine {
             entries.sort_by_key(|e| (!e.path().is_dir(), e.file_name()));
 
             for entry in entries {
-                self.build_tree(root, &entry.path(), depth + 1, max_depth, output)?;
+                self.build_tree(&entry.path(), depth + 1, max_depth, output)?;
             }
         } else {
             let size = std::fs::metadata(current).map(|m| m.len()).unwrap_or(0);
@@ -1632,60 +1634,6 @@ impl CodeIntelEngine {
             "Saved {} repository index(es) to disk successfully.",
             saved_count
         ))
-    }
-
-    /// Load index from disk
-    #[allow(dead_code)]
-    pub async fn load_index(&self) -> Result<String> {
-        if !self.options.persist_enabled {
-            return Ok(
-                "Persistence is not enabled. Start with --persist flag to enable.".to_string(),
-            );
-        }
-
-        let store = match &self.index_store {
-            Some(s) => s,
-            None => return Err(anyhow!("Index store not initialized")),
-        };
-
-        let mut loaded_count = 0;
-        for repo_path in &self.repo_paths {
-            if let Ok(persisted) = store.load_or_create(repo_path) {
-                if !persisted.files.is_empty() {
-                    let repo_name = repo_path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-
-                    // Load symbols from persisted index
-                    let symbols: Vec<Symbol> = persisted
-                        .files
-                        .values()
-                        .flat_map(|f| f.symbols.clone())
-                        .collect();
-
-                    self.symbols.insert(repo_name.clone(), symbols.clone());
-                    loaded_count += 1;
-                    info!(
-                        "Loaded {} symbols from persisted index for {}",
-                        symbols.len(),
-                        repo_name
-                    );
-                }
-            }
-        }
-
-        Ok(format!(
-            "Loaded {} repository index(es) from disk.",
-            loaded_count
-        ))
-    }
-
-    /// Get the current watch mode status
-    #[allow(dead_code)]
-    pub fn get_watch_status(&self) -> bool {
-        self.options.watch_enabled
     }
 
     /// Create a file watcher for the indexed repositories.
@@ -4579,21 +4527,21 @@ impl CodeIntelEngine {
     /// This helps bound output size for large codebases.
     ///
     /// Results are cached when no pagination is used (offset=None, max_findings=None).
-    #[allow(clippy::too_many_arguments)]
     pub async fn scan_security(
         &self,
         repo_name: &str,
-        path: Option<&str>,
-        severity_threshold: Option<&str>,
-        ruleset: Option<&str>,
-        exclude_tests: Option<bool>,
-        max_findings: Option<usize>,
-        offset: Option<usize>,
+        opts: SecurityScanOptions<'_>,
     ) -> Result<String> {
         use crate::security_rules::{is_security_exemplar_file, is_test_file, SecurityRulesEngine};
 
+        let path = opts.path;
+        let severity_threshold = opts.severity_threshold;
+        let ruleset = opts.ruleset;
+        let max_findings = opts.max_findings;
+        let offset = opts.offset;
+
         let repo_path = self.get_repo_path(repo_name)?;
-        let exclude_tests = exclude_tests.unwrap_or(true);
+        let exclude_tests = opts.exclude_tests.unwrap_or(true);
         let min_severity = parse_severity_threshold(severity_threshold);
 
         // Only cache when no pagination is used
@@ -5074,7 +5022,7 @@ impl CodeIntelEngine {
         format: &str,
         compact: bool,
     ) -> Result<String> {
-        use crate::supply_chain::{SBOMFormat, SupplyChainAnalyzer};
+        use crate::supply_chain::{SbomFormat, SupplyChainAnalyzer};
 
         let repo_path = self.get_repo_path(repo_name)?;
         let analyzer = SupplyChainAnalyzer::new();
@@ -5083,9 +5031,9 @@ impl CodeIntelEngine {
         let (project_name, project_version) = self.get_project_info(&repo_path);
 
         let sbom_format = match format.to_lowercase().as_str() {
-            "spdx" => SBOMFormat::SPDX,
-            "json" => SBOMFormat::JSON,
-            _ => SBOMFormat::CycloneDX,
+            "spdx" => SbomFormat::Spdx,
+            "json" => SbomFormat::Json,
+            _ => SbomFormat::CycloneDX,
         };
 
         match analyzer.generate_sbom(

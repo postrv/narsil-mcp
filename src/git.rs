@@ -472,7 +472,6 @@ impl GitRepo {
     }
 
     /// Check if git is available on the system
-    #[allow(dead_code)]
     pub fn check_git_available() -> Result<()> {
         let output = Command::new("git")
             .arg("--version")

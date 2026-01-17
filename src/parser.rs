@@ -54,11 +54,13 @@ impl LazyLanguageConfig {
 /// A parsed file with extracted information
 #[derive(Debug, Clone)]
 pub struct ParsedFile {
-    #[allow(dead_code)]
+    /// Path of the parsed file (stored for reference, may be used by consumers)
     pub path: String,
+    /// Language identifier for the file
     pub language: String,
+    /// Symbols extracted from the file
     pub symbols: Vec<Symbol>,
-    #[allow(dead_code)]
+    /// The tree-sitter parse tree (used for AST-aware chunking)
     pub tree: Option<Tree>,
 }
 
@@ -511,7 +513,6 @@ impl LanguageParser {
     }
 
     /// Parse a file and return just the tree (for call graph analysis)
-    #[allow(dead_code)]
     pub fn parse_to_tree(&self, path: &Path, content: &str) -> Result<Tree> {
         let lazy_config = self
             .get_config(path)
@@ -584,15 +585,6 @@ impl LanguageParser {
         }
 
         Ok(symbols)
-    }
-
-    /// Get all supported extensions
-    #[allow(dead_code)]
-    pub fn supported_extensions(&self) -> Vec<&'static str> {
-        self.configs
-            .iter()
-            .flat_map(|c| c.config.extensions.iter().copied())
-            .collect()
     }
 }
 

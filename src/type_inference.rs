@@ -1071,6 +1071,1049 @@ impl TypeStubs {
         stubs
     }
 
+    /// Create Go standard library stubs
+    pub fn go_stdlib() -> Self {
+        let mut stubs = Self {
+            modules: HashMap::new(),
+            builtins: HashMap::new(),
+            classes: HashMap::new(),
+        };
+
+        // Go builtin functions
+        stubs.builtins.insert(
+            "len".to_string(),
+            FunctionSig {
+                params: vec![("v".to_string(), Type::Unknown)],
+                ret: Type::Int,
+                is_method: false,
+            },
+        );
+        stubs.builtins.insert(
+            "cap".to_string(),
+            FunctionSig {
+                params: vec![("v".to_string(), Type::Unknown)],
+                ret: Type::Int,
+                is_method: false,
+            },
+        );
+        stubs.builtins.insert(
+            "make".to_string(),
+            FunctionSig {
+                params: vec![("t".to_string(), Type::Unknown)],
+                ret: Type::Unknown,
+                is_method: false,
+            },
+        );
+        stubs.builtins.insert(
+            "new".to_string(),
+            FunctionSig {
+                params: vec![("t".to_string(), Type::Unknown)],
+                ret: Type::Unknown,
+                is_method: false,
+            },
+        );
+        stubs.builtins.insert(
+            "append".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("slice".to_string(), Type::List(Box::new(Type::Unknown))),
+                    ("elems".to_string(), Type::Unknown),
+                ],
+                ret: Type::List(Box::new(Type::Unknown)),
+                is_method: false,
+            },
+        );
+        stubs.builtins.insert(
+            "copy".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("dst".to_string(), Type::List(Box::new(Type::Unknown))),
+                    ("src".to_string(), Type::List(Box::new(Type::Unknown))),
+                ],
+                ret: Type::Int,
+                is_method: false,
+            },
+        );
+        stubs.builtins.insert(
+            "delete".to_string(),
+            FunctionSig {
+                params: vec![
+                    (
+                        "m".to_string(),
+                        Type::Dict(Box::new(Type::Unknown), Box::new(Type::Unknown)),
+                    ),
+                    ("key".to_string(), Type::Unknown),
+                ],
+                ret: Type::None,
+                is_method: false,
+            },
+        );
+        stubs.builtins.insert(
+            "panic".to_string(),
+            FunctionSig {
+                params: vec![("v".to_string(), Type::Unknown)],
+                ret: Type::Never,
+                is_method: false,
+            },
+        );
+        stubs.builtins.insert(
+            "recover".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Unknown,
+                is_method: false,
+            },
+        );
+        stubs.builtins.insert(
+            "print".to_string(),
+            FunctionSig {
+                params: vec![("args".to_string(), Type::Unknown)],
+                ret: Type::None,
+                is_method: false,
+            },
+        );
+        stubs.builtins.insert(
+            "println".to_string(),
+            FunctionSig {
+                params: vec![("args".to_string(), Type::Unknown)],
+                ret: Type::None,
+                is_method: false,
+            },
+        );
+
+        // fmt package
+        let mut fmt_module = HashMap::new();
+        fmt_module.insert(
+            "Println".to_string(),
+            FunctionSig {
+                params: vec![("a".to_string(), Type::Unknown)],
+                ret: Type::None,
+                is_method: false,
+            },
+        );
+        fmt_module.insert(
+            "Printf".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("format".to_string(), Type::String),
+                    ("a".to_string(), Type::Unknown),
+                ],
+                ret: Type::None,
+                is_method: false,
+            },
+        );
+        fmt_module.insert(
+            "Sprintf".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("format".to_string(), Type::String),
+                    ("a".to_string(), Type::Unknown),
+                ],
+                ret: Type::String,
+                is_method: false,
+            },
+        );
+        fmt_module.insert(
+            "Errorf".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("format".to_string(), Type::String),
+                    ("a".to_string(), Type::Unknown),
+                ],
+                ret: Type::Instance {
+                    class_name: "error".to_string(),
+                    type_args: vec![],
+                },
+                is_method: false,
+            },
+        );
+        stubs.modules.insert("fmt".to_string(), fmt_module);
+
+        // strings package
+        let mut strings_module = HashMap::new();
+        strings_module.insert(
+            "Split".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("s".to_string(), Type::String),
+                    ("sep".to_string(), Type::String),
+                ],
+                ret: Type::List(Box::new(Type::String)),
+                is_method: false,
+            },
+        );
+        strings_module.insert(
+            "Join".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("elems".to_string(), Type::List(Box::new(Type::String))),
+                    ("sep".to_string(), Type::String),
+                ],
+                ret: Type::String,
+                is_method: false,
+            },
+        );
+        strings_module.insert(
+            "Contains".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("s".to_string(), Type::String),
+                    ("substr".to_string(), Type::String),
+                ],
+                ret: Type::Bool,
+                is_method: false,
+            },
+        );
+        strings_module.insert(
+            "HasPrefix".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("s".to_string(), Type::String),
+                    ("prefix".to_string(), Type::String),
+                ],
+                ret: Type::Bool,
+                is_method: false,
+            },
+        );
+        strings_module.insert(
+            "HasSuffix".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("s".to_string(), Type::String),
+                    ("suffix".to_string(), Type::String),
+                ],
+                ret: Type::Bool,
+                is_method: false,
+            },
+        );
+        strings_module.insert(
+            "TrimSpace".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+            },
+        );
+        strings_module.insert(
+            "ToLower".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+            },
+        );
+        strings_module.insert(
+            "ToUpper".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+            },
+        );
+        strings_module.insert(
+            "Replace".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("s".to_string(), Type::String),
+                    ("old".to_string(), Type::String),
+                    ("new".to_string(), Type::String),
+                    ("n".to_string(), Type::Int),
+                ],
+                ret: Type::String,
+                is_method: false,
+            },
+        );
+        stubs.modules.insert("strings".to_string(), strings_module);
+
+        // os package
+        let mut os_module = HashMap::new();
+        os_module.insert(
+            "Getenv".to_string(),
+            FunctionSig {
+                params: vec![("key".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+            },
+        );
+        os_module.insert(
+            "Setenv".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("key".to_string(), Type::String),
+                    ("value".to_string(), Type::String),
+                ],
+                ret: Type::Instance {
+                    class_name: "error".to_string(),
+                    type_args: vec![],
+                },
+                is_method: false,
+            },
+        );
+        os_module.insert(
+            "Exit".to_string(),
+            FunctionSig {
+                params: vec![("code".to_string(), Type::Int)],
+                ret: Type::Never,
+                is_method: false,
+            },
+        );
+        os_module.insert(
+            "Getwd".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Tuple(vec![
+                    Type::String,
+                    Type::Instance {
+                        class_name: "error".to_string(),
+                        type_args: vec![],
+                    },
+                ]),
+                is_method: false,
+            },
+        );
+        stubs.modules.insert("os".to_string(), os_module);
+
+        // strconv package
+        let mut strconv_module = HashMap::new();
+        strconv_module.insert(
+            "Atoi".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::Tuple(vec![
+                    Type::Int,
+                    Type::Instance {
+                        class_name: "error".to_string(),
+                        type_args: vec![],
+                    },
+                ]),
+                is_method: false,
+            },
+        );
+        strconv_module.insert(
+            "Itoa".to_string(),
+            FunctionSig {
+                params: vec![("i".to_string(), Type::Int)],
+                ret: Type::String,
+                is_method: false,
+            },
+        );
+        stubs.modules.insert("strconv".to_string(), strconv_module);
+
+        stubs
+    }
+
+    /// Create Java standard library stubs
+    pub fn java_stdlib() -> Self {
+        let mut stubs = Self {
+            modules: HashMap::new(),
+            builtins: HashMap::new(),
+            classes: HashMap::new(),
+        };
+
+        // String class
+        let mut string_class = ClassDef {
+            name: "String".to_string(),
+            methods: HashMap::new(),
+            attributes: HashMap::new(),
+            bases: vec![],
+        };
+        string_class.methods.insert(
+            "length".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Int,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "charAt".to_string(),
+            FunctionSig {
+                params: vec![("index".to_string(), Type::Int)],
+                ret: Type::Instance {
+                    class_name: "char".to_string(),
+                    type_args: vec![],
+                },
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "substring".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("beginIndex".to_string(), Type::Int),
+                    ("endIndex".to_string(), Type::Int),
+                ],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "split".to_string(),
+            FunctionSig {
+                params: vec![("regex".to_string(), Type::String)],
+                ret: Type::List(Box::new(Type::String)),
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "toLowerCase".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "toUpperCase".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "trim".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "contains".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "startsWith".to_string(),
+            FunctionSig {
+                params: vec![("prefix".to_string(), Type::String)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "endsWith".to_string(),
+            FunctionSig {
+                params: vec![("suffix".to_string(), Type::String)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "equals".to_string(),
+            FunctionSig {
+                params: vec![("obj".to_string(), Type::Unknown)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "isEmpty".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "replace".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("oldChar".to_string(), Type::String),
+                    ("newChar".to_string(), Type::String),
+                ],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        stubs.classes.insert("String".to_string(), string_class);
+
+        // List interface
+        let mut list_class = ClassDef {
+            name: "List".to_string(),
+            methods: HashMap::new(),
+            attributes: HashMap::new(),
+            bases: vec!["Collection".to_string()],
+        };
+        list_class.methods.insert(
+            "add".to_string(),
+            FunctionSig {
+                params: vec![("e".to_string(), Type::Unknown)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        list_class.methods.insert(
+            "get".to_string(),
+            FunctionSig {
+                params: vec![("index".to_string(), Type::Int)],
+                ret: Type::Unknown,
+                is_method: true,
+            },
+        );
+        list_class.methods.insert(
+            "set".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("index".to_string(), Type::Int),
+                    ("element".to_string(), Type::Unknown),
+                ],
+                ret: Type::Unknown,
+                is_method: true,
+            },
+        );
+        list_class.methods.insert(
+            "remove".to_string(),
+            FunctionSig {
+                params: vec![("index".to_string(), Type::Int)],
+                ret: Type::Unknown,
+                is_method: true,
+            },
+        );
+        list_class.methods.insert(
+            "size".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Int,
+                is_method: true,
+            },
+        );
+        list_class.methods.insert(
+            "isEmpty".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        list_class.methods.insert(
+            "contains".to_string(),
+            FunctionSig {
+                params: vec![("o".to_string(), Type::Unknown)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        list_class.methods.insert(
+            "clear".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::None,
+                is_method: true,
+            },
+        );
+        stubs.classes.insert("List".to_string(), list_class);
+
+        // Map interface
+        let mut map_class = ClassDef {
+            name: "Map".to_string(),
+            methods: HashMap::new(),
+            attributes: HashMap::new(),
+            bases: vec![],
+        };
+        map_class.methods.insert(
+            "put".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("key".to_string(), Type::Unknown),
+                    ("value".to_string(), Type::Unknown),
+                ],
+                ret: Type::Unknown,
+                is_method: true,
+            },
+        );
+        map_class.methods.insert(
+            "get".to_string(),
+            FunctionSig {
+                params: vec![("key".to_string(), Type::Unknown)],
+                ret: Type::Unknown,
+                is_method: true,
+            },
+        );
+        map_class.methods.insert(
+            "containsKey".to_string(),
+            FunctionSig {
+                params: vec![("key".to_string(), Type::Unknown)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        map_class.methods.insert(
+            "size".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Int,
+                is_method: true,
+            },
+        );
+        map_class.methods.insert(
+            "isEmpty".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        stubs.classes.insert("Map".to_string(), map_class);
+
+        // System.out
+        let mut system_out = HashMap::new();
+        system_out.insert(
+            "println".to_string(),
+            FunctionSig {
+                params: vec![("x".to_string(), Type::Unknown)],
+                ret: Type::None,
+                is_method: false,
+            },
+        );
+        system_out.insert(
+            "print".to_string(),
+            FunctionSig {
+                params: vec![("x".to_string(), Type::Unknown)],
+                ret: Type::None,
+                is_method: false,
+            },
+        );
+        stubs.modules.insert("System.out".to_string(), system_out);
+
+        // Integer class
+        let mut integer_class = ClassDef {
+            name: "Integer".to_string(),
+            methods: HashMap::new(),
+            attributes: HashMap::new(),
+            bases: vec!["Number".to_string()],
+        };
+        integer_class.methods.insert(
+            "parseInt".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::Int,
+                is_method: false, // static method
+            },
+        );
+        integer_class.methods.insert(
+            "toString".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        stubs.classes.insert("Integer".to_string(), integer_class);
+
+        stubs
+    }
+
+    /// Create Rust standard library stubs
+    pub fn rust_stdlib() -> Self {
+        let mut stubs = Self {
+            modules: HashMap::new(),
+            builtins: HashMap::new(),
+            classes: HashMap::new(),
+        };
+
+        // String class
+        let mut string_class = ClassDef {
+            name: "String".to_string(),
+            methods: HashMap::new(),
+            attributes: HashMap::new(),
+            bases: vec![],
+        };
+        string_class.methods.insert(
+            "len".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Int,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "is_empty".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "push_str".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::None,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "push".to_string(),
+            FunctionSig {
+                params: vec![(
+                    "ch".to_string(),
+                    Type::Instance {
+                        class_name: "char".to_string(),
+                        type_args: vec![],
+                    },
+                )],
+                ret: Type::None,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "as_str".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "trim".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "to_lowercase".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "to_uppercase".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "contains".to_string(),
+            FunctionSig {
+                params: vec![("pat".to_string(), Type::String)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "starts_with".to_string(),
+            FunctionSig {
+                params: vec![("pat".to_string(), Type::String)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "ends_with".to_string(),
+            FunctionSig {
+                params: vec![("pat".to_string(), Type::String)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "split".to_string(),
+            FunctionSig {
+                params: vec![("pat".to_string(), Type::String)],
+                ret: Type::Instance {
+                    class_name: "Split".to_string(),
+                    type_args: vec![],
+                },
+                is_method: true,
+            },
+        );
+        string_class.methods.insert(
+            "replace".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("from".to_string(), Type::String),
+                    ("to".to_string(), Type::String),
+                ],
+                ret: Type::String,
+                is_method: true,
+            },
+        );
+        stubs.classes.insert("String".to_string(), string_class);
+
+        // Vec class
+        let mut vec_class = ClassDef {
+            name: "Vec".to_string(),
+            methods: HashMap::new(),
+            attributes: HashMap::new(),
+            bases: vec![],
+        };
+        vec_class.methods.insert(
+            "push".to_string(),
+            FunctionSig {
+                params: vec![("value".to_string(), Type::Unknown)],
+                ret: Type::None,
+                is_method: true,
+            },
+        );
+        vec_class.methods.insert(
+            "pop".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        vec_class.methods.insert(
+            "len".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Int,
+                is_method: true,
+            },
+        );
+        vec_class.methods.insert(
+            "is_empty".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        vec_class.methods.insert(
+            "clear".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::None,
+                is_method: true,
+            },
+        );
+        vec_class.methods.insert(
+            "get".to_string(),
+            FunctionSig {
+                params: vec![("index".to_string(), Type::Int)],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        vec_class.methods.insert(
+            "first".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        vec_class.methods.insert(
+            "last".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        vec_class.methods.insert(
+            "iter".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Instance {
+                    class_name: "Iter".to_string(),
+                    type_args: vec![],
+                },
+                is_method: true,
+            },
+        );
+        stubs.classes.insert("Vec".to_string(), vec_class);
+
+        // Option class
+        let mut option_class = ClassDef {
+            name: "Option".to_string(),
+            methods: HashMap::new(),
+            attributes: HashMap::new(),
+            bases: vec![],
+        };
+        option_class.methods.insert(
+            "unwrap".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Unknown,
+                is_method: true,
+            },
+        );
+        option_class.methods.insert(
+            "unwrap_or".to_string(),
+            FunctionSig {
+                params: vec![("default".to_string(), Type::Unknown)],
+                ret: Type::Unknown,
+                is_method: true,
+            },
+        );
+        option_class.methods.insert(
+            "is_some".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        option_class.methods.insert(
+            "is_none".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        option_class.methods.insert(
+            "map".to_string(),
+            FunctionSig {
+                params: vec![(
+                    "f".to_string(),
+                    Type::Function {
+                        params: vec![Type::Unknown],
+                        ret: Box::new(Type::Unknown),
+                    },
+                )],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        option_class.methods.insert(
+            "and_then".to_string(),
+            FunctionSig {
+                params: vec![(
+                    "f".to_string(),
+                    Type::Function {
+                        params: vec![Type::Unknown],
+                        ret: Box::new(Type::Optional(Box::new(Type::Unknown))),
+                    },
+                )],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        stubs.classes.insert("Option".to_string(), option_class);
+
+        // Result class
+        let mut result_class = ClassDef {
+            name: "Result".to_string(),
+            methods: HashMap::new(),
+            attributes: HashMap::new(),
+            bases: vec![],
+        };
+        result_class.methods.insert(
+            "unwrap".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Unknown,
+                is_method: true,
+            },
+        );
+        result_class.methods.insert(
+            "expect".to_string(),
+            FunctionSig {
+                params: vec![("msg".to_string(), Type::String)],
+                ret: Type::Unknown,
+                is_method: true,
+            },
+        );
+        result_class.methods.insert(
+            "is_ok".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        result_class.methods.insert(
+            "is_err".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        result_class.methods.insert(
+            "ok".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        result_class.methods.insert(
+            "err".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        stubs.classes.insert("Result".to_string(), result_class);
+
+        // HashMap class
+        let mut hashmap_class = ClassDef {
+            name: "HashMap".to_string(),
+            methods: HashMap::new(),
+            attributes: HashMap::new(),
+            bases: vec![],
+        };
+        hashmap_class.methods.insert(
+            "insert".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("key".to_string(), Type::Unknown),
+                    ("value".to_string(), Type::Unknown),
+                ],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        hashmap_class.methods.insert(
+            "get".to_string(),
+            FunctionSig {
+                params: vec![("key".to_string(), Type::Unknown)],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        hashmap_class.methods.insert(
+            "contains_key".to_string(),
+            FunctionSig {
+                params: vec![("key".to_string(), Type::Unknown)],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        hashmap_class.methods.insert(
+            "len".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Int,
+                is_method: true,
+            },
+        );
+        hashmap_class.methods.insert(
+            "is_empty".to_string(),
+            FunctionSig {
+                params: vec![],
+                ret: Type::Bool,
+                is_method: true,
+            },
+        );
+        hashmap_class.methods.insert(
+            "remove".to_string(),
+            FunctionSig {
+                params: vec![("key".to_string(), Type::Unknown)],
+                ret: Type::Optional(Box::new(Type::Unknown)),
+                is_method: true,
+            },
+        );
+        stubs.classes.insert("HashMap".to_string(), hashmap_class);
+
+        stubs
+    }
+
     /// Look up a builtin function
     pub fn lookup_builtin(&self, name: &str) -> Option<&FunctionSig> {
         self.builtins.get(name)
@@ -1247,9 +2290,8 @@ impl InferredTypes {
 
 /// Main type inferencer
 pub struct TypeInferencer<'a> {
-    /// Source code
-    #[allow(dead_code)]
-    source: &'a str,
+    /// Source code (stored for potential future AST parsing)
+    _source: &'a str,
     /// Control flow graph (optional)
     cfg: Option<&'a ControlFlowGraph>,
     /// Type stubs for stdlib
@@ -1258,9 +2300,8 @@ pub struct TypeInferencer<'a> {
     constraints: Vec<Constraint>,
     /// Type environment
     env: TypeEnv,
-    /// Language being inferred
-    #[allow(dead_code)]
-    language: String,
+    /// Language being inferred (stored for language-specific handling)
+    _language: String,
 }
 
 impl<'a> TypeInferencer<'a> {
@@ -1269,16 +2310,19 @@ impl<'a> TypeInferencer<'a> {
         let stubs = match language {
             "python" | "py" => TypeStubs::python_stdlib(),
             "javascript" | "js" | "typescript" | "ts" => TypeStubs::javascript_stdlib(),
+            "go" => TypeStubs::go_stdlib(),
+            "java" => TypeStubs::java_stdlib(),
+            "rust" | "rs" => TypeStubs::rust_stdlib(),
             _ => TypeStubs::python_stdlib(),
         };
 
         Self {
-            source,
+            _source: source,
             cfg,
             stubs,
             constraints: Vec::new(),
             env: TypeEnv::new(),
-            language: language.to_string(),
+            _language: language.to_string(),
         }
     }
 
@@ -1479,8 +2523,8 @@ impl<'a> TypeInferencer<'a> {
     fn infer_literal(&self, text: &str) -> Option<Type> {
         let text = text.trim();
 
-        // None/null/undefined
-        if text == "None" || text == "null" || text == "undefined" {
+        // None/null/undefined/nil
+        if text == "None" || text == "null" || text == "undefined" || text == "nil" {
             return Some(Type::None);
         }
 
@@ -1855,6 +2899,333 @@ fn extract_function_name(node: Node, source: &[u8]) -> Option<String> {
 mod tests {
     use super::*;
 
+    // ==================== Test Helper Functions ====================
+
+    /// Parse a Rust type string into a Type
+    fn parse_rust_type(type_str: &str) -> Option<Type> {
+        let s = type_str.trim();
+
+        // Handle references (strip &, &mut, &'lifetime)
+        let s = if s.starts_with('&') {
+            let s = s.trim_start_matches('&');
+            // Strip mut
+            let s = s.strip_prefix("mut ").unwrap_or(s);
+            // Strip lifetime like 'a or 'static
+            let s = if s.starts_with('\'') {
+                if let Some(space_pos) = s.find(' ') {
+                    &s[space_pos + 1..]
+                } else {
+                    s
+                }
+            } else {
+                s
+            };
+            s.trim()
+        } else {
+            s
+        };
+
+        // Primitive types
+        match s {
+            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
+            | "u128" | "usize" => return Some(Type::Int),
+            "f32" | "f64" => return Some(Type::Float),
+            "bool" => return Some(Type::Bool),
+            "str" | "String" => return Some(Type::String),
+            "()" => return Some(Type::None),
+            "!" => return Some(Type::Never),
+            _ => {}
+        }
+
+        // Generic types: Vec<T>, Option<T>, Result<T, E>, HashMap<K, V>, etc.
+        if let Some(open) = s.find('<') {
+            let name = &s[..open];
+            let close = s.rfind('>')?;
+            let inner = &s[open + 1..close];
+
+            // Parse type arguments
+            let type_args = parse_type_args(inner);
+
+            match name {
+                "Vec" | "VecDeque" | "LinkedList" | "HashSet" | "BTreeSet" => {
+                    let inner_type = type_args.first().cloned().unwrap_or(Type::Unknown);
+                    return Some(Type::List(Box::new(inner_type)));
+                }
+                "Option" => {
+                    let inner_type = type_args.first().cloned().unwrap_or(Type::Unknown);
+                    return Some(Type::Optional(Box::new(inner_type)));
+                }
+                "HashMap" | "BTreeMap" => {
+                    if type_args.len() >= 2 {
+                        return Some(Type::Dict(
+                            Box::new(type_args[0].clone()),
+                            Box::new(type_args[1].clone()),
+                        ));
+                    }
+                }
+                _ => {
+                    return Some(Type::Instance {
+                        class_name: name.to_string(),
+                        type_args,
+                    });
+                }
+            }
+        }
+
+        // Unknown/custom type
+        Some(Type::Instance {
+            class_name: s.to_string(),
+            type_args: vec![],
+        })
+    }
+
+    /// Parse comma-separated type arguments (handling nested generics)
+    fn parse_type_args(args_str: &str) -> Vec<Type> {
+        let mut result = Vec::new();
+        let mut current = String::new();
+        let mut depth = 0;
+
+        for ch in args_str.chars() {
+            match ch {
+                '<' => {
+                    depth += 1;
+                    current.push(ch);
+                }
+                '>' => {
+                    depth -= 1;
+                    current.push(ch);
+                }
+                ',' if depth == 0 => {
+                    if let Some(ty) = parse_rust_type(current.trim()) {
+                        result.push(ty);
+                    }
+                    current.clear();
+                }
+                _ => current.push(ch),
+            }
+        }
+
+        if !current.trim().is_empty() {
+            if let Some(ty) = parse_rust_type(current.trim()) {
+                result.push(ty);
+            }
+        }
+
+        result
+    }
+
+    /// Extract trait bounds from a Rust type constraint string
+    fn extract_rust_trait_bounds(bounds_str: &str) -> Vec<String> {
+        let mut result = Vec::new();
+        let s = bounds_str.trim();
+
+        // Handle "where T: Clone" format
+        let s = s.strip_prefix("where").map(|rest| rest.trim()).unwrap_or(s);
+
+        // Find the part after the colon
+        if let Some(colon_pos) = s.find(':') {
+            let bounds_part = &s[colon_pos + 1..];
+            // Split by '+' for multiple bounds
+            for bound in bounds_part.split('+') {
+                let bound = bound.trim();
+                if !bound.is_empty() {
+                    // Extract just the trait name (without generics)
+                    let trait_name = if let Some(lt_pos) = bound.find('<') {
+                        &bound[..lt_pos]
+                    } else {
+                        bound
+                    };
+                    result.push(trait_name.trim().to_string());
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Parse a Go type string into a Type
+    fn parse_go_type(type_str: &str) -> Option<Type> {
+        let s = type_str.trim();
+
+        // Primitive types
+        match s {
+            "int" | "int8" | "int16" | "int32" | "int64" | "uint" | "uint8" | "uint16"
+            | "uint32" | "uint64" | "uintptr" | "byte" | "rune" => return Some(Type::Int),
+            "float32" | "float64" => return Some(Type::Float),
+            "bool" => return Some(Type::Bool),
+            "string" => return Some(Type::String),
+            "error" => {
+                return Some(Type::Instance {
+                    class_name: "error".to_string(),
+                    type_args: vec![],
+                })
+            }
+            _ => {}
+        }
+
+        // Slice: []T
+        if let Some(inner) = s.strip_prefix("[]") {
+            let inner_type = parse_go_type(inner).unwrap_or(Type::Unknown);
+            return Some(Type::List(Box::new(inner_type)));
+        }
+
+        // Map: map[K]V
+        if let Some(rest) = s.strip_prefix("map[") {
+            if let Some(bracket_close) = rest.find(']') {
+                let key_type = parse_go_type(&rest[..bracket_close]).unwrap_or(Type::Unknown);
+                let value_type = parse_go_type(&rest[bracket_close + 1..]).unwrap_or(Type::Unknown);
+                return Some(Type::Dict(Box::new(key_type), Box::new(value_type)));
+            }
+        }
+
+        // Pointer: *T (represent as Optional)
+        if let Some(inner) = s.strip_prefix('*') {
+            let inner_type = parse_go_type(inner).unwrap_or(Type::Unknown);
+            return Some(Type::Optional(Box::new(inner_type)));
+        }
+
+        // Interface or struct type
+        Some(Type::Instance {
+            class_name: s.to_string(),
+            type_args: vec![],
+        })
+    }
+
+    /// Parse a Go type assertion expression like "x.(Type)"
+    fn parse_go_type_assertion(expr: &str) -> Option<Type> {
+        let s = expr.trim();
+        // Find ".(" and extract the type inside
+        if let Some(dot_paren) = s.find(".(") {
+            if s.ends_with(')') {
+                let type_str = &s[dot_paren + 2..s.len() - 1];
+                return parse_go_type(type_str);
+            }
+        }
+        None
+    }
+
+    /// Parse a Java type string into a Type
+    fn parse_java_type(type_str: &str) -> Option<Type> {
+        let s = type_str.trim();
+
+        // Primitive types
+        match s {
+            "int" | "long" | "short" | "byte" | "Integer" | "Long" | "Short" | "Byte" => {
+                return Some(Type::Int)
+            }
+            "float" | "double" | "Float" | "Double" => return Some(Type::Float),
+            "boolean" | "Boolean" => return Some(Type::Bool),
+            "String" | "CharSequence" => return Some(Type::String),
+            "void" | "Void" => return Some(Type::None),
+            _ => {}
+        }
+
+        // Generic types
+        if let Some(open) = s.find('<') {
+            let name = &s[..open];
+            let close = s.rfind('>')?;
+            let inner = &s[open + 1..close];
+
+            // Parse type arguments
+            let type_args = parse_java_type_args(inner);
+
+            match name {
+                "Optional" => {
+                    let inner_type = type_args.first().cloned().unwrap_or(Type::Unknown);
+                    return Some(Type::Optional(Box::new(inner_type)));
+                }
+                "List" | "ArrayList" | "LinkedList" | "Set" | "HashSet" | "TreeSet" => {
+                    return Some(Type::Instance {
+                        class_name: name.to_string(),
+                        type_args,
+                    });
+                }
+                "Map" | "HashMap" | "TreeMap" => {
+                    return Some(Type::Instance {
+                        class_name: name.to_string(),
+                        type_args,
+                    });
+                }
+                _ => {
+                    return Some(Type::Instance {
+                        class_name: name.to_string(),
+                        type_args,
+                    });
+                }
+            }
+        }
+
+        // Array types
+        if let Some(inner) = s.strip_suffix("[]") {
+            let inner_type = parse_java_type(inner).unwrap_or(Type::Unknown);
+            return Some(Type::List(Box::new(inner_type)));
+        }
+
+        // Regular class type
+        Some(Type::Instance {
+            class_name: s.to_string(),
+            type_args: vec![],
+        })
+    }
+
+    /// Parse comma-separated Java type arguments
+    fn parse_java_type_args(args_str: &str) -> Vec<Type> {
+        let mut result = Vec::new();
+        let mut current = String::new();
+        let mut depth = 0;
+
+        for ch in args_str.chars() {
+            match ch {
+                '<' => {
+                    depth += 1;
+                    current.push(ch);
+                }
+                '>' => {
+                    depth -= 1;
+                    current.push(ch);
+                }
+                ',' if depth == 0 => {
+                    if let Some(ty) = parse_java_type(current.trim()) {
+                        result.push(ty);
+                    }
+                    current.clear();
+                }
+                _ => current.push(ch),
+            }
+        }
+
+        if !current.trim().is_empty() {
+            if let Some(ty) = parse_java_type(current.trim()) {
+                result.push(ty);
+            }
+        }
+
+        result
+    }
+
+    /// Parse a Java type with annotations like @Nullable
+    fn parse_java_annotated_type(type_str: &str) -> Option<Type> {
+        let s = type_str.trim();
+
+        // Check for @Nullable annotation
+        if s.contains("@Nullable") {
+            let type_part = s.replace("@Nullable", "").trim().to_string();
+            let inner_type = parse_java_type(&type_part).unwrap_or(Type::Unknown);
+            return Some(Type::Optional(Box::new(inner_type)));
+        }
+
+        // Check for @NonNull annotation - just strip it
+        if s.contains("@NonNull") {
+            let type_part = s.replace("@NonNull", "").trim().to_string();
+            return parse_java_type(&type_part);
+        }
+
+        // No annotation, parse normally
+        parse_java_type(s)
+    }
+
+    // ==================== Existing Tests ====================
+
     #[test]
     fn test_type_display_name() {
         assert_eq!(Type::Int.display_name(), "int");
@@ -2102,5 +3473,293 @@ mod tests {
 
         assert_eq!(error.kind, TypeErrorKind::UndefinedVariable);
         assert_eq!(error.line, 1);
+    }
+
+    // ==================== Go Type Inference Tests ====================
+
+    #[test]
+    fn test_type_stubs_go() {
+        let stubs = TypeStubs::go_stdlib();
+
+        // fmt package
+        let println = stubs.lookup_module_func("fmt", "Println").unwrap();
+        assert_eq!(println.ret, Type::None);
+
+        let sprintf = stubs.lookup_module_func("fmt", "Sprintf").unwrap();
+        assert_eq!(sprintf.ret, Type::String);
+
+        // strings package
+        let split = stubs.lookup_module_func("strings", "Split").unwrap();
+        assert!(matches!(split.ret, Type::List(_)));
+
+        let contains = stubs.lookup_module_func("strings", "Contains").unwrap();
+        assert_eq!(contains.ret, Type::Bool);
+
+        // os package
+        let getenv = stubs.lookup_module_func("os", "Getenv").unwrap();
+        assert_eq!(getenv.ret, Type::String);
+
+        // builtin functions
+        let len_sig = stubs.lookup_builtin("len").unwrap();
+        assert_eq!(len_sig.ret, Type::Int);
+
+        let make_sig = stubs.lookup_builtin("make").unwrap();
+        assert_eq!(make_sig.ret, Type::Unknown);
+
+        let append_sig = stubs.lookup_builtin("append").unwrap();
+        assert!(matches!(append_sig.ret, Type::List(_)));
+    }
+
+    #[test]
+    fn test_go_type_inference_short_declaration() {
+        let mut inferencer = TypeInferencer::new("", None, "go");
+
+        // x := 42 should infer x as int
+        assert_eq!(inferencer.infer_expr_from_text("42").unwrap(), Type::Int);
+
+        // s := "hello" should infer s as string
+        assert_eq!(
+            inferencer.infer_expr_from_text("\"hello\"").unwrap(),
+            Type::String
+        );
+
+        // Go nil
+        assert_eq!(inferencer.infer_literal("nil"), Some(Type::None));
+    }
+
+    #[test]
+    fn test_go_type_assertion_extraction() {
+        // Type assertions like v.(Type) should extract Type
+        let ty = parse_go_type_assertion("x.(string)");
+        assert_eq!(ty, Some(Type::String));
+
+        let ty = parse_go_type_assertion("v.(int)");
+        assert_eq!(ty, Some(Type::Int));
+
+        let ty = parse_go_type_assertion("r.(io.Reader)");
+        assert!(matches!(ty, Some(Type::Instance { class_name, .. }) if class_name == "io.Reader"));
+    }
+
+    #[test]
+    fn test_go_slice_and_map_types() {
+        // []string -> List<String>
+        let ty = parse_go_type("[]string");
+        assert!(matches!(ty, Some(Type::List(inner)) if *inner == Type::String));
+
+        // map[string]int -> Dict<String, Int>
+        let ty = parse_go_type("map[string]int");
+        assert!(matches!(ty, Some(Type::Dict(k, v)) if *k == Type::String && *v == Type::Int));
+
+        // *int -> pointer to int (represented as Optional)
+        let ty = parse_go_type("*int");
+        assert!(matches!(ty, Some(Type::Optional(inner)) if *inner == Type::Int));
+    }
+
+    // ==================== Java Type Inference Tests ====================
+
+    #[test]
+    fn test_type_stubs_java() {
+        let stubs = TypeStubs::java_stdlib();
+
+        // String methods
+        let length = stubs.lookup_method("String", "length").unwrap();
+        assert_eq!(length.ret, Type::Int);
+
+        let substring = stubs.lookup_method("String", "substring").unwrap();
+        assert_eq!(substring.ret, Type::String);
+
+        let split = stubs.lookup_method("String", "split").unwrap();
+        assert!(matches!(split.ret, Type::List(_)));
+
+        // List methods
+        let add = stubs.lookup_method("List", "add").unwrap();
+        assert_eq!(add.ret, Type::Bool);
+
+        let size = stubs.lookup_method("List", "size").unwrap();
+        assert_eq!(size.ret, Type::Int);
+
+        let get = stubs.lookup_method("List", "get").unwrap();
+        assert_eq!(get.ret, Type::Unknown); // generic type
+
+        // System class
+        let println = stubs.lookup_module_func("System.out", "println").unwrap();
+        assert_eq!(println.ret, Type::None);
+    }
+
+    #[test]
+    fn test_java_generics_parsing() {
+        // List<String> -> Instance with type args
+        let ty = parse_java_type("List<String>");
+        assert!(matches!(
+            ty,
+            Some(Type::Instance { class_name, type_args })
+            if class_name == "List" && type_args.len() == 1 && type_args[0] == Type::String
+        ));
+
+        // Map<String, Integer>
+        let ty = parse_java_type("Map<String, Integer>");
+        assert!(matches!(
+            ty,
+            Some(Type::Instance { class_name, type_args })
+            if class_name == "Map" && type_args.len() == 2
+        ));
+
+        // Optional<String>
+        let ty = parse_java_type("Optional<String>");
+        assert!(matches!(
+            ty,
+            Some(Type::Optional(inner)) if *inner == Type::String
+        ));
+    }
+
+    #[test]
+    fn test_java_annotation_detection() {
+        // @Nullable String -> Optional<String>
+        let ty = parse_java_annotated_type("@Nullable String");
+        assert!(matches!(ty, Some(Type::Optional(inner)) if *inner == Type::String));
+
+        // @NonNull List<String> -> List<String> (not optional)
+        let ty = parse_java_annotated_type("@NonNull List<String>");
+        assert!(matches!(ty, Some(Type::Instance { class_name, .. }) if class_name == "List"));
+    }
+
+    #[test]
+    fn test_java_primitive_types() {
+        assert_eq!(parse_java_type("int"), Some(Type::Int));
+        assert_eq!(parse_java_type("long"), Some(Type::Int));
+        assert_eq!(parse_java_type("double"), Some(Type::Float));
+        assert_eq!(parse_java_type("float"), Some(Type::Float));
+        assert_eq!(parse_java_type("boolean"), Some(Type::Bool));
+        assert_eq!(parse_java_type("String"), Some(Type::String));
+        assert_eq!(parse_java_type("void"), Some(Type::None));
+    }
+
+    // ==================== Rust Type Inference Tests ====================
+
+    #[test]
+    fn test_type_stubs_rust() {
+        let stubs = TypeStubs::rust_stdlib();
+
+        // String methods
+        let len = stubs.lookup_method("String", "len").unwrap();
+        assert_eq!(len.ret, Type::Int);
+
+        let is_empty = stubs.lookup_method("String", "is_empty").unwrap();
+        assert_eq!(is_empty.ret, Type::Bool);
+
+        let push_str = stubs.lookup_method("String", "push_str").unwrap();
+        assert_eq!(push_str.ret, Type::None);
+
+        // Vec methods
+        let push = stubs.lookup_method("Vec", "push").unwrap();
+        assert_eq!(push.ret, Type::None);
+
+        let pop = stubs.lookup_method("Vec", "pop").unwrap();
+        assert!(matches!(pop.ret, Type::Optional(_)));
+
+        // Option methods
+        let unwrap = stubs.lookup_method("Option", "unwrap").unwrap();
+        assert_eq!(unwrap.ret, Type::Unknown);
+
+        let is_some = stubs.lookup_method("Option", "is_some").unwrap();
+        assert_eq!(is_some.ret, Type::Bool);
+    }
+
+    #[test]
+    fn test_rust_type_parsing() {
+        // Primitive types
+        assert_eq!(parse_rust_type("i32"), Some(Type::Int));
+        assert_eq!(parse_rust_type("i64"), Some(Type::Int));
+        assert_eq!(parse_rust_type("u32"), Some(Type::Int));
+        assert_eq!(parse_rust_type("f64"), Some(Type::Float));
+        assert_eq!(parse_rust_type("bool"), Some(Type::Bool));
+        assert_eq!(parse_rust_type("String"), Some(Type::String));
+        assert_eq!(parse_rust_type("&str"), Some(Type::String));
+    }
+
+    #[test]
+    fn test_rust_generic_types() {
+        // Vec<i32>
+        let ty = parse_rust_type("Vec<i32>");
+        assert!(matches!(ty, Some(Type::List(inner)) if *inner == Type::Int));
+
+        // Option<String>
+        let ty = parse_rust_type("Option<String>");
+        assert!(matches!(ty, Some(Type::Optional(inner)) if *inner == Type::String));
+
+        // Result<T, E>
+        let ty = parse_rust_type("Result<i32, String>");
+        assert!(matches!(
+            ty,
+            Some(Type::Instance { class_name, type_args })
+            if class_name == "Result" && type_args.len() == 2
+        ));
+
+        // HashMap<String, i32>
+        let ty = parse_rust_type("HashMap<String, i32>");
+        assert!(matches!(
+            ty,
+            Some(Type::Dict(k, v))
+            if *k == Type::String && *v == Type::Int
+        ));
+    }
+
+    #[test]
+    fn test_rust_trait_bounds_extraction() {
+        // fn foo<T: Clone>(x: T) -> extract Clone bound
+        let bounds = extract_rust_trait_bounds("T: Clone");
+        assert!(bounds.contains(&"Clone".to_string()));
+
+        // T: Clone + Debug
+        let bounds = extract_rust_trait_bounds("T: Clone + Debug");
+        assert!(bounds.contains(&"Clone".to_string()));
+        assert!(bounds.contains(&"Debug".to_string()));
+
+        // where T: Clone
+        let bounds = extract_rust_trait_bounds("where T: Clone");
+        assert!(bounds.contains(&"Clone".to_string()));
+    }
+
+    #[test]
+    fn test_rust_lifetime_parsing() {
+        // &'a str -> string with lifetime
+        let ty = parse_rust_type("&'a str");
+        assert_eq!(ty, Some(Type::String));
+
+        // &'static str
+        let ty = parse_rust_type("&'static str");
+        assert_eq!(ty, Some(Type::String));
+
+        // References are stripped to their underlying type
+        let ty = parse_rust_type("&i32");
+        assert_eq!(ty, Some(Type::Int));
+
+        let ty = parse_rust_type("&mut String");
+        assert_eq!(ty, Some(Type::String));
+    }
+
+    #[test]
+    fn test_rust_inferencer_creation() {
+        let inferencer = TypeInferencer::new("", None, "rust");
+        // Verify inferencer is configured for Rust
+        assert!(inferencer.stubs.lookup_method("String", "len").is_some());
+    }
+
+    #[test]
+    fn test_go_inferencer_creation() {
+        let inferencer = TypeInferencer::new("", None, "go");
+        // Verify inferencer is configured for Go
+        assert!(inferencer.stubs.lookup_builtin("len").is_some());
+        assert!(inferencer
+            .stubs
+            .lookup_module_func("fmt", "Println")
+            .is_some());
+    }
+
+    #[test]
+    fn test_java_inferencer_creation() {
+        let inferencer = TypeInferencer::new("", None, "java");
+        // Verify inferencer is configured for Java
+        assert!(inferencer.stubs.lookup_method("String", "length").is_some());
     }
 }

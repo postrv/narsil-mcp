@@ -76,7 +76,16 @@ pub struct McpServer {
 }
 
 impl McpServer {
-    #[allow(dead_code)]
+    /// Create a new MCP server with the given code intelligence engine.
+    ///
+    /// # Arguments
+    /// * `engine` - The code intelligence engine to use
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let engine = CodeIntelEngine::with_options(path, repos, options).await?;
+    /// let server = McpServer::new(engine);
+    /// ```
     pub fn new(engine: CodeIntelEngine) -> Self {
         let config = ConfigLoader::new().load().unwrap_or_else(|e| {
             eprintln!("Warning: Failed to load config: {}. Using defaults.", e);
@@ -330,24 +339,6 @@ impl McpServer {
             ),
             Err(e) => JsonRpcResponse::error(id, -32000, &e.to_string()),
         }
-    }
-
-    // Legacy match statement removed - now using ToolRegistry
-    // Original handle_tool_call was 679 lines with cyclomatic complexity 78
-    // New handle_tool_call is ~30 lines with cyclomatic complexity < 5
-    #[allow(dead_code)]
-    fn _legacy_handle_tool_call_reference() {
-        // Handlers moved to src/tool_handlers/
-        // - repo.rs: list_repos, get_project_structure, get_file, etc.
-        // - symbols.rs: find_symbols, get_symbol_definition, etc.
-        // - search.rs: search_code, semantic_search, hybrid_search, etc.
-        // - callgraph.rs: get_call_graph, get_callers, get_callees, etc.
-        // - git.rs: get_blame, get_file_history, get_recent_changes, etc.
-        // - lsp.rs: get_hover_info, get_type_info, go_to_definition
-        // - remote.rs: add_remote_repo, list_remote_files, get_remote_file
-        // - security.rs: scan_security, find_injection_vulnerabilities, etc.
-        // - supply_chain.rs: generate_sbom, check_dependencies, etc.
-        // - analysis.rs: get_control_flow, find_dead_code, get_data_flow, etc.
     }
 
     fn handle_resources_list(&self, id: Option<Value>) -> JsonRpcResponse {
