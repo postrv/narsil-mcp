@@ -9,6 +9,7 @@ mod callgraph;
 mod cfg;
 mod chunking;
 mod config;
+mod dead_code;
 mod dfg;
 mod embeddings;
 mod extract;

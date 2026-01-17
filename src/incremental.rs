@@ -704,6 +704,22 @@ impl SymbolResolver {
             .unwrap_or_default()
     }
 
+    /// Get reference to all exports
+    ///
+    /// Returns a reference to the map of file paths to their exported symbols.
+    #[must_use]
+    pub fn get_exports(&self) -> &HashMap<PathBuf, Vec<ExportedSymbol>> {
+        &self.exports
+    }
+
+    /// Get reference to all imports
+    ///
+    /// Returns a reference to the map of file paths to their imports.
+    #[must_use]
+    pub fn get_imports(&self) -> &HashMap<PathBuf, Vec<Import>> {
+        &self.imports
+    }
+
     /// Build import graph for the codebase
     pub fn build_import_graph(&self, project_root: &Path) -> ImportGraph {
         let mut graph = ImportGraph::new();

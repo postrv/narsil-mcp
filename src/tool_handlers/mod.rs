@@ -149,6 +149,7 @@ impl ToolRegistry {
         registry.register(Box::new(analysis::GetTypedTaintFlowHandler));
         registry.register(Box::new(analysis::GetImportGraphHandler));
         registry.register(Box::new(analysis::FindCircularImportsHandler));
+        registry.register(Box::new(analysis::FindUnusedExportsHandler));
 
         // Register graph visualization handler
         registry.register(Box::new(graph::GetCodeGraphHandler));

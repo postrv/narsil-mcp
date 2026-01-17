@@ -200,3 +200,31 @@ impl ToolHandler for FindCircularImportsHandler {
         engine.find_circular_imports(repo, exclude_tests).await
     }
 }
+
+/// Handler for find_unused_exports tool
+pub struct FindUnusedExportsHandler;
+
+#[async_trait::async_trait]
+impl ToolHandler for FindUnusedExportsHandler {
+    fn name(&self) -> &'static str {
+        "find_unused_exports"
+    }
+
+    async fn execute(&self, engine: &CodeIntelEngine, args: Value) -> Result<String> {
+        let repo = args.get_str("repo").unwrap_or("");
+        let exclude_entry_points = args.get_bool("exclude_entry_points").unwrap_or(true);
+        let exclude_patterns: Vec<String> = args
+            .get("exclude_patterns")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        engine
+            .find_unused_exports(repo, exclude_entry_points, exclude_patterns)
+            .await
+    }
+}

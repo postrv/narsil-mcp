@@ -1686,6 +1686,31 @@ lazy_static! {
             aliases: vec!["circular_imports", "import_cycles"],
         });
 
+        map.insert("find_unused_exports", ToolMetadata {
+            name: "find_unused_exports",
+            description: "Detect exported symbols never imported by other files in repo. Cross-file analysis using import graph. Configurable to exclude public API surface.",
+            category: ToolCategory::Analysis,
+            tags: ["analysis", "exports", "dead-code", "unused", "imports"].iter().copied().collect(),
+            stability: StabilityLevel::Stable,
+            performance: PerformanceImpact::Medium,
+            required_flags: HashSet::new(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string", "description": "Repository name"},
+                    "exclude_entry_points": {"type": "boolean", "description": "Exclude entry point files like lib.rs, main.rs, index.js (default: true)"},
+                    "exclude_patterns": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Glob patterns for files to exclude from analysis (public API surface)"
+                    }
+                },
+                "required": ["repo"]
+            }),
+            requires_api_key: false,
+            aliases: vec!["unused_exports", "dead_exports"],
+        });
+
         // ===== Graph Tools (1) =====
 
         map.insert("get_code_graph", ToolMetadata {

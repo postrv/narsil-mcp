@@ -3297,7 +3297,19 @@ impl CodeIntelEngine {
         Ok(cfg.to_markdown())
     }
 
-    /// Find dead (unreachable) code blocks in a file or function
+    /// Find dead code including unreachable blocks, dead stores, and unused imports
+    ///
+    /// # Arguments
+    /// * `repo` - Repository name
+    /// * `path` - File path relative to repository root
+    /// * `function` - Optional function name to focus analysis on
+    /// * `exclude_tests` - Whether to skip test files (default: true)
+    ///
+    /// # Returns
+    /// Markdown-formatted dead code analysis report
+    ///
+    /// # Errors
+    /// Returns an error if the repository or file is not found, or if parsing fails
     pub async fn find_dead_code(
         &self,
         repo: &str,
@@ -3305,6 +3317,7 @@ impl CodeIntelEngine {
         function: Option<&str>,
         exclude_tests: Option<bool>,
     ) -> Result<String> {
+        use crate::dead_code;
         use crate::security_rules::is_test_file;
 
         let exclude_tests = exclude_tests.unwrap_or(true);
@@ -3325,48 +3338,20 @@ impl CodeIntelEngine {
             .tree
             .as_ref()
             .ok_or_else(|| anyhow!("Failed to parse file"))?;
-        let cfgs = cfg::analyze_function(tree, &content, path)?;
 
-        let mut output = String::new();
-        output.push_str(&format!("# Dead Code Analysis: `{}`\n\n", path));
+        // Use the comprehensive dead code analysis
+        let mut report = dead_code::analyze_dead_code(tree, &content, path)?;
 
-        let mut total_unreachable = 0;
-
-        for cfg in &cfgs {
-            // Filter by function if specified
-            if let Some(func_name) = function {
-                if cfg.function_name != func_name {
-                    continue;
-                }
-            }
-
-            if !cfg.unreachable_blocks.is_empty() {
-                output.push_str(&format!("## Function: `{}`\n\n", cfg.function_name));
-                output.push_str("### Unreachable Code Blocks\n\n");
-
-                for &block_id in &cfg.unreachable_blocks {
-                    if let Some(block) = cfg.blocks.get(&block_id) {
-                        output.push_str(&format!(
-                            "- **Block {}** (`{}`): lines {}-{}\n",
-                            block_id, block.label, block.start_line, block.end_line
-                        ));
-                        total_unreachable += 1;
-                    }
-                }
-                output.push('\n');
-            }
+        // Filter by function if specified
+        if let Some(func_name) = function {
+            report
+                .unreachable_blocks
+                .retain(|b| b.function_name == func_name);
+            report.dead_stores.retain(|d| d.function_name == func_name);
+            // Note: unused_imports are file-level, not function-level
         }
 
-        if total_unreachable == 0 {
-            output.push_str("✅ No unreachable code detected.\n");
-        } else {
-            output.push_str(&format!(
-                "\n**Total**: {} unreachable block(s) found.\n",
-                total_unreachable
-            ));
-        }
-
-        Ok(output)
+        Ok(report.to_markdown())
     }
 
     // ==================== Data Flow Graph (DFG) Tools ====================
@@ -5700,6 +5685,110 @@ impl CodeIntelEngine {
         }
 
         Ok(output)
+    }
+
+    /// Find exported symbols that are never imported by other files
+    ///
+    /// # Arguments
+    /// * `repo_name` - Repository name
+    /// * `exclude_entry_points` - Whether to exclude entry point files (lib.rs, main.rs, index.js, etc.)
+    /// * `exclude_patterns` - Glob patterns for files to exclude from analysis
+    ///
+    /// # Returns
+    /// Markdown report of unused exports
+    ///
+    /// # Errors
+    /// Returns error if repository not found
+    pub async fn find_unused_exports(
+        &self,
+        repo_name: &str,
+        exclude_entry_points: bool,
+        exclude_patterns: Vec<String>,
+    ) -> Result<String> {
+        use crate::dead_code::{find_unused_exports, UnusedExportConfig};
+        use crate::incremental::ExportedSymbol;
+
+        let repo_path = self.get_repo_path(repo_name)?;
+        let symbols = self
+            .symbols
+            .get(repo_name)
+            .map(|s| s.clone())
+            .unwrap_or_default();
+
+        let mut resolver = crate::incremental::SymbolResolver::new();
+
+        // Track which files we've processed
+        let mut processed_files = std::collections::HashSet::new();
+
+        // Parse exports and imports from all files
+        for symbol in &symbols {
+            let file_path = repo_path.join(&symbol.file_path);
+
+            // Skip if already processed this file
+            if processed_files.contains(&file_path) {
+                continue;
+            }
+
+            if file_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&file_path) {
+                    // Parse imports
+                    let imports = parse_imports_from_content(&content, &symbol.file_path);
+                    resolver.register_imports(&file_path, imports);
+
+                    // Extract exports from symbols in this file
+                    let file_symbols: Vec<_> = symbols
+                        .iter()
+                        .filter(|s| s.file_path == symbol.file_path)
+                        .collect();
+
+                    let exports: Vec<ExportedSymbol> = file_symbols
+                        .into_iter()
+                        .filter_map(|s| {
+                            // Determine if symbol is public from signature
+                            let is_public = s
+                                .signature
+                                .as_ref()
+                                .map(|sig| {
+                                    sig.trim_start().starts_with("pub ") || sig.contains("export ")
+                                })
+                                .unwrap_or(false);
+
+                            // Only track public symbols
+                            if is_public {
+                                Some(ExportedSymbol {
+                                    name: s.name.clone(),
+                                    symbol: s.clone(),
+                                    is_default: false,
+                                    is_public: true,
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    resolver.index_file(&file_path, &[], exports);
+                    processed_files.insert(file_path);
+                }
+            }
+        }
+
+        // Configure analysis
+        let config = UnusedExportConfig {
+            exclude_entry_points,
+            exclude_patterns,
+            include_reexports: false,
+        };
+
+        // Run unused export detection
+        let report = find_unused_exports(
+            resolver.get_exports(),
+            resolver.get_imports(),
+            &repo_path,
+            &config,
+        );
+
+        Ok(report.to_markdown())
     }
 
     /// Fuzzy workspace symbol search

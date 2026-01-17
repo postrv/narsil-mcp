@@ -7,6 +7,7 @@ pub mod callgraph;
 pub mod cfg;
 pub mod chunking;
 pub mod config;
+pub mod dead_code;
 pub mod dfg;
 pub mod embeddings;
 pub mod extract;

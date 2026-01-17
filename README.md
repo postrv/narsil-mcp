@@ -13,7 +13,7 @@ A Rust-powered MCP (Model Context Protocol) server providing AI assistants with 
 
 | Feature | narsil-mcp | XRAY | Serena | GitHub MCP |
 |---------|------------|------|--------|------------|
-| **Languages** | 16 | 4 | 30+ (LSP) | N/A |
+| **Languages** | 21 | 4 | 30+ (LSP) | N/A |
 | **Neural Search** | Yes | No | No | No |
 | **Taint Analysis** | Yes | No | No | No |
 | **SBOM/Licenses** | Yes | No | No | Partial |
@@ -33,7 +33,7 @@ A Rust-powered MCP (Model Context Protocol) server providing AI assistants with 
 ### Why Choose narsil-mcp?
 
 - **Written in Rust** - Blazingly fast, memory-safe, single binary (~30MB)
-- **Tree-sitter powered** - Accurate, incremental parsing for 16 languages
+- **Tree-sitter powered** - Accurate, incremental parsing for 21 languages
 - **Zero config** - Point at repos and go
 - **MCP compliant** - Works with Claude, Cursor, VS Code Copilot, Zed, and any MCP client
 - **Privacy-first** - Fully local, no data leaves your machine
@@ -63,6 +63,11 @@ A Rust-powered MCP (Model Context Protocol) server providing AI assistants with 
 | **PHP** | `.php`, `.phtml` | functions, methods, classes, interfaces, traits |
 | **Swift** | `.swift` | classes, structs, enums, protocols, functions |
 | **Verilog/SystemVerilog** | `.v`, `.vh`, `.sv`, `.svh` | modules, tasks, functions, interfaces, classes |
+| **Scala** | `.scala`, `.sc` | classes, objects, traits, functions, vals |
+| **Lua** | `.lua` | functions, methods |
+| **Haskell** | `.hs`, `.lhs` | functions, data types, type classes |
+| **Elixir** | `.ex`, `.exs` | modules, functions |
+| **Clojure** | `.clj`, `.cljs`, `.cljc`, `.edn` | lists (basic AST) |
 
 ## Installation
 
@@ -889,7 +894,7 @@ narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
 
 ### Completed
 
-- [x] Multi-language symbol extraction (16 languages)
+- [x] Multi-language symbol extraction (21 languages)
 - [x] Full-text search with Tantivy (BM25 ranking)
 - [x] Hybrid search (BM25 + TF-IDF with RRF)
 - [x] AST-aware code chunking
@@ -920,7 +925,7 @@ narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
 - **Configurable tool presets** - Minimal, balanced, full, and security-focused presets
 - **Automatic editor detection** - Optimal defaults for Zed, VS Code, Claude Desktop
 - **Interactive setup wizard** - `narsil-mcp config init` for easy configuration
-- **Swift and Verilog support** - Now supporting 16 languages
+- **Swift and Verilog support** - Now supporting 21 languages (added Scala, Lua, Haskell, Elixir, Clojure)
 - **Improved performance** - Faster startup with background indexing
 
 ### v1.0.x
