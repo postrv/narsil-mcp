@@ -64,8 +64,21 @@ CLAUDE.md
 TAINT_ANALYSIS_IMPROVEMENTS.md
 SECURITY_PATCH.md
 /docs/NARSIL_BACKEND_MASTER_PLAN.md
+/docs/CODE_CONTEXT_GRAPH_SIZING_ARCH.md
 
 # npm package artifacts (created during install)
 npm/bin/
 npm/node_modules/
 npm/*.tgz
+
+# Ralph Automation Suite
+.ralph/
+.archive/
+.claude/CLAUDE.local.md
+context*.txt
+sbom.json
+*.log
+/PROMPT_build.md
+/PROMPT_debug.md
+/PROMPT_plan.md
+/IMPLEMENTATION_PLAN.md

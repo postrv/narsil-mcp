@@ -2,6 +2,13 @@
 //!
 //! Tracks file content hashes and modification times to detect changes
 //! and trigger cache invalidation.
+//!
+//! Note: This module provides infrastructure for sophisticated file-level
+//! cache invalidation. The current implementation uses a simpler approach
+//! via `compute_repo_hash` in index.rs. This module will be wired in when
+//! more granular invalidation is needed.
+
+#![allow(dead_code)]
 
 use dashmap::DashMap;
 use sha2::{Digest, Sha256};

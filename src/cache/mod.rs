@@ -19,8 +19,6 @@
 
 mod invalidation;
 
-pub use invalidation::FileHashTracker;
-
 use dashmap::DashMap;
 use parking_lot::Mutex;
 use sha2::{Digest, Sha256};

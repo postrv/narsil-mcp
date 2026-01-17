@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::{info, warn};
 
+use crate::cache::{AnalysisCache, AnalysisCacheKey, CacheStats};
 use crate::callgraph::CallGraph;
 use crate::cfg;
 use crate::dfg;
@@ -62,7 +63,7 @@ pub struct CodeExcerpt {
 }
 
 /// Options for configuring the CodeIntelEngine
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct EngineOptions {
     /// Enable git integration (blame, history, etc.)
     pub git_enabled: bool,
@@ -78,6 +79,26 @@ pub struct EngineOptions {
     pub lsp_config: LspConfig,
     /// Neural embedding configuration
     pub neural_config: NeuralConfig,
+    /// Enable analysis caching for expensive operations
+    pub cache_enabled: bool,
+    /// Cache TTL in seconds (default: 1800 = 30 minutes)
+    pub cache_ttl_seconds: u64,
+}
+
+impl Default for EngineOptions {
+    fn default() -> Self {
+        Self {
+            git_enabled: false,
+            call_graph_enabled: false,
+            persist_enabled: false,
+            watch_enabled: false,
+            streaming_config: StreamingConfig::default(),
+            lsp_config: LspConfig::default(),
+            neural_config: NeuralConfig::default(),
+            cache_enabled: true,
+            cache_ttl_seconds: 1800,
+        }
+    }
 }
 
 /// The main code intelligence engine
@@ -117,6 +138,8 @@ pub struct CodeIntelEngine {
     remote_manager: Option<Arc<tokio::sync::Mutex<RemoteRepoManager>>>,
     /// Cached security rules engine (avoids reloading rules on each scan)
     security_engine: Arc<crate::security_rules::SecurityRulesEngine>,
+    /// Analysis cache for expensive operations (security scans, call graphs, etc.)
+    analysis_cache: Arc<AnalysisCache<AnalysisCacheKey, String>>,
     /// Tracks whether background initialization has completed
     initialization_complete: AtomicBool,
     /// Number of repositories that have been fully indexed
@@ -197,6 +220,19 @@ impl CodeIntelEngine {
         // Pre-initialize security rules engine (caches compiled patterns)
         let security_engine = Arc::new(crate::security_rules::SecurityRulesEngine::new());
 
+        // Initialize analysis cache for expensive operations
+        let analysis_cache = if options.cache_enabled {
+            let ttl = std::time::Duration::from_secs(options.cache_ttl_seconds);
+            info!(
+                "Analysis cache enabled (TTL: {}s, capacity: 1000)",
+                options.cache_ttl_seconds
+            );
+            Arc::new(AnalysisCache::new(1000, ttl))
+        } else {
+            // Create a minimal cache even when disabled (0 TTL means immediate expiry)
+            Arc::new(AnalysisCache::new(1, std::time::Duration::from_secs(0)))
+        };
+
         let total_repos = expanded_repos.len();
 
         let engine = Self {
@@ -217,6 +253,7 @@ impl CodeIntelEngine {
             lsp_manager,
             remote_manager: None,
             security_engine,
+            analysis_cache,
             initialization_complete: AtomicBool::new(false),
             indexed_repos_count: AtomicUsize::new(0),
             total_repos_count: AtomicUsize::new(total_repos),
@@ -688,6 +725,62 @@ impl CodeIntelEngine {
     /// Get a reference to the engine options
     pub fn options(&self) -> &EngineOptions {
         &self.options
+    }
+
+    /// Get cache statistics for metrics reporting
+    #[must_use]
+    pub fn cache_stats(&self) -> CacheStats {
+        self.analysis_cache.stats()
+    }
+
+    /// Check if analysis caching is enabled
+    #[must_use]
+    pub fn is_cache_enabled(&self) -> bool {
+        self.options.cache_enabled
+    }
+
+    /// Compute a hash of the repository's file modification times for cache invalidation.
+    /// This hash changes when any file in the repo is modified, added, or deleted.
+    fn compute_repo_hash(&self, repo_name: &str) -> String {
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+
+        // Get repo path for filtering
+        if let Ok(repo_path) = self.get_repo_path(repo_name) {
+            // Collect all file mtimes from this repo
+            let mut file_info: Vec<(PathBuf, SystemTime)> = self
+                .file_cache
+                .iter()
+                .filter(|entry| entry.key().starts_with(&repo_path))
+                .filter_map(|entry| {
+                    let path = entry.key().clone();
+                    std::fs::metadata(&path)
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .map(|mtime| (path, mtime))
+                })
+                .collect();
+
+            // Sort for deterministic ordering
+            file_info.sort_by(|a, b| a.0.cmp(&b.0));
+
+            for (path, mtime) in file_info {
+                hasher.update(path.to_string_lossy().as_bytes());
+                if let Ok(duration) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                    hasher.update(duration.as_secs().to_le_bytes());
+                }
+            }
+        }
+
+        format!("{:x}", hasher.finalize())
+    }
+
+    /// Clear cache entries for a specific repository (e.g., after reindexing)
+    pub fn invalidate_cache_for_repo(&self, repo_name: &str) {
+        let repo_prefix = repo_name.to_string();
+        self.analysis_cache
+            .invalidate_where(|key| key.repo == repo_prefix);
     }
 
     /// Helper to create a helpful error message for missing/invalid repo parameter
@@ -2312,6 +2405,8 @@ impl CodeIntelEngine {
     // === Call Graph Methods ===
 
     /// Get the call graph for a function
+    ///
+    /// Results are cached for performance. Cache is invalidated when files change.
     pub async fn get_call_graph(
         &self,
         repo: &str,
@@ -2321,6 +2416,23 @@ impl CodeIntelEngine {
     ) -> Result<String> {
         // Note: exclude_tests filtering would require call graph regeneration
         // For now, the parameter is accepted but filtering happens at source
+
+        // Build cache key with function as discriminator
+        let cache_key = AnalysisCacheKey::with_discriminator(repo, "call_graph", function);
+
+        // Compute repo hash for invalidation
+        let repo_hash = self.compute_repo_hash(repo);
+
+        // Check cache first
+        if self.options.cache_enabled {
+            if let Some(cached) = self
+                .analysis_cache
+                .get_if_hash_matches(&cache_key, &repo_hash)
+            {
+                return Ok(cached);
+            }
+        }
+
         let call_graph = self.call_graphs.get(repo).ok_or_else(|| {
             anyhow!(
                 "Call graph not available for {}. Enable with --call-graph flag.",
@@ -2334,7 +2446,15 @@ impl CodeIntelEngine {
         } else {
             Some(function)
         };
-        Ok(call_graph.to_markdown(func_option))
+        let result = call_graph.to_markdown(func_option);
+
+        // Cache the result
+        if self.options.cache_enabled {
+            self.analysis_cache
+                .insert_with_hash(cache_key, result.clone(), Some(repo_hash));
+        }
+
+        Ok(result)
     }
 
     /// Get callers of a function
@@ -2622,12 +2742,56 @@ impl CodeIntelEngine {
 
     // === Performance Metrics Methods ===
 
-    /// Get performance metrics report
+    /// Get performance metrics report including cache statistics
     pub async fn get_metrics(&self, format: &str) -> Result<String> {
+        let cache_stats = self.cache_stats();
+
         if format == "json" {
-            Ok(self.metrics.report_json().to_string())
+            let mut json = self.metrics.report_json();
+            // Add cache statistics to JSON
+            json["cache"] = serde_json::json!({
+                "enabled": self.options.cache_enabled,
+                "ttl_seconds": self.options.cache_ttl_seconds,
+                "hits": cache_stats.hits,
+                "misses": cache_stats.misses,
+                "hit_rate_percent": cache_stats.hit_rate(),
+                "evictions": cache_stats.evictions,
+                "expirations": cache_stats.expirations,
+                "size": cache_stats.size,
+                "capacity": cache_stats.capacity,
+            });
+            Ok(json.to_string())
         } else {
-            Ok(self.metrics.report())
+            let mut output = self.metrics.report();
+
+            // Add cache statistics section
+            output.push_str("\n## Analysis Cache\n\n");
+            output.push_str(&format!(
+                "**Status**: {}\n",
+                if self.options.cache_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
+            output.push_str(&format!(
+                "**TTL**: {} seconds\n\n",
+                self.options.cache_ttl_seconds
+            ));
+
+            output.push_str("| Metric | Value |\n");
+            output.push_str("|--------|-------|\n");
+            output.push_str(&format!("| Hits | {} |\n", cache_stats.hits));
+            output.push_str(&format!("| Misses | {} |\n", cache_stats.misses));
+            output.push_str(&format!("| Hit Rate | {:.2}% |\n", cache_stats.hit_rate()));
+            output.push_str(&format!("| Evictions | {} |\n", cache_stats.evictions));
+            output.push_str(&format!("| Expirations | {} |\n", cache_stats.expirations));
+            output.push_str(&format!(
+                "| Size | {} / {} |\n",
+                cache_stats.size, cache_stats.capacity
+            ));
+
+            Ok(output)
         }
     }
 
@@ -3757,7 +3921,7 @@ impl CodeIntelEngine {
         exclude_tests: Option<bool>,
         vuln_types: &[String],
     ) -> Result<String> {
-        use crate::security_rules::is_test_file;
+        use crate::security_rules::{is_security_exemplar_file, is_test_file};
 
         let repo_path = self.get_repo_path(repo_name)?;
         let exclude_tests = exclude_tests.unwrap_or(true);
@@ -3766,6 +3930,7 @@ impl CodeIntelEngine {
         let include_all = vuln_types.contains(&"all".to_string()) || vuln_types.is_empty();
 
         // Get files to analyze - supports both file and directory paths
+        // Always exclude security exemplar files (rule definitions) to avoid false positives
         let files_to_analyze: Vec<std::path::PathBuf> = self
             .file_cache
             .iter()
@@ -3780,6 +3945,7 @@ impl CodeIntelEngine {
                 }
             })
             .filter(|entry| !exclude_tests || !is_test_file(&entry.key().to_string_lossy()))
+            .filter(|entry| !is_security_exemplar_file(&entry.key().to_string_lossy()))
             .filter(|entry| {
                 let path_str = entry.key().to_string_lossy();
                 path_str.ends_with(".py")
@@ -3995,7 +4161,7 @@ impl CodeIntelEngine {
         exclude_tests: Option<bool>,
         source_types: &[String],
     ) -> Result<String> {
-        use crate::security_rules::is_test_file;
+        use crate::security_rules::{is_security_exemplar_file, is_test_file};
 
         let repo_path = self.get_repo_path(repo_name)?;
         let exclude_tests = exclude_tests.unwrap_or(true);
@@ -4004,6 +4170,7 @@ impl CodeIntelEngine {
         let mut all_sources: Vec<crate::taint::TaintSource> = Vec::new();
 
         // Get files to analyze - supports both file and directory paths
+        // Always exclude security exemplar files (rule definitions) to avoid false positives
         let files_to_analyze: Vec<std::path::PathBuf> = self
             .file_cache
             .iter()
@@ -4018,6 +4185,7 @@ impl CodeIntelEngine {
                 }
             })
             .filter(|entry| !exclude_tests || !is_test_file(&entry.key().to_string_lossy()))
+            .filter(|entry| !is_security_exemplar_file(&entry.key().to_string_lossy()))
             .filter(|entry| {
                 let path_str = entry.key().to_string_lossy();
                 path_str.ends_with(".py")
@@ -4110,15 +4278,37 @@ impl CodeIntelEngine {
     }
 
     /// Get a comprehensive security summary for a repository
+    ///
+    /// Results are cached for performance. Cache is invalidated when files change.
     pub async fn get_security_summary(
         &self,
         repo_name: &str,
         exclude_tests: Option<bool>,
     ) -> Result<String> {
-        use crate::security_rules::is_test_file;
+        use crate::security_rules::{is_security_exemplar_file, is_test_file};
 
         let repo_path = self.get_repo_path(repo_name)?;
         let exclude_tests = exclude_tests.unwrap_or(true);
+
+        // Build cache key with discriminator for exclude_tests option
+        let cache_key = AnalysisCacheKey::with_discriminator(
+            repo_name,
+            "security_summary",
+            format!("exclude_tests={}", exclude_tests),
+        );
+
+        // Compute repo hash for invalidation
+        let repo_hash = self.compute_repo_hash(repo_name);
+
+        // Check cache first
+        if self.options.cache_enabled {
+            if let Some(cached) = self
+                .analysis_cache
+                .get_if_hash_matches(&cache_key, &repo_hash)
+            {
+                return Ok(cached);
+            }
+        }
 
         let mut total_files = 0;
         let mut total_sources = 0;
@@ -4132,11 +4322,13 @@ impl CodeIntelEngine {
             std::collections::HashMap::new();
 
         // Analyze all supported files
+        // Always exclude security exemplar files (rule definitions) to avoid false positives
         let files: Vec<(std::path::PathBuf, Arc<String>)> = self
             .file_cache
             .iter()
             .filter(|entry| entry.key().starts_with(&repo_path))
             .filter(|entry| !exclude_tests || !is_test_file(&entry.key().to_string_lossy()))
+            .filter(|entry| !is_security_exemplar_file(&entry.key().to_string_lossy()))
             .filter(|entry| {
                 let path_str = entry.key().to_string_lossy();
                 path_str.ends_with(".py")
@@ -4263,6 +4455,12 @@ impl CodeIntelEngine {
             output.push_str("The codebase appears secure based on the taint analysis.\n");
         }
 
+        // Cache the result for future requests
+        if self.options.cache_enabled {
+            self.analysis_cache
+                .insert_with_hash(cache_key, output.clone(), Some(repo_hash));
+        }
+
         Ok(output)
     }
 
@@ -4274,6 +4472,8 @@ impl CodeIntelEngine {
     ///
     /// Phase C2: Added `max_findings` and `offset` parameters for pagination.
     /// This helps bound output size for large codebases.
+    ///
+    /// Results are cached when no pagination is used (offset=None, max_findings=None).
     #[allow(clippy::too_many_arguments)]
     pub async fn scan_security(
         &self,
@@ -4285,20 +4485,54 @@ impl CodeIntelEngine {
         max_findings: Option<usize>,
         offset: Option<usize>,
     ) -> Result<String> {
-        use crate::security_rules::{is_test_file, SecurityRulesEngine};
+        use crate::security_rules::{is_security_exemplar_file, is_test_file, SecurityRulesEngine};
 
         let repo_path = self.get_repo_path(repo_name)?;
-        let engine = SecurityRulesEngine::new();
         let exclude_tests = exclude_tests.unwrap_or(true);
         let min_severity = parse_severity_threshold(severity_threshold);
 
+        // Only cache when no pagination is used
+        let use_cache = self.options.cache_enabled && offset.is_none() && max_findings.is_none();
+
+        // Build cache key with all parameters that affect output
+        let cache_key = if use_cache {
+            Some(AnalysisCacheKey::with_discriminator(
+                repo_name,
+                "scan_security",
+                format!(
+                    "path={:?},severity={:?},ruleset={:?},exclude_tests={}",
+                    path, severity_threshold, ruleset, exclude_tests
+                ),
+            ))
+        } else {
+            None
+        };
+
+        // Compute repo hash for invalidation
+        let repo_hash = if use_cache {
+            Some(self.compute_repo_hash(repo_name))
+        } else {
+            None
+        };
+
+        // Check cache first (only for non-paginated requests)
+        if let (Some(ref key), Some(ref hash)) = (&cache_key, &repo_hash) {
+            if let Some(cached) = self.analysis_cache.get_if_hash_matches(key, hash) {
+                return Ok(cached);
+            }
+        }
+
+        let engine = SecurityRulesEngine::new();
+
         // Collect files to scan with combined filters
+        // Always exclude security exemplar files (rule definitions) to avoid false positives
         let files: Vec<_> = self
             .file_cache
             .iter()
             .filter(|e| e.key().starts_with(&repo_path))
             .filter(|e| path.is_none_or(|p| e.key().to_string_lossy().contains(p)))
             .filter(|e| !exclude_tests || !is_test_file(&e.key().to_string_lossy()))
+            .filter(|e| !is_security_exemplar_file(&e.key().to_string_lossy()))
             .filter(|e| is_security_scannable(&e.key().to_string_lossy()))
             .map(|e| (e.key().clone(), e.value().clone()))
             .collect();
@@ -4387,6 +4621,12 @@ impl CodeIntelEngine {
             }
         }
 
+        // Cache the result (only for non-paginated requests)
+        if let (Some(key), Some(hash)) = (cache_key, repo_hash) {
+            self.analysis_cache
+                .insert_with_hash(key, output.clone(), Some(hash));
+        }
+
         Ok(output)
     }
 
@@ -4397,18 +4637,20 @@ impl CodeIntelEngine {
         path: Option<&str>,
         exclude_tests: Option<bool>,
     ) -> Result<String> {
-        use crate::security_rules::{is_test_file, SecurityRulesEngine};
+        use crate::security_rules::{is_security_exemplar_file, is_test_file, SecurityRulesEngine};
 
         let repo_path = self.get_repo_path(repo_name)?;
         let engine = SecurityRulesEngine::new();
         let exclude_tests = exclude_tests.unwrap_or(true);
 
+        // Always exclude security exemplar files (rule definitions) to avoid false positives
         let files: Vec<_> = self
             .file_cache
             .iter()
             .filter(|e| e.key().starts_with(&repo_path))
             .filter(|e| path.is_none_or(|p| e.key().to_string_lossy().contains(p)))
             .filter(|e| !exclude_tests || !is_test_file(&e.key().to_string_lossy()))
+            .filter(|e| !is_security_exemplar_file(&e.key().to_string_lossy()))
             .filter(|e| is_security_scannable(&e.key().to_string_lossy()))
             .map(|e| (e.key().clone(), e.value().clone()))
             .collect();
@@ -4447,18 +4689,20 @@ impl CodeIntelEngine {
         path: Option<&str>,
         exclude_tests: Option<bool>,
     ) -> Result<String> {
-        use crate::security_rules::{is_test_file, SecurityRulesEngine};
+        use crate::security_rules::{is_security_exemplar_file, is_test_file, SecurityRulesEngine};
 
         let repo_path = self.get_repo_path(repo_name)?;
         let engine = SecurityRulesEngine::new();
         let exclude_tests = exclude_tests.unwrap_or(true);
 
+        // Always exclude security exemplar files (rule definitions) to avoid false positives
         let files: Vec<_> = self
             .file_cache
             .iter()
             .filter(|e| e.key().starts_with(&repo_path))
             .filter(|e| path.is_none_or(|p| e.key().to_string_lossy().contains(p)))
             .filter(|e| !exclude_tests || !is_test_file(&e.key().to_string_lossy()))
+            .filter(|e| !is_security_exemplar_file(&e.key().to_string_lossy()))
             .filter(|e| is_security_scannable(&e.key().to_string_lossy()))
             .map(|e| (e.key().clone(), e.value().clone()))
             .collect();

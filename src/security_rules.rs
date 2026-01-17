@@ -43,6 +43,12 @@ pub fn is_test_file(path: &str) -> bool {
         || path_lower.contains("/mocks/")
         || path_lower.contains("/__mocks__/")
         || path_lower.contains("/spec/")
+        // Also catch test-fixtures at start of path or after a slash
+        || path_lower.starts_with("test-fixtures/")
+        || path_lower.contains("/test-fixtures/")
+        // Security test sample directories
+        || path_lower.contains("/security/vulnerable")
+        || path_lower.contains("/vulnerable/")
     {
         return true;
     }
@@ -84,6 +90,64 @@ pub fn is_test_file(path: &str) -> bool {
 
     // Java test files
     if file_name.ends_with("test.java") && file_name != "test.java" {
+        return true;
+    }
+
+    // Files explicitly named as vulnerable samples
+    if file_name.starts_with("vulnerable.") || file_name.starts_with("insecure.") {
+        return true;
+    }
+
+    false
+}
+
+/// Check if a file is a security rule definition or exemplar file.
+///
+/// These files intentionally contain security patterns (like "md5", "password",
+/// regex patterns for detecting vulnerabilities) and should be excluded from
+/// scanning to avoid false positives.
+///
+/// # Examples
+/// ```
+/// use narsil_mcp::security_rules::is_security_exemplar_file;
+/// assert!(is_security_exemplar_file("src/security_rules.rs"));
+/// assert!(is_security_exemplar_file("rules/owasp-top10.yaml"));
+/// assert!(!is_security_exemplar_file("src/main.rs"));
+/// ```
+pub fn is_security_exemplar_file(path: &str) -> bool {
+    let path_lower = path.to_lowercase();
+
+    // File name patterns for security rule definitions
+    let file_name = std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    // Security rule definition files
+    if file_name == "security_rules.rs"
+        || file_name == "security_config.rs"
+        || file_name == "taint.rs"
+    {
+        return true;
+    }
+
+    // YAML/TOML rule definition files in rules/ directory
+    if path_lower.contains("/rules/")
+        && (file_name.ends_with(".yaml")
+            || file_name.ends_with(".yml")
+            || file_name.ends_with(".toml"))
+    {
+        return true;
+    }
+
+    // Common security rule file patterns
+    if file_name.contains("security_rule")
+        || file_name.contains("vuln_pattern")
+        || file_name.contains("owasp")
+        || file_name.contains("cwe-")
+        || file_name.contains("cwe_")
+    {
         return true;
     }
 
@@ -2264,6 +2328,45 @@ token = secrets.token_hex(32)
         assert!(!is_test_file("src/testing_utils.rs")); // Contains "testing" but not test file pattern
         assert!(!is_test_file("app/contest.js")); // Contains "test" substring
         assert!(!is_test_file("src/latest_results.py")); // Contains "test" substring
+    }
+
+    #[test]
+    fn test_is_test_file_test_fixtures() {
+        // Test new test-fixtures patterns
+        assert!(is_test_file("test-fixtures/security/vulnerable.php"));
+        assert!(is_test_file("test-fixtures/sample.rs"));
+        assert!(is_test_file("/path/to/test-fixtures/vulnerable.go"));
+        assert!(is_test_file("project/test-fixtures/data.json"));
+        // Security test sample directories
+        assert!(is_test_file("src/security/vulnerable.ts"));
+        assert!(is_test_file("project/vulnerable/sample.py"));
+        // Files named vulnerable.*
+        assert!(is_test_file("vulnerable.php"));
+        assert!(is_test_file("src/vulnerable.java"));
+        assert!(is_test_file("insecure.go"));
+        assert!(is_test_file("path/to/insecure.rb"));
+    }
+
+    #[test]
+    fn test_is_security_exemplar_file() {
+        // Security rule definition files
+        assert!(is_security_exemplar_file("src/security_rules.rs"));
+        assert!(is_security_exemplar_file("/path/to/security_rules.rs"));
+        assert!(is_security_exemplar_file("src/security_config.rs"));
+        assert!(is_security_exemplar_file("src/taint.rs"));
+        // Rules directory YAML files
+        assert!(is_security_exemplar_file("rules/owasp-top10.yaml"));
+        assert!(is_security_exemplar_file("rules/cwe-top25.yaml"));
+        assert!(is_security_exemplar_file("project/rules/secrets.yml"));
+        // Files with security rule patterns in name
+        assert!(is_security_exemplar_file("security_rules_v2.rs"));
+        assert!(is_security_exemplar_file("owasp_checker.py"));
+        assert!(is_security_exemplar_file("cwe-89-detection.rs"));
+        // Should NOT match regular files
+        assert!(!is_security_exemplar_file("src/main.rs"));
+        assert!(!is_security_exemplar_file("src/index.js"));
+        assert!(!is_security_exemplar_file("src/security.rs")); // security but not security_rules
+        assert!(!is_security_exemplar_file("rules.yaml")); // yaml but not in rules/ dir
     }
 
     #[test]

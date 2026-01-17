@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "narsil-mcp": {
+      "command": "narsil-mcp",
+      "args": [
+        "--repos", ".",
+        "--git",
+        "--call-graph",
+        "--persist",
+        "--watch"
+      ]
+    }
+  }
+}

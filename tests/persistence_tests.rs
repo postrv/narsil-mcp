@@ -59,6 +59,7 @@ async fn test_persistence_index_creation() -> Result<()> {
         streaming_config: StreamingConfig::default(),
         lsp_config: LspConfig::default(),
         neural_config: NeuralConfig::default(),
+        ..Default::default()
     };
 
     let engine = CodeIntelEngine::with_options(
@@ -105,6 +106,7 @@ async fn test_persistence_index_loading() -> Result<()> {
         streaming_config: StreamingConfig::default(),
         lsp_config: LspConfig::default(),
         neural_config: NeuralConfig::default(),
+        ..Default::default()
     };
 
     // First indexing - creates the persisted index
@@ -189,6 +191,7 @@ async fn test_persistence_stale_file_detection() -> Result<()> {
         streaming_config: StreamingConfig::default(),
         lsp_config: LspConfig::default(),
         neural_config: NeuralConfig::default(),
+        ..Default::default()
     };
 
     // First indexing
@@ -271,6 +274,7 @@ async fn test_persistence_disabled() -> Result<()> {
         streaming_config: StreamingConfig::default(),
         lsp_config: LspConfig::default(),
         neural_config: NeuralConfig::default(),
+        ..Default::default()
     };
 
     let engine = CodeIntelEngine::with_options(
@@ -315,6 +319,7 @@ async fn test_empty_persisted_index() -> Result<()> {
         streaming_config: StreamingConfig::default(),
         lsp_config: LspConfig::default(),
         neural_config: NeuralConfig::default(),
+        ..Default::default()
     };
 
     // First time - empty repo
@@ -383,6 +388,7 @@ async fn test_async_watcher_creation() -> Result<()> {
         streaming_config: StreamingConfig::default(),
         lsp_config: LspConfig::default(),
         neural_config: NeuralConfig::default(),
+        ..Default::default()
     };
 
     let engine = CodeIntelEngine::with_options(
@@ -417,6 +423,7 @@ async fn test_async_watcher_disabled_when_watch_disabled() -> Result<()> {
         streaming_config: StreamingConfig::default(),
         lsp_config: LspConfig::default(),
         neural_config: NeuralConfig::default(),
+        ..Default::default()
     };
 
     let engine = CodeIntelEngine::with_options(
@@ -451,6 +458,7 @@ async fn test_async_watcher_file_change_detection() -> Result<()> {
         streaming_config: StreamingConfig::default(),
         lsp_config: LspConfig::default(),
         neural_config: NeuralConfig::default(),
+        ..Default::default()
     };
 
     let engine = CodeIntelEngine::with_options(
@@ -501,6 +509,7 @@ async fn test_async_watcher_debouncing() -> Result<()> {
         streaming_config: StreamingConfig::default(),
         lsp_config: LspConfig::default(),
         neural_config: NeuralConfig::default(),
+        ..Default::default()
     };
 
     let engine = CodeIntelEngine::with_options(
@@ -563,6 +572,7 @@ async fn test_async_watcher_filters_non_source_files() -> Result<()> {
         streaming_config: StreamingConfig::default(),
         lsp_config: LspConfig::default(),
         neural_config: NeuralConfig::default(),
+        ..Default::default()
     };
 
     let engine = CodeIntelEngine::with_options(

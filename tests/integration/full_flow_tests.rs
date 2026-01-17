@@ -63,6 +63,7 @@ async fn test_backwards_compatibility_cli_only() -> Result<()> {
         streaming_config: Default::default(),
         lsp_config: Default::default(),
         neural_config: Default::default(),
+        ..Default::default()
     };
 
     let _engine = create_test_engine(vec![repo_path], options.clone()).await?;
@@ -134,6 +135,7 @@ async fn test_config_priority_cli_flags_override() -> Result<()> {
         streaming_config: Default::default(),
         lsp_config: Default::default(),
         neural_config: Default::default(),
+        ..Default::default()
     };
 
     let _engine = create_test_engine(vec![repo_path], options.clone()).await?;
@@ -475,6 +477,7 @@ async fn test_feature_flag_validation() -> Result<()> {
         streaming_config: Default::default(),
         lsp_config: Default::default(),
         neural_config: Default::default(),
+        ..Default::default()
     };
 
     let _engine = create_test_engine(vec![repo_path], options.clone()).await?;
@@ -612,6 +615,7 @@ async fn test_required_flags_validation() -> Result<()> {
                 streaming_config: Default::default(),
                 lsp_config: Default::default(),
                 neural_config: Default::default(),
+                ..Default::default()
             };
 
             let config = ToolConfig::default();
@@ -634,6 +638,7 @@ async fn test_required_flags_validation() -> Result<()> {
                 streaming_config: Default::default(),
                 lsp_config: Default::default(),
                 neural_config: Default::default(),
+                ..Default::default()
             };
 
             let config = ToolConfig::default();

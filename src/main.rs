@@ -4,6 +4,7 @@
 // for integration use but not wired through MCP tools.
 #![allow(dead_code)]
 
+mod cache;
 mod callgraph;
 mod cfg;
 mod chunking;
@@ -139,6 +140,14 @@ struct ServerArgs {
     /// Overrides the preset from config file
     #[arg(long)]
     preset: Option<String>,
+
+    /// Disable analysis caching (caching is enabled by default)
+    #[arg(long)]
+    no_cache: bool,
+
+    /// Cache TTL in seconds (default: 1800 = 30 minutes)
+    #[arg(long, default_value = "1800")]
+    cache_ttl: u64,
 }
 
 #[tokio::main]
@@ -191,8 +200,8 @@ async fn main() -> Result<()> {
 
     info!("Repos to index: {:?}", repos);
     info!(
-        "Features: call_graph={}, git={}, watch={}, persist={}, lsp={}, streaming={}, remote={}, neural={}",
-        server_args.call_graph, server_args.git, server_args.watch, server_args.persist, server_args.lsp, server_args.streaming, server_args.remote, server_args.neural
+        "Features: call_graph={}, git={}, watch={}, persist={}, lsp={}, streaming={}, remote={}, neural={}, cache={}",
+        server_args.call_graph, server_args.git, server_args.watch, server_args.persist, server_args.lsp, server_args.streaming, server_args.remote, server_args.neural, !server_args.no_cache
     );
 
     // Build LSP config
@@ -253,6 +262,8 @@ async fn main() -> Result<()> {
         streaming_config,
         lsp_config,
         neural_config,
+        cache_enabled: !server_args.no_cache,
+        cache_ttl_seconds: server_args.cache_ttl,
     };
 
     // NOTE: Engine creation is now fast and returns immediately.
