@@ -2895,334 +2895,722 @@ fn extract_function_name(node: Node, source: &[u8]) -> Option<String> {
     None
 }
 
+// ============================================================================
+// Static Type Parsing Functions for Go, Java, and Rust
+// ============================================================================
+
+/// Parse a Rust type string into a Type.
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(parse_rust_type("i32"), Some(Type::Int));
+/// assert_eq!(parse_rust_type("Vec<String>"), Some(Type::List(Box::new(Type::String))));
+/// ```
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn parse_rust_type(type_str: &str) -> Option<Type> {
+    let s = type_str.trim();
+
+    // Handle references (strip &, &mut, &'lifetime)
+    let s = if s.starts_with('&') {
+        let s = s.trim_start_matches('&');
+        // Strip mut
+        let s = s.strip_prefix("mut ").unwrap_or(s);
+        // Strip lifetime like 'a or 'static
+        let s = if s.starts_with('\'') {
+            if let Some(space_pos) = s.find(' ') {
+                &s[space_pos + 1..]
+            } else {
+                s
+            }
+        } else {
+            s
+        };
+        s.trim()
+    } else {
+        s
+    };
+
+    // Primitive types
+    match s {
+        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64" | "u128"
+        | "usize" => return Some(Type::Int),
+        "f32" | "f64" => return Some(Type::Float),
+        "bool" => return Some(Type::Bool),
+        "str" | "String" => return Some(Type::String),
+        "()" => return Some(Type::None),
+        "!" => return Some(Type::Never),
+        _ => {}
+    }
+
+    // Generic types: Vec<T>, Option<T>, Result<T, E>, HashMap<K, V>, etc.
+    if let Some(open) = s.find('<') {
+        let name = &s[..open];
+        let close = s.rfind('>')?;
+        let inner = &s[open + 1..close];
+
+        // Parse type arguments
+        let type_args = parse_rust_type_args(inner);
+
+        match name {
+            "Vec" | "VecDeque" | "LinkedList" | "HashSet" | "BTreeSet" => {
+                let inner_type = type_args.first().cloned().unwrap_or(Type::Unknown);
+                return Some(Type::List(Box::new(inner_type)));
+            }
+            "Option" => {
+                let inner_type = type_args.first().cloned().unwrap_or(Type::Unknown);
+                return Some(Type::Optional(Box::new(inner_type)));
+            }
+            "HashMap" | "BTreeMap" => {
+                if type_args.len() >= 2 {
+                    return Some(Type::Dict(
+                        Box::new(type_args[0].clone()),
+                        Box::new(type_args[1].clone()),
+                    ));
+                }
+            }
+            _ => {
+                return Some(Type::Instance {
+                    class_name: name.to_string(),
+                    type_args,
+                });
+            }
+        }
+    }
+
+    // Unknown/custom type
+    Some(Type::Instance {
+        class_name: s.to_string(),
+        type_args: vec![],
+    })
+}
+
+/// Parse comma-separated Rust type arguments (handling nested generics).
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn parse_rust_type_args(args_str: &str) -> Vec<Type> {
+    let mut result = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0;
+
+    for ch in args_str.chars() {
+        match ch {
+            '<' => {
+                depth += 1;
+                current.push(ch);
+            }
+            '>' => {
+                depth -= 1;
+                current.push(ch);
+            }
+            ',' if depth == 0 => {
+                if let Some(ty) = parse_rust_type(current.trim()) {
+                    result.push(ty);
+                }
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if !current.trim().is_empty() {
+        if let Some(ty) = parse_rust_type(current.trim()) {
+            result.push(ty);
+        }
+    }
+
+    result
+}
+
+/// Extract trait bounds from a Rust type constraint string.
+///
+/// # Examples
+///
+/// ```ignore
+/// let bounds = extract_rust_trait_bounds("T: Clone + Debug");
+/// assert!(bounds.contains(&"Clone".to_string()));
+/// ```
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn extract_rust_trait_bounds(bounds_str: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let s = bounds_str.trim();
+
+    // Handle "where T: Clone" format
+    let s = s.strip_prefix("where").map(|rest| rest.trim()).unwrap_or(s);
+
+    // Find the part after the colon
+    if let Some(colon_pos) = s.find(':') {
+        let bounds_part = &s[colon_pos + 1..];
+        // Split by '+' for multiple bounds
+        for bound in bounds_part.split('+') {
+            let bound = bound.trim();
+            if !bound.is_empty() {
+                // Extract just the trait name (without generics)
+                let trait_name = if let Some(lt_pos) = bound.find('<') {
+                    &bound[..lt_pos]
+                } else {
+                    bound
+                };
+                result.push(trait_name.trim().to_string());
+            }
+        }
+    }
+
+    result
+}
+
+/// Represents a Rust type parameter with its bounds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RustTypeParam {
+    /// The type parameter name (e.g., "T")
+    pub name: String,
+    /// Trait bounds on the type parameter (e.g., ["Clone", "Debug"])
+    pub bounds: Vec<String>,
+}
+
+/// Extract type parameters and their bounds from a Rust generic declaration.
+///
+/// # Examples
+///
+/// ```ignore
+/// let params = extract_rust_type_params("<T: Clone, U: Debug>");
+/// assert_eq!(params[0].name, "T");
+/// assert!(params[0].bounds.contains(&"Clone".to_string()));
+/// ```
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn extract_rust_type_params(generic_str: &str) -> Vec<RustTypeParam> {
+    let mut result = Vec::new();
+    let s = generic_str.trim();
+
+    // Strip < and > if present
+    let s = s.strip_prefix('<').unwrap_or(s);
+    let s = s.strip_suffix('>').unwrap_or(s);
+
+    // Split by comma, but respect nested angle brackets
+    let mut depth = 0;
+    let mut current = String::new();
+
+    for ch in s.chars() {
+        match ch {
+            '<' => {
+                depth += 1;
+                current.push(ch);
+            }
+            '>' => {
+                depth -= 1;
+                current.push(ch);
+            }
+            ',' if depth == 0 => {
+                if !current.trim().is_empty() {
+                    if let Some(param) = parse_single_rust_type_param(current.trim()) {
+                        result.push(param);
+                    }
+                }
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if !current.trim().is_empty() {
+        if let Some(param) = parse_single_rust_type_param(current.trim()) {
+            result.push(param);
+        }
+    }
+
+    result
+}
+
+fn parse_single_rust_type_param(param_str: &str) -> Option<RustTypeParam> {
+    let s = param_str.trim();
+    if s.is_empty() {
+        return None;
+    }
+
+    // Check for "T: Bound1 + Bound2" format
+    if let Some(colon_pos) = s.find(':') {
+        let name = s[..colon_pos].trim().to_string();
+        let bounds = extract_rust_trait_bounds(s);
+        Some(RustTypeParam { name, bounds })
+    } else {
+        // No bounds, just a type parameter name
+        Some(RustTypeParam {
+            name: s.to_string(),
+            bounds: vec![],
+        })
+    }
+}
+
+/// Parse a Go type string into a Type.
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(parse_go_type("int"), Some(Type::Int));
+/// assert_eq!(parse_go_type("[]string"), Some(Type::List(Box::new(Type::String))));
+/// ```
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn parse_go_type(type_str: &str) -> Option<Type> {
+    let s = type_str.trim();
+
+    // Primitive types
+    match s {
+        "int" | "int8" | "int16" | "int32" | "int64" | "uint" | "uint8" | "uint16" | "uint32"
+        | "uint64" | "uintptr" | "byte" | "rune" => return Some(Type::Int),
+        "float32" | "float64" => return Some(Type::Float),
+        "bool" => return Some(Type::Bool),
+        "string" => return Some(Type::String),
+        "error" => {
+            return Some(Type::Instance {
+                class_name: "error".to_string(),
+                type_args: vec![],
+            })
+        }
+        _ => {}
+    }
+
+    // Slice: []T
+    if let Some(inner) = s.strip_prefix("[]") {
+        let inner_type = parse_go_type(inner).unwrap_or(Type::Unknown);
+        return Some(Type::List(Box::new(inner_type)));
+    }
+
+    // Array: [N]T (treat as list)
+    if s.starts_with('[') {
+        if let Some(close_bracket) = s.find(']') {
+            let inner = &s[close_bracket + 1..];
+            let inner_type = parse_go_type(inner).unwrap_or(Type::Unknown);
+            return Some(Type::List(Box::new(inner_type)));
+        }
+    }
+
+    // Map: map[K]V
+    if let Some(rest) = s.strip_prefix("map[") {
+        if let Some(bracket_close) = rest.find(']') {
+            let key_type = parse_go_type(&rest[..bracket_close]).unwrap_or(Type::Unknown);
+            let value_type = parse_go_type(&rest[bracket_close + 1..]).unwrap_or(Type::Unknown);
+            return Some(Type::Dict(Box::new(key_type), Box::new(value_type)));
+        }
+    }
+
+    // Channel: chan T, <-chan T, chan<- T
+    if s.starts_with("chan ") || s.starts_with("<-chan ") || s.starts_with("chan<-") {
+        return Some(Type::Instance {
+            class_name: "chan".to_string(),
+            type_args: vec![Type::Unknown],
+        });
+    }
+
+    // Pointer: *T (represent as Optional)
+    if let Some(inner) = s.strip_prefix('*') {
+        let inner_type = parse_go_type(inner).unwrap_or(Type::Unknown);
+        return Some(Type::Optional(Box::new(inner_type)));
+    }
+
+    // Function type: func(params) returns
+    if s.starts_with("func") {
+        return Some(Type::Function {
+            params: vec![Type::Unknown],
+            ret: Box::new(Type::Unknown),
+        });
+    }
+
+    // Interface or struct type
+    Some(Type::Instance {
+        class_name: s.to_string(),
+        type_args: vec![],
+    })
+}
+
+/// Parse a Go type assertion expression like "x.(Type)".
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(parse_go_type_assertion("x.(string)"), Some(Type::String));
+/// ```
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn parse_go_type_assertion(expr: &str) -> Option<Type> {
+    let s = expr.trim();
+    // Find ".(" and extract the type inside
+    if let Some(dot_paren) = s.find(".(") {
+        if s.ends_with(')') {
+            let type_str = &s[dot_paren + 2..s.len() - 1];
+            return parse_go_type(type_str);
+        }
+    }
+    None
+}
+
+/// Represents a Go interface method signature.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GoInterfaceMethod {
+    /// Method name
+    pub name: String,
+    /// Parameter types
+    pub params: Vec<Type>,
+    /// Return types (Go supports multiple returns)
+    pub returns: Vec<Type>,
+}
+
+/// Represents a Go interface definition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GoInterface {
+    /// Interface name
+    pub name: String,
+    /// Methods in the interface
+    pub methods: Vec<GoInterfaceMethod>,
+    /// Embedded interfaces
+    pub embedded: Vec<String>,
+}
+
+/// Check if a type satisfies a Go interface (structural typing).
+///
+/// # Arguments
+///
+/// * `type_methods` - Methods available on the type
+/// * `interface_def` - The interface definition to check against
+///
+/// # Returns
+///
+/// `true` if the type has all methods required by the interface.
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn check_go_interface_satisfaction(
+    type_methods: &[GoInterfaceMethod],
+    interface_def: &GoInterface,
+) -> bool {
+    for interface_method in &interface_def.methods {
+        let has_method = type_methods.iter().any(|m| {
+            m.name == interface_method.name
+                && m.params.len() == interface_method.params.len()
+                && m.returns.len() == interface_method.returns.len()
+        });
+        if !has_method {
+            return false;
+        }
+    }
+    true
+}
+
+/// Parse a Java type string into a Type.
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(parse_java_type("int"), Some(Type::Int));
+/// assert_eq!(parse_java_type("List<String>"), Some(Type::Instance { ... }));
+/// ```
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn parse_java_type(type_str: &str) -> Option<Type> {
+    let s = type_str.trim();
+
+    // Primitive types
+    match s {
+        "int" | "long" | "short" | "byte" | "Integer" | "Long" | "Short" | "Byte" => {
+            return Some(Type::Int)
+        }
+        "float" | "double" | "Float" | "Double" => return Some(Type::Float),
+        "boolean" | "Boolean" => return Some(Type::Bool),
+        "String" | "CharSequence" => return Some(Type::String),
+        "void" | "Void" => return Some(Type::None),
+        "char" | "Character" => {
+            return Some(Type::Instance {
+                class_name: "char".to_string(),
+                type_args: vec![],
+            })
+        }
+        _ => {}
+    }
+
+    // Generic types
+    if let Some(open) = s.find('<') {
+        let name = &s[..open];
+        let close = s.rfind('>')?;
+        let inner = &s[open + 1..close];
+
+        // Parse type arguments
+        let type_args = parse_java_type_args(inner);
+
+        match name {
+            "Optional" => {
+                let inner_type = type_args.first().cloned().unwrap_or(Type::Unknown);
+                return Some(Type::Optional(Box::new(inner_type)));
+            }
+            "List" | "ArrayList" | "LinkedList" | "Set" | "HashSet" | "TreeSet" => {
+                return Some(Type::Instance {
+                    class_name: name.to_string(),
+                    type_args,
+                });
+            }
+            "Map" | "HashMap" | "TreeMap" | "LinkedHashMap" => {
+                return Some(Type::Instance {
+                    class_name: name.to_string(),
+                    type_args,
+                });
+            }
+            _ => {
+                return Some(Type::Instance {
+                    class_name: name.to_string(),
+                    type_args,
+                });
+            }
+        }
+    }
+
+    // Array types
+    if let Some(inner) = s.strip_suffix("[]") {
+        let inner_type = parse_java_type(inner).unwrap_or(Type::Unknown);
+        return Some(Type::List(Box::new(inner_type)));
+    }
+
+    // Wildcard types
+    if s == "?" {
+        return Some(Type::Unknown);
+    }
+
+    // Bounded wildcards: ? extends T, ? super T
+    if let Some(bound) = s.strip_prefix("? extends ") {
+        return parse_java_type(bound);
+    }
+    if let Some(bound) = s.strip_prefix("? super ") {
+        return parse_java_type(bound);
+    }
+
+    // Regular class type
+    Some(Type::Instance {
+        class_name: s.to_string(),
+        type_args: vec![],
+    })
+}
+
+/// Parse comma-separated Java type arguments.
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn parse_java_type_args(args_str: &str) -> Vec<Type> {
+    let mut result = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0;
+
+    for ch in args_str.chars() {
+        match ch {
+            '<' => {
+                depth += 1;
+                current.push(ch);
+            }
+            '>' => {
+                depth -= 1;
+                current.push(ch);
+            }
+            ',' if depth == 0 => {
+                if let Some(ty) = parse_java_type(current.trim()) {
+                    result.push(ty);
+                }
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if !current.trim().is_empty() {
+        if let Some(ty) = parse_java_type(current.trim()) {
+            result.push(ty);
+        }
+    }
+
+    result
+}
+
+/// Java annotation type
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JavaAnnotation {
+    /// Annotation name (e.g., "Nullable", "NonNull", "Override")
+    pub name: String,
+    /// Annotation parameters (key-value pairs)
+    pub params: HashMap<String, String>,
+}
+
+/// Parse a Java type with annotations like @Nullable.
+///
+/// Returns a tuple of (parsed_type, annotations).
+///
+/// # Examples
+///
+/// ```ignore
+/// let (ty, annots) = parse_java_annotated_type("@Nullable String");
+/// assert_eq!(ty, Some(Type::Optional(Box::new(Type::String))));
+/// assert_eq!(annots.len(), 1);
+/// ```
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn parse_java_annotated_type(type_str: &str) -> (Option<Type>, Vec<JavaAnnotation>) {
+    let s = type_str.trim();
+    let mut annotations = Vec::new();
+    let mut remaining = s;
+
+    // Extract annotations
+    while remaining.starts_with('@') {
+        if let Some(space_pos) = remaining.find(|c: char| c.is_whitespace()) {
+            let annotation_str = &remaining[1..space_pos];
+            let annotation = JavaAnnotation {
+                name: annotation_str.to_string(),
+                params: HashMap::new(),
+            };
+            annotations.push(annotation);
+            remaining = remaining[space_pos..].trim();
+        } else {
+            break;
+        }
+    }
+
+    // Check for @Nullable annotation to convert to Optional
+    let is_nullable = annotations.iter().any(|a| a.name == "Nullable");
+
+    let base_type = parse_java_type(remaining);
+
+    if is_nullable {
+        if let Some(ty) = base_type {
+            return (Some(Type::Optional(Box::new(ty))), annotations);
+        }
+    }
+
+    (base_type, annotations)
+}
+
+/// Represents a Java generic type parameter with bounds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaTypeParam {
+    /// The type parameter name (e.g., "T")
+    pub name: String,
+    /// Upper bounds (e.g., "extends Comparable<T>")
+    pub upper_bounds: Vec<String>,
+}
+
+/// Extract type parameters from a Java generic declaration.
+///
+/// # Examples
+///
+/// ```ignore
+/// let params = extract_java_type_params("<T extends Comparable<T>, U>");
+/// assert_eq!(params[0].name, "T");
+/// assert!(params[0].upper_bounds.contains(&"Comparable<T>".to_string()));
+/// ```
+///
+/// # Panics
+///
+/// This function does not panic.
+#[must_use]
+pub fn extract_java_type_params(generic_str: &str) -> Vec<JavaTypeParam> {
+    let mut result = Vec::new();
+    let s = generic_str.trim();
+
+    // Strip < and > if present
+    let s = s.strip_prefix('<').unwrap_or(s);
+    let s = s.strip_suffix('>').unwrap_or(s);
+
+    // Split by comma, but respect nested angle brackets
+    let mut depth = 0;
+    let mut current = String::new();
+
+    for ch in s.chars() {
+        match ch {
+            '<' => {
+                depth += 1;
+                current.push(ch);
+            }
+            '>' => {
+                depth -= 1;
+                current.push(ch);
+            }
+            ',' if depth == 0 => {
+                if !current.trim().is_empty() {
+                    if let Some(param) = parse_single_java_type_param(current.trim()) {
+                        result.push(param);
+                    }
+                }
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if !current.trim().is_empty() {
+        if let Some(param) = parse_single_java_type_param(current.trim()) {
+            result.push(param);
+        }
+    }
+
+    result
+}
+
+fn parse_single_java_type_param(param_str: &str) -> Option<JavaTypeParam> {
+    let s = param_str.trim();
+    if s.is_empty() {
+        return None;
+    }
+
+    // Check for "T extends Bound1 & Bound2" format
+    if let Some(extends_pos) = s.find(" extends ") {
+        let name = s[..extends_pos].trim().to_string();
+        let bounds_str = &s[extends_pos + 9..];
+        let upper_bounds: Vec<String> = bounds_str
+            .split('&')
+            .map(|b| b.trim().to_string())
+            .collect();
+        Some(JavaTypeParam { name, upper_bounds })
+    } else {
+        // No bounds, just a type parameter name
+        Some(JavaTypeParam {
+            name: s.to_string(),
+            upper_bounds: vec![],
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // ==================== Test Helper Functions ====================
-
-    /// Parse a Rust type string into a Type
-    fn parse_rust_type(type_str: &str) -> Option<Type> {
-        let s = type_str.trim();
-
-        // Handle references (strip &, &mut, &'lifetime)
-        let s = if s.starts_with('&') {
-            let s = s.trim_start_matches('&');
-            // Strip mut
-            let s = s.strip_prefix("mut ").unwrap_or(s);
-            // Strip lifetime like 'a or 'static
-            let s = if s.starts_with('\'') {
-                if let Some(space_pos) = s.find(' ') {
-                    &s[space_pos + 1..]
-                } else {
-                    s
-                }
-            } else {
-                s
-            };
-            s.trim()
-        } else {
-            s
-        };
-
-        // Primitive types
-        match s {
-            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
-            | "u128" | "usize" => return Some(Type::Int),
-            "f32" | "f64" => return Some(Type::Float),
-            "bool" => return Some(Type::Bool),
-            "str" | "String" => return Some(Type::String),
-            "()" => return Some(Type::None),
-            "!" => return Some(Type::Never),
-            _ => {}
-        }
-
-        // Generic types: Vec<T>, Option<T>, Result<T, E>, HashMap<K, V>, etc.
-        if let Some(open) = s.find('<') {
-            let name = &s[..open];
-            let close = s.rfind('>')?;
-            let inner = &s[open + 1..close];
-
-            // Parse type arguments
-            let type_args = parse_type_args(inner);
-
-            match name {
-                "Vec" | "VecDeque" | "LinkedList" | "HashSet" | "BTreeSet" => {
-                    let inner_type = type_args.first().cloned().unwrap_or(Type::Unknown);
-                    return Some(Type::List(Box::new(inner_type)));
-                }
-                "Option" => {
-                    let inner_type = type_args.first().cloned().unwrap_or(Type::Unknown);
-                    return Some(Type::Optional(Box::new(inner_type)));
-                }
-                "HashMap" | "BTreeMap" => {
-                    if type_args.len() >= 2 {
-                        return Some(Type::Dict(
-                            Box::new(type_args[0].clone()),
-                            Box::new(type_args[1].clone()),
-                        ));
-                    }
-                }
-                _ => {
-                    return Some(Type::Instance {
-                        class_name: name.to_string(),
-                        type_args,
-                    });
-                }
-            }
-        }
-
-        // Unknown/custom type
-        Some(Type::Instance {
-            class_name: s.to_string(),
-            type_args: vec![],
-        })
-    }
-
-    /// Parse comma-separated type arguments (handling nested generics)
-    fn parse_type_args(args_str: &str) -> Vec<Type> {
-        let mut result = Vec::new();
-        let mut current = String::new();
-        let mut depth = 0;
-
-        for ch in args_str.chars() {
-            match ch {
-                '<' => {
-                    depth += 1;
-                    current.push(ch);
-                }
-                '>' => {
-                    depth -= 1;
-                    current.push(ch);
-                }
-                ',' if depth == 0 => {
-                    if let Some(ty) = parse_rust_type(current.trim()) {
-                        result.push(ty);
-                    }
-                    current.clear();
-                }
-                _ => current.push(ch),
-            }
-        }
-
-        if !current.trim().is_empty() {
-            if let Some(ty) = parse_rust_type(current.trim()) {
-                result.push(ty);
-            }
-        }
-
-        result
-    }
-
-    /// Extract trait bounds from a Rust type constraint string
-    fn extract_rust_trait_bounds(bounds_str: &str) -> Vec<String> {
-        let mut result = Vec::new();
-        let s = bounds_str.trim();
-
-        // Handle "where T: Clone" format
-        let s = s.strip_prefix("where").map(|rest| rest.trim()).unwrap_or(s);
-
-        // Find the part after the colon
-        if let Some(colon_pos) = s.find(':') {
-            let bounds_part = &s[colon_pos + 1..];
-            // Split by '+' for multiple bounds
-            for bound in bounds_part.split('+') {
-                let bound = bound.trim();
-                if !bound.is_empty() {
-                    // Extract just the trait name (without generics)
-                    let trait_name = if let Some(lt_pos) = bound.find('<') {
-                        &bound[..lt_pos]
-                    } else {
-                        bound
-                    };
-                    result.push(trait_name.trim().to_string());
-                }
-            }
-        }
-
-        result
-    }
-
-    /// Parse a Go type string into a Type
-    fn parse_go_type(type_str: &str) -> Option<Type> {
-        let s = type_str.trim();
-
-        // Primitive types
-        match s {
-            "int" | "int8" | "int16" | "int32" | "int64" | "uint" | "uint8" | "uint16"
-            | "uint32" | "uint64" | "uintptr" | "byte" | "rune" => return Some(Type::Int),
-            "float32" | "float64" => return Some(Type::Float),
-            "bool" => return Some(Type::Bool),
-            "string" => return Some(Type::String),
-            "error" => {
-                return Some(Type::Instance {
-                    class_name: "error".to_string(),
-                    type_args: vec![],
-                })
-            }
-            _ => {}
-        }
-
-        // Slice: []T
-        if let Some(inner) = s.strip_prefix("[]") {
-            let inner_type = parse_go_type(inner).unwrap_or(Type::Unknown);
-            return Some(Type::List(Box::new(inner_type)));
-        }
-
-        // Map: map[K]V
-        if let Some(rest) = s.strip_prefix("map[") {
-            if let Some(bracket_close) = rest.find(']') {
-                let key_type = parse_go_type(&rest[..bracket_close]).unwrap_or(Type::Unknown);
-                let value_type = parse_go_type(&rest[bracket_close + 1..]).unwrap_or(Type::Unknown);
-                return Some(Type::Dict(Box::new(key_type), Box::new(value_type)));
-            }
-        }
-
-        // Pointer: *T (represent as Optional)
-        if let Some(inner) = s.strip_prefix('*') {
-            let inner_type = parse_go_type(inner).unwrap_or(Type::Unknown);
-            return Some(Type::Optional(Box::new(inner_type)));
-        }
-
-        // Interface or struct type
-        Some(Type::Instance {
-            class_name: s.to_string(),
-            type_args: vec![],
-        })
-    }
-
-    /// Parse a Go type assertion expression like "x.(Type)"
-    fn parse_go_type_assertion(expr: &str) -> Option<Type> {
-        let s = expr.trim();
-        // Find ".(" and extract the type inside
-        if let Some(dot_paren) = s.find(".(") {
-            if s.ends_with(')') {
-                let type_str = &s[dot_paren + 2..s.len() - 1];
-                return parse_go_type(type_str);
-            }
-        }
-        None
-    }
-
-    /// Parse a Java type string into a Type
-    fn parse_java_type(type_str: &str) -> Option<Type> {
-        let s = type_str.trim();
-
-        // Primitive types
-        match s {
-            "int" | "long" | "short" | "byte" | "Integer" | "Long" | "Short" | "Byte" => {
-                return Some(Type::Int)
-            }
-            "float" | "double" | "Float" | "Double" => return Some(Type::Float),
-            "boolean" | "Boolean" => return Some(Type::Bool),
-            "String" | "CharSequence" => return Some(Type::String),
-            "void" | "Void" => return Some(Type::None),
-            _ => {}
-        }
-
-        // Generic types
-        if let Some(open) = s.find('<') {
-            let name = &s[..open];
-            let close = s.rfind('>')?;
-            let inner = &s[open + 1..close];
-
-            // Parse type arguments
-            let type_args = parse_java_type_args(inner);
-
-            match name {
-                "Optional" => {
-                    let inner_type = type_args.first().cloned().unwrap_or(Type::Unknown);
-                    return Some(Type::Optional(Box::new(inner_type)));
-                }
-                "List" | "ArrayList" | "LinkedList" | "Set" | "HashSet" | "TreeSet" => {
-                    return Some(Type::Instance {
-                        class_name: name.to_string(),
-                        type_args,
-                    });
-                }
-                "Map" | "HashMap" | "TreeMap" => {
-                    return Some(Type::Instance {
-                        class_name: name.to_string(),
-                        type_args,
-                    });
-                }
-                _ => {
-                    return Some(Type::Instance {
-                        class_name: name.to_string(),
-                        type_args,
-                    });
-                }
-            }
-        }
-
-        // Array types
-        if let Some(inner) = s.strip_suffix("[]") {
-            let inner_type = parse_java_type(inner).unwrap_or(Type::Unknown);
-            return Some(Type::List(Box::new(inner_type)));
-        }
-
-        // Regular class type
-        Some(Type::Instance {
-            class_name: s.to_string(),
-            type_args: vec![],
-        })
-    }
-
-    /// Parse comma-separated Java type arguments
-    fn parse_java_type_args(args_str: &str) -> Vec<Type> {
-        let mut result = Vec::new();
-        let mut current = String::new();
-        let mut depth = 0;
-
-        for ch in args_str.chars() {
-            match ch {
-                '<' => {
-                    depth += 1;
-                    current.push(ch);
-                }
-                '>' => {
-                    depth -= 1;
-                    current.push(ch);
-                }
-                ',' if depth == 0 => {
-                    if let Some(ty) = parse_java_type(current.trim()) {
-                        result.push(ty);
-                    }
-                    current.clear();
-                }
-                _ => current.push(ch),
-            }
-        }
-
-        if !current.trim().is_empty() {
-            if let Some(ty) = parse_java_type(current.trim()) {
-                result.push(ty);
-            }
-        }
-
-        result
-    }
-
-    /// Parse a Java type with annotations like @Nullable
-    fn parse_java_annotated_type(type_str: &str) -> Option<Type> {
-        let s = type_str.trim();
-
-        // Check for @Nullable annotation
-        if s.contains("@Nullable") {
-            let type_part = s.replace("@Nullable", "").trim().to_string();
-            let inner_type = parse_java_type(&type_part).unwrap_or(Type::Unknown);
-            return Some(Type::Optional(Box::new(inner_type)));
-        }
-
-        // Check for @NonNull annotation - just strip it
-        if s.contains("@NonNull") {
-            let type_part = s.replace("@NonNull", "").trim().to_string();
-            return parse_java_type(&type_part);
-        }
-
-        // No annotation, parse normally
-        parse_java_type(s)
-    }
+    // Type parsing functions are now public in the main module and available via super::*
+    // - parse_rust_type, parse_rust_type_args, extract_rust_trait_bounds
+    // - parse_go_type, parse_go_type_assertion
+    // - parse_java_type, parse_java_type_args, parse_java_annotated_type
 
     // ==================== Existing Tests ====================
 
@@ -3615,12 +4003,21 @@ mod tests {
     #[test]
     fn test_java_annotation_detection() {
         // @Nullable String -> Optional<String>
-        let ty = parse_java_annotated_type("@Nullable String");
+        let (ty, annots) = parse_java_annotated_type("@Nullable String");
         assert!(matches!(ty, Some(Type::Optional(inner)) if *inner == Type::String));
+        assert_eq!(annots.len(), 1);
+        assert_eq!(annots[0].name, "Nullable");
 
         // @NonNull List<String> -> List<String> (not optional)
-        let ty = parse_java_annotated_type("@NonNull List<String>");
+        let (ty, annots) = parse_java_annotated_type("@NonNull List<String>");
         assert!(matches!(ty, Some(Type::Instance { class_name, .. }) if class_name == "List"));
+        assert_eq!(annots.len(), 1);
+        assert_eq!(annots[0].name, "NonNull");
+
+        // Multiple annotations
+        let (ty, annots) = parse_java_annotated_type("@Override @Nullable String");
+        assert!(matches!(ty, Some(Type::Optional(inner)) if *inner == Type::String));
+        assert_eq!(annots.len(), 2);
     }
 
     #[test]
@@ -3761,5 +4158,326 @@ mod tests {
         let inferencer = TypeInferencer::new("", None, "java");
         // Verify inferencer is configured for Java
         assert!(inferencer.stubs.lookup_method("String", "length").is_some());
+    }
+
+    // ==================== New Static Type Extraction Tests ====================
+
+    #[test]
+    fn test_rust_type_params_extraction() {
+        // Simple type parameter
+        let params = extract_rust_type_params("<T>");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "T");
+        assert!(params[0].bounds.is_empty());
+
+        // Type parameter with single bound
+        let params = extract_rust_type_params("<T: Clone>");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "T");
+        assert!(params[0].bounds.contains(&"Clone".to_string()));
+
+        // Type parameter with multiple bounds
+        let params = extract_rust_type_params("<T: Clone + Debug>");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "T");
+        assert!(params[0].bounds.contains(&"Clone".to_string()));
+        assert!(params[0].bounds.contains(&"Debug".to_string()));
+
+        // Multiple type parameters
+        let params = extract_rust_type_params("<T: Clone, U: Debug>");
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0].name, "T");
+        assert!(params[0].bounds.contains(&"Clone".to_string()));
+        assert_eq!(params[1].name, "U");
+        assert!(params[1].bounds.contains(&"Debug".to_string()));
+
+        // Type parameter with no angle brackets
+        let params = extract_rust_type_params("T: Clone");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "T");
+
+        // Empty string
+        let params = extract_rust_type_params("");
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_rust_type_params_with_generics_in_bounds() {
+        // Bound with generics: T: Iterator<Item = u32>
+        let params = extract_rust_type_params("<T: Iterator<Item = u32>>");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "T");
+        assert!(params[0].bounds.contains(&"Iterator".to_string()));
+
+        // Multiple params with generic bounds
+        let params = extract_rust_type_params("<T: From<String>, U: Into<i32>>");
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0].name, "T");
+        assert_eq!(params[1].name, "U");
+    }
+
+    #[test]
+    fn test_java_type_params_extraction() {
+        // Simple type parameter
+        let params = extract_java_type_params("<T>");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "T");
+        assert!(params[0].upper_bounds.is_empty());
+
+        // Type parameter with extends bound
+        let params = extract_java_type_params("<T extends Comparable<T>>");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "T");
+        assert_eq!(params[0].upper_bounds.len(), 1);
+        assert!(params[0].upper_bounds[0].contains("Comparable"));
+
+        // Type parameter with multiple bounds
+        let params = extract_java_type_params("<T extends Serializable & Comparable<T>>");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "T");
+        assert_eq!(params[0].upper_bounds.len(), 2);
+        assert!(params[0].upper_bounds.contains(&"Serializable".to_string()));
+
+        // Multiple type parameters
+        let params = extract_java_type_params("<K, V>");
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0].name, "K");
+        assert_eq!(params[1].name, "V");
+
+        // Multiple type parameters with bounds
+        let params = extract_java_type_params("<K extends Comparable<K>, V extends Serializable>");
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0].name, "K");
+        assert!(!params[0].upper_bounds.is_empty());
+        assert_eq!(params[1].name, "V");
+        assert!(!params[1].upper_bounds.is_empty());
+    }
+
+    #[test]
+    fn test_java_wildcard_types() {
+        // Unbounded wildcard
+        let ty = parse_java_type("?");
+        assert_eq!(ty, Some(Type::Unknown));
+
+        // Upper bounded wildcard
+        let ty = parse_java_type("? extends Number");
+        assert!(matches!(ty, Some(Type::Instance { class_name, .. }) if class_name == "Number"));
+
+        // Lower bounded wildcard - Integer maps to Type::Int in Java primitives
+        let ty = parse_java_type("? super Integer");
+        assert_eq!(ty, Some(Type::Int));
+
+        // Lower bounded wildcard with non-primitive class
+        let ty = parse_java_type("? super MyClass");
+        assert!(matches!(ty, Some(Type::Instance { class_name, .. }) if class_name == "MyClass"));
+    }
+
+    #[test]
+    fn test_go_interface_satisfaction_basic() {
+        // Define a simple interface with one method
+        let reader_interface = GoInterface {
+            name: "Reader".to_string(),
+            methods: vec![GoInterfaceMethod {
+                name: "Read".to_string(),
+                params: vec![Type::List(Box::new(Type::Int))],
+                returns: vec![
+                    Type::Int,
+                    Type::Instance {
+                        class_name: "error".to_string(),
+                        type_args: vec![],
+                    },
+                ],
+            }],
+            embedded: vec![],
+        };
+
+        // Type with matching method should satisfy
+        let type_methods = vec![GoInterfaceMethod {
+            name: "Read".to_string(),
+            params: vec![Type::List(Box::new(Type::Int))],
+            returns: vec![
+                Type::Int,
+                Type::Instance {
+                    class_name: "error".to_string(),
+                    type_args: vec![],
+                },
+            ],
+        }];
+        assert!(check_go_interface_satisfaction(
+            &type_methods,
+            &reader_interface
+        ));
+
+        // Type missing the method should not satisfy
+        let empty_methods: Vec<GoInterfaceMethod> = vec![];
+        assert!(!check_go_interface_satisfaction(
+            &empty_methods,
+            &reader_interface
+        ));
+
+        // Type with wrong method signature should not satisfy (different param count)
+        let wrong_methods = vec![GoInterfaceMethod {
+            name: "Read".to_string(),
+            params: vec![], // Wrong param count
+            returns: vec![Type::Int],
+        }];
+        assert!(!check_go_interface_satisfaction(
+            &wrong_methods,
+            &reader_interface
+        ));
+    }
+
+    #[test]
+    fn test_go_interface_satisfaction_multiple_methods() {
+        // Interface with multiple methods
+        let read_writer_interface = GoInterface {
+            name: "ReadWriter".to_string(),
+            methods: vec![
+                GoInterfaceMethod {
+                    name: "Read".to_string(),
+                    params: vec![Type::List(Box::new(Type::Int))],
+                    returns: vec![Type::Int],
+                },
+                GoInterfaceMethod {
+                    name: "Write".to_string(),
+                    params: vec![Type::List(Box::new(Type::Int))],
+                    returns: vec![Type::Int],
+                },
+            ],
+            embedded: vec![],
+        };
+
+        // Type with both methods should satisfy
+        let full_methods = vec![
+            GoInterfaceMethod {
+                name: "Read".to_string(),
+                params: vec![Type::List(Box::new(Type::Int))],
+                returns: vec![Type::Int],
+            },
+            GoInterfaceMethod {
+                name: "Write".to_string(),
+                params: vec![Type::List(Box::new(Type::Int))],
+                returns: vec![Type::Int],
+            },
+        ];
+        assert!(check_go_interface_satisfaction(
+            &full_methods,
+            &read_writer_interface
+        ));
+
+        // Type with only one method should not satisfy
+        let partial_methods = vec![GoInterfaceMethod {
+            name: "Read".to_string(),
+            params: vec![Type::List(Box::new(Type::Int))],
+            returns: vec![Type::Int],
+        }];
+        assert!(!check_go_interface_satisfaction(
+            &partial_methods,
+            &read_writer_interface
+        ));
+    }
+
+    #[test]
+    fn test_go_empty_interface_satisfaction() {
+        // Empty interface (any type satisfies it)
+        let empty_interface = GoInterface {
+            name: "any".to_string(),
+            methods: vec![],
+            embedded: vec![],
+        };
+
+        // Any type should satisfy empty interface
+        let any_methods: Vec<GoInterfaceMethod> = vec![];
+        assert!(check_go_interface_satisfaction(
+            &any_methods,
+            &empty_interface
+        ));
+
+        let some_methods = vec![GoInterfaceMethod {
+            name: "Foo".to_string(),
+            params: vec![],
+            returns: vec![],
+        }];
+        assert!(check_go_interface_satisfaction(
+            &some_methods,
+            &empty_interface
+        ));
+    }
+
+    #[test]
+    fn test_go_channel_type_parsing() {
+        // Basic channel
+        let ty = parse_go_type("chan int");
+        assert!(matches!(ty, Some(Type::Instance { class_name, .. }) if class_name == "chan"));
+
+        // Receive-only channel
+        let ty = parse_go_type("<-chan string");
+        assert!(matches!(ty, Some(Type::Instance { class_name, .. }) if class_name == "chan"));
+
+        // Send-only channel
+        let ty = parse_go_type("chan<- int");
+        assert!(matches!(ty, Some(Type::Instance { class_name, .. }) if class_name == "chan"));
+    }
+
+    #[test]
+    fn test_go_function_type_parsing() {
+        let ty = parse_go_type("func(int) string");
+        assert!(matches!(ty, Some(Type::Function { .. })));
+
+        let ty = parse_go_type("func()");
+        assert!(matches!(ty, Some(Type::Function { .. })));
+    }
+
+    #[test]
+    fn test_go_array_type_parsing() {
+        // Fixed-size array [5]int
+        let ty = parse_go_type("[5]int");
+        assert!(matches!(ty, Some(Type::List(inner)) if *inner == Type::Int));
+
+        // Nested array
+        let ty = parse_go_type("[3][]string");
+        assert!(matches!(ty, Some(Type::List(_))));
+    }
+
+    #[test]
+    fn test_rust_never_type() {
+        let ty = parse_rust_type("!");
+        assert_eq!(ty, Some(Type::Never));
+    }
+
+    #[test]
+    fn test_rust_unit_type() {
+        let ty = parse_rust_type("()");
+        assert_eq!(ty, Some(Type::None));
+    }
+
+    #[test]
+    fn test_rust_result_type() {
+        let ty = parse_rust_type("Result<String, Error>");
+        assert!(matches!(
+            ty,
+            Some(Type::Instance { class_name, type_args })
+            if class_name == "Result" && type_args.len() == 2
+        ));
+    }
+
+    #[test]
+    fn test_java_char_type() {
+        let ty = parse_java_type("char");
+        assert!(matches!(ty, Some(Type::Instance { class_name, .. }) if class_name == "char"));
+
+        let ty = parse_java_type("Character");
+        assert!(matches!(ty, Some(Type::Instance { class_name, .. }) if class_name == "char"));
+    }
+
+    #[test]
+    fn test_java_nested_generics() {
+        // Map<String, List<Integer>>
+        let ty = parse_java_type("Map<String, List<Integer>>");
+        assert!(matches!(
+            ty,
+            Some(Type::Instance { class_name, type_args })
+            if class_name == "Map" && type_args.len() == 2
+        ));
     }
 }
