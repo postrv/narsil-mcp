@@ -1985,7 +1985,7 @@ fn suggest_crypto_fixes(finding: &SecurityFinding) -> Vec<SuggestedFix> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::taint::detect_language;
+    use crate::taint::analyzer::detect_language;
 
     #[test]
     fn test_engine_creation() {
