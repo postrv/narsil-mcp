@@ -6,6 +6,11 @@
 //! - TTL-based expiration (configurable, default 30 minutes)
 //! - Bounded cache size with LRU eviction
 //!
+//! # Modules
+//!
+//! - [`query_cache`]: Specialized caching for symbol lookups and search results
+//!   with smart file-based invalidation
+//!
 //! # Examples
 //!
 //! ```rust,ignore
@@ -18,6 +23,7 @@
 //! ```
 
 mod invalidation;
+pub mod query_cache;
 
 use dashmap::DashMap;
 use parking_lot::Mutex;

@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::{info, warn};
 
+use crate::cache::query_cache::{QueryCache, QueryCacheKey, QueryCacheStats, SearchOptions};
 use crate::cache::{AnalysisCache, AnalysisCacheKey, CacheStats};
 use crate::callgraph::CallGraph;
 use crate::cfg;
@@ -140,6 +141,8 @@ pub struct CodeIntelEngine {
     security_engine: Arc<crate::security_rules::SecurityRulesEngine>,
     /// Analysis cache for expensive operations (security scans, call graphs, etc.)
     analysis_cache: Arc<AnalysisCache<AnalysisCacheKey, String>>,
+    /// Query result cache for symbol lookups and search operations
+    query_cache: Arc<QueryCache>,
     /// Tracks whether background initialization has completed
     initialization_complete: AtomicBool,
     /// Number of repositories that have been fully indexed
@@ -233,6 +236,19 @@ impl CodeIntelEngine {
             Arc::new(AnalysisCache::new(1, std::time::Duration::from_secs(0)))
         };
 
+        // Initialize query cache for symbol lookups and search operations
+        let query_cache = if options.cache_enabled {
+            let ttl = std::time::Duration::from_secs(options.cache_ttl_seconds);
+            info!(
+                "Query cache enabled (TTL: {}s, capacity: 2000)",
+                options.cache_ttl_seconds
+            );
+            Arc::new(QueryCache::new(2000, ttl))
+        } else {
+            // Create a minimal cache even when disabled (0 TTL means immediate expiry)
+            Arc::new(QueryCache::new(1, std::time::Duration::from_secs(0)))
+        };
+
         let total_repos = expanded_repos.len();
 
         let engine = Self {
@@ -254,6 +270,7 @@ impl CodeIntelEngine {
             remote_manager: None,
             security_engine,
             analysis_cache,
+            query_cache,
             initialization_complete: AtomicBool::new(false),
             indexed_repos_count: AtomicUsize::new(0),
             total_repos_count: AtomicUsize::new(total_repos),
@@ -651,6 +668,9 @@ impl CodeIntelEngine {
         self.file_cache.clear();
         self.search_index.clear();
         self.embedding_engine.clear();
+        // Clear all caches on full reindex
+        self.analysis_cache.clear();
+        self.query_cache.clear();
         self.index_repos().await
     }
 
@@ -660,6 +680,8 @@ impl CodeIntelEngine {
                 let path = self.get_repo_path(name)?;
                 self.repos.remove(name);
                 self.symbols.remove(name);
+                // Invalidate caches for this repo only
+                self.query_cache.invalidate_for_repo(name);
                 self.index_repo(&path).await?;
                 Ok(format!("Re-indexed repository: {}", name))
             }
@@ -731,6 +753,12 @@ impl CodeIntelEngine {
     #[must_use]
     pub fn cache_stats(&self) -> CacheStats {
         self.analysis_cache.stats()
+    }
+
+    /// Get query cache statistics for metrics reporting
+    #[must_use]
+    pub fn query_cache_stats(&self) -> QueryCacheStats {
+        self.query_cache.stats()
     }
 
     /// Check if analysis caching is enabled
@@ -909,6 +937,28 @@ impl CodeIntelEngine {
     ) -> Result<String> {
         use crate::security_rules::is_test_file;
 
+        // Build cache key from query parameters
+        let cache_key = {
+            let options = SearchOptions {
+                file_pattern: file_pattern.map(String::from),
+                max_results: None,
+                exclude_tests,
+            };
+            let query = format!(
+                "{}|{}",
+                pattern.unwrap_or("*"),
+                symbol_type.unwrap_or("all")
+            );
+            QueryCacheKey::code_search_with_options(Some(repo), query, &options)
+        };
+
+        // Check cache first
+        if self.options.cache_enabled {
+            if let Some(cached) = self.query_cache.get(&cache_key) {
+                return Ok(cached);
+            }
+        }
+
         let symbols = self
             .symbols
             .get(repo)
@@ -959,6 +1009,9 @@ impl CodeIntelEngine {
             })
             .collect();
 
+        // Collect dependent files for smart invalidation
+        let dependent_files: Vec<String> = filtered.iter().map(|s| s.file_path.clone()).collect();
+
         let mut output = String::new();
         output.push_str(&format!("# Symbols in {}\n\n", repo));
         output.push_str(&format!("Found {} symbols\n\n", filtered.len()));
@@ -981,6 +1034,12 @@ impl CodeIntelEngine {
                 ));
             }
             output.push('\n');
+        }
+
+        // Cache the result with file dependencies for smart invalidation
+        if self.options.cache_enabled {
+            self.query_cache
+                .insert_with_files(cache_key, output.clone(), dependent_files);
         }
 
         Ok(output)
@@ -1067,6 +1126,23 @@ impl CodeIntelEngine {
     ) -> Result<String> {
         use crate::security_rules::is_test_file;
 
+        // Build cache key from query parameters
+        let cache_key = {
+            let options = SearchOptions {
+                file_pattern: file_pattern.map(String::from),
+                max_results: Some(max_results),
+                exclude_tests,
+            };
+            QueryCacheKey::code_search_with_options(repo, query, &options)
+        };
+
+        // Check cache first
+        if self.options.cache_enabled {
+            if let Some(cached) = self.query_cache.get(&cache_key) {
+                return Ok(cached);
+            }
+        }
+
         let query_lower = query.to_lowercase();
         let exclude_tests = exclude_tests.unwrap_or(false); // Default false for search
         let mut results: Vec<CodeExcerpt> = Vec::new();
@@ -1122,7 +1198,7 @@ impl CodeIntelEngine {
                         let excerpt_content: String = lines[start..end]
                             .iter()
                             .enumerate()
-                            .map(|(i, l)| format!("{:4} â”‚ {}", start + i + 1, l))
+                            .map(|(i, l)| format!("{:4} | {}", start + i + 1, l))
                             .collect::<Vec<_>>()
                             .join("\n");
 
@@ -1146,6 +1222,9 @@ impl CodeIntelEngine {
         results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap());
         results.truncate(max_results);
 
+        // Collect dependent files for smart invalidation
+        let dependent_files: Vec<String> = results.iter().map(|r| r.file_path.clone()).collect();
+
         let mut output = String::new();
         output.push_str(&format!("# Search Results for: `{}`\n\n", query));
         output.push_str(&format!("Found {} results\n\n", results.len()));
@@ -1161,6 +1240,12 @@ impl CodeIntelEngine {
             output.push('\n');
             output.push_str(&result.content);
             output.push_str("\n```\n\n");
+        }
+
+        // Cache the result with file dependencies for smart invalidation
+        if self.options.cache_enabled {
+            self.query_cache
+                .insert_with_files(cache_key, output.clone(), dependent_files);
         }
 
         Ok(output)
@@ -2213,6 +2298,23 @@ impl CodeIntelEngine {
     ) -> Result<String> {
         use crate::security_rules::is_test_file;
 
+        // Build cache key from query parameters
+        let cache_key = {
+            let options = SearchOptions {
+                file_pattern: None,
+                max_results: Some(max_results),
+                exclude_tests,
+            };
+            QueryCacheKey::code_search_with_options(repo, format!("semantic:{}", query), &options)
+        };
+
+        // Check cache first
+        if self.options.cache_enabled {
+            if let Some(cached) = self.query_cache.get(&cache_key) {
+                return Ok(cached);
+            }
+        }
+
         let exclude_tests = exclude_tests.unwrap_or(false); // Default false for search
 
         // Validate repo if specified
@@ -2234,6 +2336,12 @@ impl CodeIntelEngine {
             .into_iter()
             .filter(|r| !exclude_tests || !is_test_file(&r.document.file_path))
             .take(max_results)
+            .collect();
+
+        // Collect dependent files for smart invalidation
+        let dependent_files: Vec<String> = results
+            .iter()
+            .map(|r| r.document.file_path.clone())
             .collect();
 
         let mut output = String::new();
@@ -2261,6 +2369,12 @@ impl CodeIntelEngine {
 
         if results.is_empty() {
             output.push_str("*No results found.*\n");
+        }
+
+        // Cache the result with file dependencies for smart invalidation
+        if self.options.cache_enabled {
+            self.query_cache
+                .insert_with_files(cache_key, output.clone(), dependent_files);
         }
 
         Ok(output)
