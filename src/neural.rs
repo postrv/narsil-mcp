@@ -1535,6 +1535,8 @@ mod tests {
 
         #[test]
         fn test_api_key_length_validation() {
+            let _guard = super::ENV_VAR_MUTEX.lock().unwrap();
+
             // Clean environment first
             std::env::remove_var("EMBEDDING_SERVER_ENDPOINT");
             std::env::remove_var("VOYAGE_API_KEY");
