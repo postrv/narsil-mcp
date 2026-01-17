@@ -61,3 +61,54 @@ pub use types::{
     Confidence, Severity, SourceKind, TaintAnalysisResult, TaintFlow, TaintSource,
     VulnerabilityKind,
 };
+
+// Re-export configuration types
+pub use patterns::{TaintConfig, TaintConfigError};
+
+/// Analyze code with a custom taint configuration.
+///
+/// This function allows using custom sources, sinks, and sanitizers
+/// loaded from a YAML configuration string.
+///
+/// # Arguments
+///
+/// * `source_code` - The source code to analyze
+/// * `file_path` - The file path (used for language detection and reporting)
+/// * `yaml_config` - Optional YAML configuration for custom patterns
+///
+/// # Returns
+///
+/// A `Result` containing the `TaintAnalysisResult` or a `TaintConfigError` if
+/// the configuration is invalid.
+///
+/// # Examples
+///
+/// ```
+/// use narsil_mcp::taint::analyze_code_with_config;
+///
+/// let code = "user_input = custom_source(); dangerous_sink(user_input)";
+/// let config = r#"
+/// sources:
+///   - name: custom_source
+///     function_patterns:
+///       - "custom_source("
+///     languages:
+///       - python
+/// "#;
+///
+/// let result = analyze_code_with_config(code, "app.py", Some(config));
+/// ```
+pub fn analyze_code_with_config(
+    source_code: &str,
+    file_path: &str,
+    yaml_config: Option<&str>,
+) -> Result<TaintAnalysisResult, TaintConfigError> {
+    let config = match yaml_config {
+        Some(yaml) => TaintConfig::from_yaml(yaml)?,
+        None => TaintConfig::default(),
+    };
+
+    let language = analyzer::detect_language(file_path);
+    let analyzer = analyzer::TaintAnalyzer::with_config(language, config);
+    Ok(analyzer.analyze_code(source_code, file_path))
+}

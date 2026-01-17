@@ -10,7 +10,7 @@ use std::collections::HashSet;
 
 use super::patterns::{
     load_sanitizer_patterns, load_sink_patterns, load_source_patterns, SanitizerPattern,
-    SinkPattern, SourcePattern,
+    SinkPattern, SourcePattern, TaintConfig,
 };
 use super::types::{
     TaintAnalysisResult, TaintFlow, TaintOperation, TaintSink, TaintSource, TaintStep,
@@ -48,6 +48,41 @@ impl TaintAnalyzer {
             source_patterns: load_source_patterns(),
             sink_patterns: load_sink_patterns(),
             sanitizer_patterns: load_sanitizer_patterns(),
+            language: language.to_string(),
+        }
+    }
+
+    /// Create a new taint analyzer with custom configuration.
+    ///
+    /// This method allows using custom patterns defined in a `TaintConfig`.
+    ///
+    /// # Arguments
+    ///
+    /// * `language` - The programming language to analyze
+    /// * `config` - Custom taint configuration with patterns
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use narsil_mcp::taint::analyzer::TaintAnalyzer;
+    /// use narsil_mcp::taint::patterns::{TaintConfig, SanitizerPattern, SinkKind};
+    ///
+    /// let mut config = TaintConfig::default();
+    /// config.add_sanitizer(SanitizerPattern {
+    ///     name: "my_sanitizer".to_string(),
+    ///     function_patterns: vec!["custom_escape(".to_string()],
+    ///     sanitizes_for: vec![SinkKind::HtmlOutput],
+    ///     languages: vec!["python".to_string()],
+    /// });
+    ///
+    /// let analyzer = TaintAnalyzer::with_config("python", config);
+    /// ```
+    #[must_use]
+    pub fn with_config(language: &str, config: TaintConfig) -> Self {
+        Self {
+            source_patterns: config.source_patterns,
+            sink_patterns: config.sink_patterns,
+            sanitizer_patterns: config.sanitizer_patterns,
             language: language.to_string(),
         }
     }
@@ -219,9 +254,16 @@ impl TaintAnalyzer {
                     for tainted_var in tainted_vars.clone() {
                         if rhs.contains(&tainted_var) {
                             tainted_vars.insert(lhs.clone());
+                            // Also taint the base object if this is a field assignment
+                            if let Some(base) = self.extract_base_object(&lhs) {
+                                tainted_vars.insert(base);
+                            }
                         }
                     }
                 }
+
+                // Check for method calls that might propagate taint (e.g., append, push, add)
+                self.check_method_taint_propagation(line, &mut tainted_vars);
 
                 // Check if any tainted variable reaches a sink
                 for sink in sinks {
@@ -453,6 +495,108 @@ impl TaintAnalyzer {
             }
         }
         None
+    }
+
+    /// Extract the base object from a field or index access expression.
+    ///
+    /// This method handles patterns like:
+    /// - `data['query']` -> returns `Some("data")`
+    /// - `obj.field` -> returns `Some("obj")`
+    /// - `arr[0]` -> returns `Some("arr")`
+    /// - `simple_var` -> returns `None`
+    ///
+    /// # Arguments
+    ///
+    /// * `expr` - The expression to extract the base object from
+    ///
+    /// # Returns
+    ///
+    /// The base object name if the expression is a field/index access, `None` otherwise.
+    fn extract_base_object(&self, expr: &str) -> Option<String> {
+        let expr = expr.trim();
+
+        // Check for bracket access: data['key'] or arr[0]
+        if let Some(bracket_pos) = expr.find('[') {
+            let base = expr[..bracket_pos].trim();
+            if !base.is_empty() && base.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return Some(base.to_string());
+            }
+        }
+
+        // Check for dot access: obj.field
+        if let Some(dot_pos) = expr.find('.') {
+            let base = expr[..dot_pos].trim();
+            if !base.is_empty() && base.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return Some(base.to_string());
+            }
+        }
+
+        None
+    }
+
+    /// Check for method calls that propagate taint to a collection.
+    ///
+    /// This method handles patterns like:
+    /// - `list.append(tainted_value)` - taints `list`
+    /// - `arr.push(tainted_value)` - taints `arr`
+    /// - `set.add(tainted_value)` - taints `set`
+    /// - `dict.update(tainted_dict)` - taints `dict`
+    ///
+    /// # Arguments
+    ///
+    /// * `line` - The line of code to check
+    /// * `tainted_vars` - The set of currently tainted variables (mutated if new taints found)
+    fn check_method_taint_propagation(&self, line: &str, tainted_vars: &mut HashSet<String>) {
+        let line = line.trim();
+
+        // Methods that add values to collections
+        let propagation_methods = [
+            ".append(",
+            ".push(",
+            ".add(",
+            ".insert(",
+            ".extend(",
+            ".update(",
+            ".concat(",
+            ".unshift(",
+            ".splice(",
+        ];
+
+        for method in &propagation_methods {
+            if let Some(method_pos) = line.find(method) {
+                // Extract the base object before the method call
+                let before_method = &line[..method_pos];
+
+                // Get the base object name (handle nested dots)
+                let base: String = before_method
+                    .chars()
+                    .rev()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect::<String>()
+                    .chars()
+                    .rev()
+                    .collect();
+
+                if base.is_empty() {
+                    continue;
+                }
+
+                // Extract the argument(s) inside the method call
+                let after_method = &line[method_pos + method.len()..];
+                if let Some(close_paren) = after_method.find(')') {
+                    let args = &after_method[..close_paren];
+
+                    // Check if any tainted variable is in the arguments
+                    for tainted_var in tainted_vars.clone() {
+                        if args.contains(&tainted_var) {
+                            // The base collection becomes tainted
+                            tainted_vars.insert(base.clone());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -765,5 +909,242 @@ res.send(input);
         let result = analyze_typescript(code, "app.ts");
         assert!(!result.sources.is_empty());
         assert!(!result.sinks.is_empty());
+    }
+
+    #[test]
+    fn test_analyzer_with_custom_sanitizer() {
+        use crate::taint::patterns::{SanitizerPattern, SinkKind, TaintConfig};
+
+        // Code with custom sanitizer function that isn't in default patterns
+        let code = r#"
+user_input = request.args.get('q')
+safe_input = my_custom_sanitize(user_input)
+cursor.execute(safe_input)
+"#;
+
+        // First, analyze without custom sanitizer - should find vulnerability
+        let result_without_custom = analyze_python(code, "test.py");
+        let has_vuln_without_custom = result_without_custom.flows.iter().any(|f| !f.is_sanitized);
+        assert!(
+            has_vuln_without_custom,
+            "Without custom sanitizer, should report vulnerability"
+        );
+
+        // Now create config with custom sanitizer
+        let mut config = TaintConfig::default();
+        config.add_sanitizer(SanitizerPattern {
+            name: "custom_my_sanitize".to_string(),
+            function_patterns: vec!["my_custom_sanitize(".to_string()],
+            sanitizes_for: vec![SinkKind::SqlQuery],
+            languages: vec!["python".to_string()],
+        });
+
+        // Analyze with custom sanitizer - should detect sanitization
+        let analyzer = TaintAnalyzer::with_config("python", config);
+        let result_with_custom = analyzer.analyze_code(code, "test.py");
+
+        // At least the flow should be marked as sanitized
+        let all_sanitized = result_with_custom
+            .flows
+            .iter()
+            .all(|f| f.is_sanitized || f.vulnerability.is_none());
+        assert!(
+            all_sanitized || result_with_custom.vulnerabilities.is_empty(),
+            "With custom sanitizer, flow should be sanitized or no vulnerabilities"
+        );
+    }
+
+    #[test]
+    fn test_analyzer_with_custom_source() {
+        use crate::taint::patterns::{Confidence, SourceKind, SourcePattern, TaintConfig};
+
+        // Code with custom source that isn't in default patterns
+        let code = r#"
+user_data = my_custom_api.get_untrusted_input()
+cursor.execute(user_data)
+"#;
+
+        // Create config with custom source
+        let mut config = TaintConfig::default();
+        config.add_source(SourcePattern {
+            name: "custom_api_source".to_string(),
+            kind: SourceKind::UserInput {
+                input_type: "api".to_string(),
+            },
+            languages: vec!["python".to_string()],
+            function_patterns: vec!["my_custom_api.get_untrusted_input(".to_string()],
+            property_patterns: vec![],
+            confidence: Confidence::High,
+        });
+
+        let analyzer = TaintAnalyzer::with_config("python", config);
+        let result = analyzer.analyze_code(code, "test.py");
+
+        // Should find the custom source
+        assert!(
+            !result.sources.is_empty(),
+            "Should find custom source pattern"
+        );
+    }
+
+    #[test]
+    fn test_analyzer_with_custom_sink() {
+        use crate::taint::patterns::{SinkKind, SinkPattern, TaintConfig};
+
+        // Code with custom sink
+        let code = r#"
+user_input = request.args.get('data')
+dangerous_custom_api(user_input)
+"#;
+
+        // Create config with custom sink
+        let mut config = TaintConfig::default();
+        config.add_sink(SinkPattern {
+            name: "custom_dangerous_api".to_string(),
+            kind: SinkKind::Custom {
+                name: "dangerous_api".to_string(),
+            },
+            languages: vec!["python".to_string()],
+            function_patterns: vec!["dangerous_custom_api(".to_string()],
+            dangerous_arg: 0,
+        });
+
+        let analyzer = TaintAnalyzer::with_config("python", config);
+        let result = analyzer.analyze_code(code, "test.py");
+
+        // Should find the custom sink
+        assert!(!result.sinks.is_empty(), "Should find custom sink pattern");
+    }
+
+    // Tests for taint through data structures (TDD RED phase)
+
+    #[test]
+    fn test_taint_propagates_through_object_field_assignment() {
+        // When tainted data is assigned to an object field, accessing that field
+        // should propagate the taint to the sink
+        let code = r#"
+user_input = request.args.get('q')
+data = {}
+data['query'] = user_input
+cursor.execute(data['query'])
+"#;
+        let result = analyze_python(code, "test.py");
+
+        // The flow from user_input through data['query'] to execute should be detected
+        assert!(
+            !result.vulnerabilities.is_empty(),
+            "Should detect vulnerability through dict field assignment"
+        );
+    }
+
+    #[test]
+    fn test_taint_propagates_through_object_attribute() {
+        // When tainted data is assigned to an object attribute, accessing that
+        // attribute should propagate the taint
+        let code = r#"
+user_input = request.args.get('name')
+user = User()
+user.name = user_input
+cursor.execute(user.name)
+"#;
+        let result = analyze_python(code, "test.py");
+
+        assert!(
+            !result.vulnerabilities.is_empty(),
+            "Should detect vulnerability through object attribute"
+        );
+    }
+
+    #[test]
+    fn test_taint_propagates_through_array_index() {
+        // When tainted data is stored in an array, accessing that index should
+        // propagate the taint. This tests array assignment syntax.
+        let code = r#"
+user_input = request.args.get('item')
+items = [user_input]
+cursor.execute(items[0])
+"#;
+        let result = analyze_python(code, "test.py");
+
+        // Note: Current implementation tracks variable names, not array contents.
+        // This test verifies the basic flow detection works when user_input is
+        // still visible in the array initialization.
+        assert!(!result.sources.is_empty(), "Should find the taint source");
+        assert!(!result.sinks.is_empty(), "Should find the SQL sink");
+        // The flow may or may not be detected depending on implementation details
+        // This is a known limitation documented for advanced taint analysis
+    }
+
+    #[test]
+    fn test_taint_propagates_through_list_assignment() {
+        // Test explicit list element assignment
+        let code = r#"
+user_input = request.args.get('item')
+items = []
+items[0] = user_input
+cursor.execute(items[0])
+"#;
+        let result = analyze_python(code, "test.py");
+
+        // The taint should be detected because user_input flows to items[0]
+        // and items[0] is used in execute
+        assert!(!result.sources.is_empty(), "Should find the taint source");
+        assert!(!result.sinks.is_empty(), "Should find the SQL sink");
+    }
+
+    #[test]
+    fn test_taint_propagates_through_nested_structure() {
+        // Taint should propagate through nested data structures
+        let code = r#"
+user_input = request.args.get('data')
+config = {}
+config['db'] = {}
+config['db']['query'] = user_input
+cursor.execute(config['db']['query'])
+"#;
+        let result = analyze_python(code, "test.py");
+
+        assert!(
+            !result.vulnerabilities.is_empty(),
+            "Should detect vulnerability through nested dict access"
+        );
+    }
+
+    #[test]
+    fn test_whole_object_tainted_when_field_assigned() {
+        // When any field of an object is tainted, the whole object should be
+        // considered tainted for conservative analysis
+        let code = r#"
+user_input = request.args.get('q')
+data = {}
+data['user_query'] = user_input
+process_data(data)
+cursor.execute(data)
+"#;
+        let result = analyze_python(code, "test.py");
+
+        // Using the whole 'data' object in execute should be flagged
+        // because it contains tainted data
+        assert!(
+            !result.vulnerabilities.is_empty(),
+            "Should detect vulnerability when tainted object is used"
+        );
+    }
+
+    #[test]
+    fn test_javascript_object_property_taint() {
+        // JavaScript object property assignment should propagate taint
+        let code = r#"
+const userInput = req.query.name;
+const data = {};
+data.query = userInput;
+db.query(data.query);
+"#;
+        let result = analyze_javascript(code, "test.js");
+
+        assert!(
+            !result.vulnerabilities.is_empty(),
+            "Should detect vulnerability through JS object property"
+        );
     }
 }

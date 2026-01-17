@@ -5,7 +5,8 @@
 //! - Taint sinks (SQL queries, command execution, file operations, etc.)
 //! - Sanitizers (functions that clean/escape tainted data)
 
-use super::types::{Confidence, SinkKind, SourceKind};
+// Re-export types needed for pattern configuration
+pub use super::types::{Confidence, SinkKind, SourceKind};
 
 /// Pattern for identifying taint sources
 #[derive(Debug, Clone)]
@@ -50,6 +51,364 @@ pub struct SanitizerPattern {
     pub sanitizes_for: Vec<SinkKind>,
     /// Languages
     pub languages: Vec<String>,
+}
+
+/// Configuration for taint analysis with customizable patterns.
+///
+/// This struct allows users to configure custom sources, sinks, and sanitizers
+/// in addition to or instead of the built-in patterns.
+///
+/// # Examples
+///
+/// ```
+/// use narsil_mcp::taint::patterns::{TaintConfig, SanitizerPattern, SinkKind};
+///
+/// // Start with default patterns and add a custom sanitizer
+/// let mut config = TaintConfig::default();
+/// config.add_sanitizer(SanitizerPattern {
+///     name: "my_sanitizer".to_string(),
+///     function_patterns: vec!["sanitize_input(".to_string()],
+///     sanitizes_for: vec![SinkKind::SqlQuery],
+///     languages: vec!["python".to_string()],
+/// });
+/// ```
+#[derive(Debug, Clone)]
+pub struct TaintConfig {
+    /// Source patterns to use for taint analysis
+    pub source_patterns: Vec<SourcePattern>,
+    /// Sink patterns to use for taint analysis
+    pub sink_patterns: Vec<SinkPattern>,
+    /// Sanitizer patterns to use for taint analysis
+    pub sanitizer_patterns: Vec<SanitizerPattern>,
+}
+
+impl Default for TaintConfig {
+    /// Creates a default configuration with all built-in patterns loaded.
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TaintConfig {
+    /// Create a new configuration with default patterns.
+    ///
+    /// This is equivalent to `TaintConfig::default()` but explicitly
+    /// loads all built-in patterns.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use narsil_mcp::taint::patterns::TaintConfig;
+    ///
+    /// let config = TaintConfig::new();
+    /// assert!(!config.source_patterns.is_empty());
+    /// ```
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            source_patterns: load_source_patterns(),
+            sink_patterns: load_sink_patterns(),
+            sanitizer_patterns: load_sanitizer_patterns(),
+        }
+    }
+
+    /// Create an empty configuration with no patterns.
+    ///
+    /// This is useful when you want to define all patterns manually
+    /// without any built-in defaults.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use narsil_mcp::taint::patterns::TaintConfig;
+    ///
+    /// let config = TaintConfig::empty();
+    /// assert!(config.source_patterns.is_empty());
+    /// ```
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            source_patterns: Vec::new(),
+            sink_patterns: Vec::new(),
+            sanitizer_patterns: Vec::new(),
+        }
+    }
+
+    /// Add a custom sanitizer pattern.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - The sanitizer pattern to add
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use narsil_mcp::taint::patterns::{TaintConfig, SanitizerPattern, SinkKind};
+    ///
+    /// let mut config = TaintConfig::default();
+    /// config.add_sanitizer(SanitizerPattern {
+    ///     name: "my_escape".to_string(),
+    ///     function_patterns: vec!["escape_html(".to_string()],
+    ///     sanitizes_for: vec![SinkKind::HtmlOutput],
+    ///     languages: vec!["python".to_string()],
+    /// });
+    /// ```
+    pub fn add_sanitizer(&mut self, pattern: SanitizerPattern) {
+        self.sanitizer_patterns.push(pattern);
+    }
+
+    /// Add a custom source pattern.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - The source pattern to add
+    pub fn add_source(&mut self, pattern: SourcePattern) {
+        self.source_patterns.push(pattern);
+    }
+
+    /// Add a custom sink pattern.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - The sink pattern to add
+    pub fn add_sink(&mut self, pattern: SinkPattern) {
+        self.sink_patterns.push(pattern);
+    }
+
+    /// Parse configuration from YAML string.
+    ///
+    /// The YAML format supports optional sections for sources, sinks, and sanitizers.
+    /// Built-in patterns are included by default unless `include_defaults: false` is set.
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - YAML string containing taint configuration
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the YAML is malformed or contains invalid pattern definitions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use narsil_mcp::taint::patterns::TaintConfig;
+    ///
+    /// let yaml = r#"
+    /// sanitizers:
+    ///   - name: "custom_sanitizer"
+    ///     function_patterns:
+    ///       - "safe_escape("
+    ///     sanitizes_for:
+    ///       - "HtmlOutput"
+    ///     languages:
+    ///       - "python"
+    /// "#;
+    ///
+    /// let config = TaintConfig::from_yaml(yaml).unwrap();
+    /// assert!(config.sanitizer_patterns.iter().any(|p| p.name == "custom_sanitizer"));
+    /// ```
+    pub fn from_yaml(yaml_content: &str) -> Result<Self, TaintConfigError> {
+        use serde::Deserialize;
+
+        #[derive(Deserialize)]
+        struct YamlConfig {
+            #[serde(default)]
+            include_defaults: Option<bool>,
+            #[serde(default)]
+            sources: Vec<YamlSourcePattern>,
+            #[serde(default)]
+            sinks: Vec<YamlSinkPattern>,
+            #[serde(default)]
+            sanitizers: Vec<YamlSanitizerPattern>,
+        }
+
+        #[derive(Deserialize)]
+        struct YamlSourcePattern {
+            name: String,
+            #[serde(default)]
+            kind: String,
+            #[serde(default)]
+            input_type: Option<String>,
+            #[serde(default)]
+            languages: Vec<String>,
+            #[serde(default)]
+            function_patterns: Vec<String>,
+            #[serde(default)]
+            property_patterns: Vec<String>,
+            #[serde(default = "default_confidence")]
+            confidence: String,
+        }
+
+        #[derive(Deserialize)]
+        struct YamlSinkPattern {
+            name: String,
+            #[serde(default)]
+            kind: String,
+            #[serde(default)]
+            custom_name: Option<String>,
+            #[serde(default)]
+            languages: Vec<String>,
+            #[serde(default)]
+            function_patterns: Vec<String>,
+            #[serde(default)]
+            dangerous_arg: usize,
+        }
+
+        #[derive(Deserialize)]
+        struct YamlSanitizerPattern {
+            name: String,
+            #[serde(default)]
+            function_patterns: Vec<String>,
+            #[serde(default)]
+            sanitizes_for: Vec<String>,
+            #[serde(default)]
+            languages: Vec<String>,
+        }
+
+        fn default_confidence() -> String {
+            "Medium".to_string()
+        }
+
+        let yaml_config: YamlConfig =
+            serde_yaml::from_str(yaml_content).map_err(TaintConfigError::ParseError)?;
+
+        let include_defaults = yaml_config.include_defaults.unwrap_or(true);
+        let mut config = if include_defaults {
+            Self::new()
+        } else {
+            Self::empty()
+        };
+
+        // Parse and add custom sources
+        for yaml_source in yaml_config.sources {
+            let kind = parse_source_kind(&yaml_source.kind, yaml_source.input_type.as_deref())?;
+            let confidence = parse_confidence(&yaml_source.confidence)?;
+            config.add_source(SourcePattern {
+                name: yaml_source.name,
+                kind,
+                languages: yaml_source.languages,
+                function_patterns: yaml_source.function_patterns,
+                property_patterns: yaml_source.property_patterns,
+                confidence,
+            });
+        }
+
+        // Parse and add custom sinks
+        for yaml_sink in yaml_config.sinks {
+            let kind = parse_sink_kind(&yaml_sink.kind, yaml_sink.custom_name.as_deref())?;
+            config.add_sink(SinkPattern {
+                name: yaml_sink.name,
+                kind,
+                languages: yaml_sink.languages,
+                function_patterns: yaml_sink.function_patterns,
+                dangerous_arg: yaml_sink.dangerous_arg,
+            });
+        }
+
+        // Parse and add custom sanitizers
+        for yaml_sanitizer in yaml_config.sanitizers {
+            let sanitizes_for: Result<Vec<SinkKind>, TaintConfigError> = yaml_sanitizer
+                .sanitizes_for
+                .iter()
+                .map(|s| parse_sink_kind(s, None))
+                .collect();
+            config.add_sanitizer(SanitizerPattern {
+                name: yaml_sanitizer.name,
+                function_patterns: yaml_sanitizer.function_patterns,
+                sanitizes_for: sanitizes_for?,
+                languages: yaml_sanitizer.languages,
+            });
+        }
+
+        Ok(config)
+    }
+}
+
+/// Error type for taint configuration parsing
+#[derive(Debug)]
+pub enum TaintConfigError {
+    /// Error parsing YAML content
+    ParseError(serde_yaml::Error),
+    /// Invalid source kind specified
+    InvalidSourceKind(String),
+    /// Invalid sink kind specified
+    InvalidSinkKind(String),
+    /// Invalid confidence level specified
+    InvalidConfidence(String),
+}
+
+impl std::fmt::Display for TaintConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaintConfigError::ParseError(e) => write!(f, "YAML parse error: {}", e),
+            TaintConfigError::InvalidSourceKind(k) => write!(f, "Invalid source kind: {}", k),
+            TaintConfigError::InvalidSinkKind(k) => write!(f, "Invalid sink kind: {}", k),
+            TaintConfigError::InvalidConfidence(c) => write!(f, "Invalid confidence level: {}", c),
+        }
+    }
+}
+
+impl std::error::Error for TaintConfigError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            TaintConfigError::ParseError(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+/// Parse a source kind from a string representation
+fn parse_source_kind(kind: &str, input_type: Option<&str>) -> Result<SourceKind, TaintConfigError> {
+    match kind.to_lowercase().as_str() {
+        "userinput" | "user_input" | "" => Ok(SourceKind::UserInput {
+            input_type: input_type.unwrap_or("http").to_string(),
+        }),
+        "fileread" | "file_read" => Ok(SourceKind::FileRead),
+        "databasequery" | "database_query" => Ok(SourceKind::DatabaseQuery),
+        "environment" => Ok(SourceKind::Environment),
+        "network" => Ok(SourceKind::Network),
+        "commandargs" | "command_args" => Ok(SourceKind::CommandArgs),
+        "deserialization" => Ok(SourceKind::Deserialization),
+        _ if kind.starts_with("custom:") => Ok(SourceKind::Custom {
+            name: kind.strip_prefix("custom:").unwrap_or(kind).to_string(),
+        }),
+        _ => Err(TaintConfigError::InvalidSourceKind(kind.to_string())),
+    }
+}
+
+/// Parse a sink kind from a string representation
+fn parse_sink_kind(kind: &str, custom_name: Option<&str>) -> Result<SinkKind, TaintConfigError> {
+    match kind.to_lowercase().as_str() {
+        "sqlquery" | "sql_query" | "sql" => Ok(SinkKind::SqlQuery),
+        "commandexec" | "command_exec" | "command" => Ok(SinkKind::CommandExec),
+        "htmloutput" | "html_output" | "html" | "xss" => Ok(SinkKind::HtmlOutput),
+        "filewrite" | "file_write" => Ok(SinkKind::FileWrite),
+        "filepath" | "file_path" | "path" => Ok(SinkKind::FilePath),
+        "eval" => Ok(SinkKind::Eval),
+        "deserialization" => Ok(SinkKind::Deserialization),
+        "ldapquery" | "ldap_query" | "ldap" => Ok(SinkKind::LdapQuery),
+        "xmlparse" | "xml_parse" | "xml" | "xxe" => Ok(SinkKind::XmlParse),
+        "regex" => Ok(SinkKind::Regex),
+        "logging" | "log" => Ok(SinkKind::Logging),
+        "redirect" => Ok(SinkKind::Redirect),
+        "" | "custom" => Ok(SinkKind::Custom {
+            name: custom_name.unwrap_or("custom").to_string(),
+        }),
+        _ if kind.starts_with("custom:") => Ok(SinkKind::Custom {
+            name: kind.strip_prefix("custom:").unwrap_or(kind).to_string(),
+        }),
+        _ => Err(TaintConfigError::InvalidSinkKind(kind.to_string())),
+    }
+}
+
+/// Parse a confidence level from a string representation
+fn parse_confidence(confidence: &str) -> Result<Confidence, TaintConfigError> {
+    match confidence.to_lowercase().as_str() {
+        "low" => Ok(Confidence::Low),
+        "medium" | "med" => Ok(Confidence::Medium),
+        "high" => Ok(Confidence::High),
+        _ => Err(TaintConfigError::InvalidConfidence(confidence.to_string())),
+    }
 }
 
 /// Load default source patterns for common frameworks
@@ -983,5 +1342,108 @@ mod tests {
         assert!(html_pattern.is_some());
         let html = html_pattern.unwrap();
         assert!(html.sanitizes_for.contains(&SinkKind::HtmlOutput));
+    }
+
+    // Tests for configurable sanitizer patterns (TDD RED phase)
+    #[test]
+    fn test_taint_config_default() {
+        let config = TaintConfig::default();
+        // Default config should include all built-in patterns
+        assert!(!config.source_patterns.is_empty());
+        assert!(!config.sink_patterns.is_empty());
+        assert!(!config.sanitizer_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_taint_config_add_custom_sanitizer() {
+        let mut config = TaintConfig::default();
+        let initial_count = config.sanitizer_patterns.len();
+
+        // Add a custom sanitizer for a hypothetical "my_sanitize" function
+        config.add_sanitizer(SanitizerPattern {
+            name: "custom_my_sanitize".to_string(),
+            function_patterns: vec!["my_sanitize(".to_string()],
+            sanitizes_for: vec![SinkKind::SqlQuery],
+            languages: vec!["python".to_string()],
+        });
+
+        assert_eq!(config.sanitizer_patterns.len(), initial_count + 1);
+
+        // Verify the custom sanitizer was added
+        let custom = config
+            .sanitizer_patterns
+            .iter()
+            .find(|p| p.name == "custom_my_sanitize");
+        assert!(custom.is_some());
+        assert!(custom.unwrap().sanitizes_for.contains(&SinkKind::SqlQuery));
+    }
+
+    #[test]
+    fn test_taint_config_add_custom_source() {
+        let mut config = TaintConfig::default();
+        let initial_count = config.source_patterns.len();
+
+        // Add a custom source pattern
+        config.add_source(SourcePattern {
+            name: "custom_api_input".to_string(),
+            kind: SourceKind::UserInput {
+                input_type: "api".to_string(),
+            },
+            languages: vec!["python".to_string()],
+            function_patterns: vec!["api.get_input(".to_string()],
+            property_patterns: vec![],
+            confidence: Confidence::High,
+        });
+
+        assert_eq!(config.source_patterns.len(), initial_count + 1);
+    }
+
+    #[test]
+    fn test_taint_config_add_custom_sink() {
+        let mut config = TaintConfig::default();
+        let initial_count = config.sink_patterns.len();
+
+        // Add a custom sink pattern
+        config.add_sink(SinkPattern {
+            name: "custom_dangerous_call".to_string(),
+            kind: SinkKind::Custom {
+                name: "dangerous_api".to_string(),
+            },
+            languages: vec!["python".to_string()],
+            function_patterns: vec!["dangerous_call(".to_string()],
+            dangerous_arg: 0,
+        });
+
+        assert_eq!(config.sink_patterns.len(), initial_count + 1);
+    }
+
+    #[test]
+    fn test_taint_config_empty() {
+        let config = TaintConfig::empty();
+        // Empty config should have no patterns
+        assert!(config.source_patterns.is_empty());
+        assert!(config.sink_patterns.is_empty());
+        assert!(config.sanitizer_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_taint_config_from_yaml() {
+        let yaml = r#"
+sanitizers:
+  - name: "custom_yaml_sanitizer"
+    function_patterns:
+      - "secure_escape("
+    sanitizes_for:
+      - "HtmlOutput"
+    languages:
+      - "python"
+"#;
+        let config = TaintConfig::from_yaml(yaml).expect("Should parse YAML config");
+
+        let custom = config
+            .sanitizer_patterns
+            .iter()
+            .find(|p| p.name == "custom_yaml_sanitizer");
+        assert!(custom.is_some());
     }
 }
