@@ -2,6 +2,7 @@
 #![recursion_limit = "256"]
 
 // Core modules (always available)
+pub mod cache;
 pub mod callgraph;
 pub mod cfg;
 pub mod chunking;
