@@ -259,9 +259,6 @@ impl DataFlowAnalysis {
 pub struct DfgAnalyzer<'a> {
     /// The control flow graph
     cfg: &'a ControlFlowGraph,
-    /// Source code (reserved for future AST-based extraction)
-    #[allow(dead_code)]
-    source: &'a str,
     /// Data flow facts per block
     block_facts: HashMap<BlockId, BlockDataFlow>,
     /// All definitions found
@@ -273,10 +270,9 @@ pub struct DfgAnalyzer<'a> {
 }
 
 impl<'a> DfgAnalyzer<'a> {
-    pub fn new(cfg: &'a ControlFlowGraph, source: &'a str) -> Self {
+    pub fn new(cfg: &'a ControlFlowGraph) -> Self {
         Self {
             cfg,
-            source,
             block_facts: HashMap::new(),
             definitions: Vec::new(),
             uses: Vec::new(),
@@ -779,9 +775,13 @@ fn is_copy_type(var_name: &str) -> bool {
         || name_lower == "result" // Often bool or numeric result
 }
 
+/// Check if a string is a keyword in any supported language.
+///
+/// Covers keywords from: Rust, Python, JavaScript/TypeScript, Go, Java, C#, Kotlin, C/C++
 fn is_keyword(s: &str) -> bool {
     matches!(
         s,
+        // Rust keywords
         "let"
             | "mut"
             | "fn"
@@ -816,6 +816,154 @@ fn is_keyword(s: &str) -> bool {
             | "true"
             | "false"
             | "in"
+            | "as"
+            | "dyn"
+            | "extern"
+            | "unsafe"
+            // Python keywords
+            | "def"
+            | "class"
+            | "import"
+            | "from"
+            | "and"
+            | "or"
+            | "not"
+            | "is"
+            | "None"
+            | "True"
+            | "False"
+            | "try"
+            | "except"
+            | "finally"
+            | "raise"
+            | "with"
+            | "lambda"
+            | "pass"
+            | "yield"
+            | "global"
+            | "nonlocal"
+            | "assert"
+            | "del"
+            | "elif"
+            // JavaScript/TypeScript keywords
+            | "function"
+            | "var"
+            | "new"
+            | "this"
+            | "null"
+            | "undefined"
+            | "typeof"
+            | "instanceof"
+            | "delete"
+            | "void"
+            | "throw"
+            | "catch"
+            | "debugger"
+            | "export"
+            | "default"
+            | "extends"
+            | "implements"
+            | "interface"
+            | "package"
+            // Note: "static" already defined in Rust section
+            | "private"
+            | "protected"
+            | "public"
+            | "abstract"
+            | "final"
+            | "native"
+            | "synchronized"
+            | "transient"
+            | "volatile"
+            | "arguments"
+            | "eval"
+            // Go keywords
+            | "func"
+            // Note: "package" already defined in JS/TS section
+            | "defer"
+            | "go"
+            | "chan"
+            | "select"
+            | "case"
+            | "fallthrough"
+            | "range"
+            | "map"
+            | "nil"
+            // Java keywords
+            | "throws"
+            | "boolean"
+            | "byte"
+            | "char"
+            | "short"
+            | "int"
+            | "long"
+            | "float"
+            | "double"
+            | "strictfp"
+            // C# keywords
+            | "namespace"
+            | "using"
+            | "virtual"
+            | "override"
+            | "sealed"
+            | "internal"
+            | "partial"
+            | "readonly"
+            | "event"
+            | "delegate"
+            | "params"
+            | "out"
+            | "checked"
+            | "unchecked"
+            | "lock"
+            | "fixed"
+            | "stackalloc"
+            | "base"
+            | "explicit"
+            | "implicit"
+            | "operator"
+            // Kotlin keywords
+            | "fun"
+            | "val"
+            | "object"
+            | "data"
+            | "when"
+            | "companion"
+            | "init"
+            | "suspend"
+            | "inline"
+            | "reified"
+            | "crossinline"
+            | "noinline"
+            | "tailrec"
+            | "vararg"
+            | "annotation"
+            | "inner"
+            | "open"
+            | "lateinit"
+            | "by"
+            | "constructor"
+            | "it"
+            // C/C++ keywords
+            | "sizeof"
+            | "typedef"
+            | "register"
+            | "auto"
+            | "template"
+            | "typename"
+            | "friend"
+            | "mutable"
+            | "constexpr"
+            | "noexcept"
+            | "decltype"
+            | "nullptr"
+            | "alignof"
+            | "alignas"
+            | "asm"
+            | "union"
+            | "goto"
+            | "switch"
+            | "do"
     )
 }
 
@@ -844,7 +992,7 @@ pub fn analyze_file(tree: &Tree, source: &str, file_path: &str) -> Result<Vec<Da
     // Then analyze each CFG
     let mut analyses = Vec::new();
     for cfg in &cfgs {
-        let mut analyzer = DfgAnalyzer::new(cfg, source);
+        let mut analyzer = DfgAnalyzer::new(cfg);
         analyses.push(analyzer.analyze());
     }
 
@@ -1040,7 +1188,7 @@ mod tests {
     #[test]
     fn test_dfg_analyzer_creation() {
         let cfg = create_simple_cfg();
-        let analyzer = DfgAnalyzer::new(&cfg, "let x = 5;\nlet y = x + 1;\nreturn y;");
+        let analyzer = DfgAnalyzer::new(&cfg);
 
         assert_eq!(analyzer.definitions.len(), 0);
         assert_eq!(analyzer.uses.len(), 0);
@@ -1049,7 +1197,7 @@ mod tests {
     #[test]
     fn test_dfg_analysis_basic() {
         let cfg = create_simple_cfg();
-        let mut analyzer = DfgAnalyzer::new(&cfg, "let x = 5;\nlet y = x + 1;\nreturn y;");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
 
         let result = analyzer.analyze();
 
@@ -1098,7 +1246,7 @@ mod tests {
         });
         cfg.add_block(block);
 
-        let mut analyzer = DfgAnalyzer::new(&cfg, "let unused = 5;\nreturn;");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
         let result = analyzer.analyze();
 
         // Should detect dead store for 'unused'
@@ -1114,6 +1262,105 @@ mod tests {
         assert!(!is_keyword("foo"));
         assert!(!is_keyword("bar"));
         assert!(!is_keyword("x"));
+    }
+
+    #[test]
+    fn test_is_keyword_multi_language() {
+        // Rust keywords (already tested above, but verify a few more)
+        assert!(is_keyword("match"));
+        assert!(is_keyword("impl"));
+        assert!(is_keyword("trait"));
+
+        // Python keywords
+        assert!(is_keyword("def"));
+        assert!(is_keyword("elif"));
+        assert!(is_keyword("except"));
+        assert!(is_keyword("lambda"));
+        assert!(is_keyword("pass"));
+        assert!(is_keyword("yield"));
+        assert!(is_keyword("None"));
+        assert!(is_keyword("True"));
+        assert!(is_keyword("False"));
+
+        // JavaScript/TypeScript keywords
+        assert!(is_keyword("function"));
+        assert!(is_keyword("var"));
+        assert!(is_keyword("undefined"));
+        assert!(is_keyword("null"));
+        assert!(is_keyword("typeof"));
+        assert!(is_keyword("instanceof"));
+        assert!(is_keyword("new"));
+        assert!(is_keyword("this"));
+        assert!(is_keyword("export"));
+        assert!(is_keyword("import"));
+        assert!(is_keyword("default"));
+
+        // Go keywords
+        assert!(is_keyword("func"));
+        assert!(is_keyword("package"));
+        assert!(is_keyword("defer"));
+        assert!(is_keyword("go"));
+        assert!(is_keyword("chan"));
+        assert!(is_keyword("select"));
+        assert!(is_keyword("range"));
+        assert!(is_keyword("nil"));
+
+        // Java keywords
+        assert!(is_keyword("class"));
+        assert!(is_keyword("public"));
+        assert!(is_keyword("private"));
+        assert!(is_keyword("protected"));
+        assert!(is_keyword("extends"));
+        assert!(is_keyword("implements"));
+        assert!(is_keyword("interface"));
+        assert!(is_keyword("abstract"));
+        assert!(is_keyword("final"));
+        assert!(is_keyword("synchronized"));
+        assert!(is_keyword("throws"));
+        assert!(is_keyword("void"));
+
+        // C# keywords
+        assert!(is_keyword("namespace"));
+        assert!(is_keyword("using"));
+        assert!(is_keyword("virtual"));
+        assert!(is_keyword("override"));
+        assert!(is_keyword("sealed"));
+        assert!(is_keyword("internal"));
+        assert!(is_keyword("partial"));
+        assert!(is_keyword("readonly"));
+        assert!(is_keyword("event"));
+        assert!(is_keyword("delegate"));
+
+        // Kotlin keywords
+        assert!(is_keyword("fun"));
+        assert!(is_keyword("val"));
+        assert!(is_keyword("object"));
+        assert!(is_keyword("data"));
+        assert!(is_keyword("when"));
+        assert!(is_keyword("companion"));
+        assert!(is_keyword("init"));
+        assert!(is_keyword("suspend"));
+        assert!(is_keyword("inline"));
+        assert!(is_keyword("reified"));
+
+        // C/C++ keywords
+        assert!(is_keyword("void"));
+        assert!(is_keyword("sizeof"));
+        assert!(is_keyword("typedef"));
+        assert!(is_keyword("extern"));
+        assert!(is_keyword("register"));
+        assert!(is_keyword("template"));
+        assert!(is_keyword("typename"));
+        assert!(is_keyword("virtual"));
+        assert!(is_keyword("explicit"));
+        assert!(is_keyword("friend"));
+        assert!(is_keyword("operator"));
+
+        // Non-keywords should still return false
+        assert!(!is_keyword("foo"));
+        assert!(!is_keyword("bar"));
+        assert!(!is_keyword("myVariable"));
+        assert!(!is_keyword("calculate"));
     }
 
     #[test]
@@ -1211,7 +1458,7 @@ mod tests {
 
         cfg.add_edge(0, 1, EdgeKind::FallThrough);
 
-        let mut analyzer = DfgAnalyzer::new(&cfg, "let x = 5;\nreturn x;");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
         let result = analyzer.analyze();
 
         // x should be used and not dead
@@ -1223,7 +1470,7 @@ mod tests {
     #[test]
     fn test_liveness_analysis() {
         let cfg = create_simple_cfg();
-        let mut analyzer = DfgAnalyzer::new(&cfg, "");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
 
         // Initialize
         for &block_id in cfg.blocks.keys() {
@@ -1243,7 +1490,7 @@ mod tests {
     #[test]
     fn test_extract_uses_from_text() {
         let cfg = create_simple_cfg();
-        let analyzer = DfgAnalyzer::new(&cfg, "");
+        let analyzer = DfgAnalyzer::new(&cfg);
 
         let uses = analyzer.extract_uses_from_text("x + y * z", 0, 1);
 
@@ -1255,7 +1502,7 @@ mod tests {
     #[test]
     fn test_extract_uses_filters_keywords() {
         let cfg = create_simple_cfg();
-        let analyzer = DfgAnalyzer::new(&cfg, "");
+        let analyzer = DfgAnalyzer::new(&cfg);
 
         let uses = analyzer.extract_uses_from_text("let x = if true then y else z", 0, 1);
 
@@ -1317,7 +1564,7 @@ mod tests {
         });
         cfg.add_block(block);
 
-        let mut analyzer = DfgAnalyzer::new(&cfg, "");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
         let result = analyzer.analyze();
 
         // First definition of x should be dead (overwritten before use)
@@ -1393,7 +1640,7 @@ mod tests {
         cfg.add_edge(0, 2, EdgeKind::FalseBranch);
         cfg.add_edge(1, 2, EdgeKind::FallThrough);
 
-        let mut analyzer = DfgAnalyzer::new(&cfg, "");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
         let result = analyzer.analyze();
 
         // Both definitions could reach the use
@@ -1477,7 +1724,7 @@ mod tests {
         cfg.add_edge(1, 3, EdgeKind::FalseBranch);
         cfg.add_edge(2, 1, EdgeKind::LoopBack);
 
-        let mut analyzer = DfgAnalyzer::new(&cfg, "");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
         let result = analyzer.analyze();
 
         // Two definitions of x
@@ -1540,7 +1787,7 @@ mod tests {
         cfg.add_edge(0, 1, EdgeKind::FallThrough);
         cfg.add_edge(1, 2, EdgeKind::FallThrough);
 
-        let mut analyzer = DfgAnalyzer::new(&cfg, "");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
         let result = analyzer.analyze();
 
         // 'value' should be recognized as a definition
@@ -1631,7 +1878,7 @@ mod tests {
         cfg.add_edge(0, 2, EdgeKind::FalseBranch);
         cfg.add_edge(1, 2, EdgeKind::FallThrough);
 
-        let mut analyzer = DfgAnalyzer::new(&cfg, "");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
         let result = analyzer.analyze();
 
         // 'x' should NOT appear in uninitialized uses since it's defined by the pattern
@@ -1671,7 +1918,7 @@ mod tests {
         });
         cfg.add_block(block);
 
-        let mut analyzer = DfgAnalyzer::new(&cfg, "");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
         let result = analyzer.analyze();
 
         let use_vars: Vec<&str> = result.uses.iter().map(|u| u.variable.as_str()).collect();
@@ -1769,7 +2016,7 @@ mod tests {
         cfg.add_edge(1, 3, EdgeKind::FalseBranch);
         cfg.add_edge(2, 1, EdgeKind::LoopBack);
 
-        let mut analyzer = DfgAnalyzer::new(&cfg, "");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
         let result = analyzer.analyze();
 
         // 'item' should be a definition
@@ -1822,7 +2069,7 @@ mod tests {
         });
         cfg.add_block(block);
 
-        let mut analyzer = DfgAnalyzer::new(&cfg, "");
+        let mut analyzer = DfgAnalyzer::new(&cfg);
         let result = analyzer.analyze();
 
         // Both variables should be definitions
@@ -1846,6 +2093,146 @@ mod tests {
             !uninit_vars.contains(&"inner") && !uninit_vars.contains(&"second"),
             "Nested pattern variables should NOT be uninitialized. Uninit: {:?}",
             uninit_vars
+        );
+    }
+
+    // ==== Multi-Language Dead Store Detection Tests ====
+
+    #[test]
+    fn test_go_dead_store_detection() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_go::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+package main
+
+func example() int {
+    unused := 5
+    x := 10
+    return x
+}
+"#;
+
+        let tree = parser.parse(source, None).unwrap();
+        let dead_stores = find_dead_stores(&tree, source, "test.go").unwrap();
+
+        // Should detect 'unused' as a dead store
+        assert!(
+            dead_stores.iter().any(|(_, def)| def.variable == "unused"),
+            "Go: Should detect 'unused' as dead store. Found: {:?}",
+            dead_stores
+        );
+        // 'x' is used in return, should NOT be a dead store
+        assert!(
+            !dead_stores.iter().any(|(_, def)| def.variable == "x"),
+            "Go: 'x' is used, should NOT be dead store"
+        );
+    }
+
+    #[test]
+    fn test_java_dead_store_detection() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_java::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+public class Test {
+    public int example() {
+        int unused = 5;
+        int x = 10;
+        return x;
+    }
+}
+"#;
+
+        let tree = parser.parse(source, None).unwrap();
+        let dead_stores = find_dead_stores(&tree, source, "Test.java").unwrap();
+
+        // Should detect 'unused' as a dead store
+        assert!(
+            dead_stores.iter().any(|(_, def)| def.variable == "unused"),
+            "Java: Should detect 'unused' as dead store. Found: {:?}",
+            dead_stores
+        );
+    }
+
+    #[test]
+    fn test_kotlin_dead_store_detection() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_kotlin_sg::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+fun example(): Int {
+    val unused = 5
+    val x = 10
+    return x
+}
+"#;
+
+        let tree = parser.parse(source, None).unwrap();
+        let dead_stores = find_dead_stores(&tree, source, "test.kt").unwrap();
+
+        // Should detect 'unused' as a dead store
+        assert!(
+            dead_stores.iter().any(|(_, def)| def.variable == "unused"),
+            "Kotlin: Should detect 'unused' as dead store. Found: {:?}",
+            dead_stores
+        );
+    }
+
+    #[test]
+    fn test_python_dead_store_detection() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_python::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+def example():
+    unused = 5
+    x = 10
+    return x
+"#;
+
+        let tree = parser.parse(source, None).unwrap();
+        let dead_stores = find_dead_stores(&tree, source, "test.py").unwrap();
+
+        // Should detect 'unused' as a dead store
+        assert!(
+            dead_stores.iter().any(|(_, def)| def.variable == "unused"),
+            "Python: Should detect 'unused' as dead store. Found: {:?}",
+            dead_stores
+        );
+    }
+
+    #[test]
+    fn test_typescript_dead_store_detection() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+            .unwrap();
+
+        let source = r#"
+function example(): number {
+    let unused = 5;
+    let x = 10;
+    return x;
+}
+"#;
+
+        let tree = parser.parse(source, None).unwrap();
+        let dead_stores = find_dead_stores(&tree, source, "test.ts").unwrap();
+
+        // Should detect 'unused' as a dead store
+        assert!(
+            dead_stores.iter().any(|(_, def)| def.variable == "unused"),
+            "TypeScript: Should detect 'unused' as dead store. Found: {:?}",
+            dead_stores
         );
     }
 }

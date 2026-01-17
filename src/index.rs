@@ -3424,7 +3424,7 @@ impl CodeIntelEngine {
             .find(|c| c.function_name == function)
             .ok_or_else(|| anyhow!("Function '{}' not found in {}", function, path))?;
 
-        let mut analyzer = dfg::DfgAnalyzer::new(cfg, &content);
+        let mut analyzer = dfg::DfgAnalyzer::new(cfg);
         let analysis = analyzer.analyze();
 
         let mut output = String::new();

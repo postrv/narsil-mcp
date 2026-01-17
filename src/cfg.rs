@@ -750,16 +750,103 @@ impl CfgBuilder {
                 let next = self.create_block("after_continue");
                 Ok(next)
             }
-            // Regular statements
-            "let_declaration"
-            | "let_statement"
-            | "assignment_expression"
-            | "expression_statement" => {
-                let stmt_kind = if kind.contains("let") {
-                    StatementKind::Assignment {
-                        variable: extract_variable_name(node, source).unwrap_or_default(),
-                    }
-                } else if text.contains('=') {
+            // Regular statements (Rust)
+            "let_declaration" | "let_statement" => {
+                let stmt_kind = StatementKind::Assignment {
+                    variable: extract_variable_name(node, source).unwrap_or_default(),
+                };
+                self.add_statement(
+                    current,
+                    Statement {
+                        line,
+                        kind: stmt_kind,
+                        text,
+                    },
+                );
+                Ok(current)
+            }
+            // Go variable declarations
+            "short_var_declaration" => {
+                // Go: x := 5 or x, y := foo()
+                let stmt_kind = StatementKind::Assignment {
+                    variable: extract_go_short_var_name(node, source).unwrap_or_default(),
+                };
+                self.add_statement(
+                    current,
+                    Statement {
+                        line,
+                        kind: stmt_kind,
+                        text,
+                    },
+                );
+                Ok(current)
+            }
+            "var_declaration" | "var_spec" => {
+                // Go: var x = 5
+                let stmt_kind = StatementKind::Assignment {
+                    variable: extract_go_var_name(node, source).unwrap_or_default(),
+                };
+                self.add_statement(
+                    current,
+                    Statement {
+                        line,
+                        kind: stmt_kind,
+                        text,
+                    },
+                );
+                Ok(current)
+            }
+            // Java/C# variable declarations
+            "local_variable_declaration" => {
+                // Java: int x = 5; or C#: var x = 5;
+                let stmt_kind = StatementKind::Assignment {
+                    variable: extract_java_var_name(node, source).unwrap_or_default(),
+                };
+                self.add_statement(
+                    current,
+                    Statement {
+                        line,
+                        kind: stmt_kind,
+                        text,
+                    },
+                );
+                Ok(current)
+            }
+            // Kotlin variable declarations
+            "property_declaration" => {
+                // Kotlin: val x = 5 or var y = 10
+                let stmt_kind = StatementKind::Assignment {
+                    variable: extract_kotlin_var_name(node, source).unwrap_or_default(),
+                };
+                self.add_statement(
+                    current,
+                    Statement {
+                        line,
+                        kind: stmt_kind,
+                        text,
+                    },
+                );
+                Ok(current)
+            }
+            // TypeScript/JavaScript variable declarations
+            "lexical_declaration" | "variable_declaration" => {
+                // TS: let x = 5; const y = 10; var z = 15;
+                let stmt_kind = StatementKind::Assignment {
+                    variable: extract_js_var_name(node, source).unwrap_or_default(),
+                };
+                self.add_statement(
+                    current,
+                    Statement {
+                        line,
+                        kind: stmt_kind,
+                        text,
+                    },
+                );
+                Ok(current)
+            }
+            // Assignment and expression statements (all languages)
+            "assignment_expression" | "expression_statement" => {
+                let stmt_kind = if text.contains('=') {
                     StatementKind::Assignment {
                         variable: text.split('=').next().unwrap_or("").trim().to_string(),
                     }
@@ -1920,7 +2007,15 @@ fn find_function_body(node: Node) -> Option<Node> {
     if cursor.goto_first_child() {
         loop {
             let child = cursor.node();
-            if child.kind() == "block" || child.kind() == "function_body" {
+            // Handle body node names across different languages:
+            // - "block": Rust, Python, Go
+            // - "function_body": Kotlin
+            // - "statement_block": JavaScript, TypeScript
+            // - "compound_statement": C, C++
+            if matches!(
+                child.kind(),
+                "block" | "function_body" | "statement_block" | "compound_statement"
+            ) {
                 return Some(child);
             }
             if !cursor.goto_next_sibling() {
@@ -2066,6 +2161,151 @@ fn extract_variable_name(node: Node, source: &[u8]) -> Option<String> {
             let child = cursor.node();
             if child.kind() == "identifier" || child.kind() == "pattern" {
                 return child.utf8_text(source).ok().map(|s| s.to_string());
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
+}
+
+/// Extract variable name from Go short_var_declaration (x := 5)
+fn extract_go_short_var_name(node: Node, source: &[u8]) -> Option<String> {
+    // Go short_var_declaration has expression_list on left side
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            // Look for expression_list (left side of :=) or identifier
+            if child.kind() == "expression_list" || child.kind() == "identifier" {
+                // Get the first identifier from the list
+                let mut inner = child.walk();
+                if inner.goto_first_child() {
+                    loop {
+                        let inner_child = inner.node();
+                        if inner_child.kind() == "identifier" {
+                            return inner_child.utf8_text(source).ok().map(|s| s.to_string());
+                        }
+                        if !inner.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+                // If the child itself is an identifier
+                if child.kind() == "identifier" {
+                    return child.utf8_text(source).ok().map(|s| s.to_string());
+                }
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
+}
+
+/// Extract variable name from Go var_declaration (var x = 5)
+fn extract_go_var_name(node: Node, source: &[u8]) -> Option<String> {
+    // Go var_spec has identifier as first child
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == "identifier" {
+                return child.utf8_text(source).ok().map(|s| s.to_string());
+            }
+            // Recurse into var_spec
+            if child.kind() == "var_spec" {
+                return extract_go_var_name(child, source);
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
+}
+
+/// Extract variable name from Java local_variable_declaration (int x = 5)
+fn extract_java_var_name(node: Node, source: &[u8]) -> Option<String> {
+    // Java local_variable_declaration has variable_declarator containing identifier
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == "variable_declarator" {
+                // Get identifier from variable_declarator
+                let mut inner = child.walk();
+                if inner.goto_first_child() {
+                    loop {
+                        let inner_child = inner.node();
+                        if inner_child.kind() == "identifier" {
+                            return inner_child.utf8_text(source).ok().map(|s| s.to_string());
+                        }
+                        if !inner.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
+}
+
+/// Extract variable name from Kotlin property_declaration (val x = 5)
+fn extract_kotlin_var_name(node: Node, source: &[u8]) -> Option<String> {
+    // Kotlin property_declaration has variable_declaration containing simple_identifier
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            // Look for variable_declaration or simple_identifier directly
+            if child.kind() == "variable_declaration" {
+                let mut inner = child.walk();
+                if inner.goto_first_child() {
+                    loop {
+                        let inner_child = inner.node();
+                        if inner_child.kind() == "simple_identifier" {
+                            return inner_child.utf8_text(source).ok().map(|s| s.to_string());
+                        }
+                        if !inner.goto_next_sibling() {
+                            break;
+                        }
+                    }
+                }
+            }
+            if child.kind() == "simple_identifier" {
+                return child.utf8_text(source).ok().map(|s| s.to_string());
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
+}
+
+/// Extract variable name from JavaScript/TypeScript declarations (let x = 5, const y = 10, var z)
+fn extract_js_var_name(node: Node, source: &[u8]) -> Option<String> {
+    // JS/TS lexical_declaration or variable_declaration has variable_declarator
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == "variable_declarator" {
+                // Get the name child (identifier)
+                let mut inner = child.walk();
+                if inner.goto_first_child() {
+                    let first = inner.node();
+                    if first.kind() == "identifier" {
+                        return first.utf8_text(source).ok().map(|s| s.to_string());
+                    }
+                }
             }
             if !cursor.goto_next_sibling() {
                 break;
