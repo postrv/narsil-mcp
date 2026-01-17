@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use crate::cfg::{BlockId, ControlFlowGraph, StatementKind};
+use crate::taint::types::SinkKind;
 
 /// Type variable identifier for inference
 pub type TypeVarId = u32;
@@ -193,6 +194,116 @@ impl Type {
             },
         }
     }
+
+    /// Check if this type is inherently safe for a particular sink.
+    ///
+    /// Certain types are designed to be safe by construction, meaning they
+    /// cannot contain malicious content for specific sink types. This is used
+    /// to reduce false positives in security analysis.
+    ///
+    /// # Arguments
+    ///
+    /// * `sink` - The sink kind to check safety for
+    ///
+    /// # Returns
+    ///
+    /// `true` if this type is inherently safe for the given sink
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use narsil_mcp::type_inference::Type;
+    /// use narsil_mcp::taint::types::SinkKind;
+    ///
+    /// let safe_html = Type::Instance {
+    ///     class_name: "SafeHtml".to_string(),
+    ///     type_args: vec![],
+    /// };
+    /// assert!(safe_html.is_safe_for(&SinkKind::HtmlOutput));
+    /// ```
+    #[must_use]
+    pub fn is_safe_for(&self, sink: &SinkKind) -> bool {
+        match self {
+            Type::Instance { class_name, .. } => {
+                // Check for well-known safe type names
+                match sink {
+                    SinkKind::HtmlOutput => {
+                        // Types that produce safe HTML output
+                        matches!(
+                            class_name.as_str(),
+                            "SafeHtml"
+                                | "SafeString"
+                                | "Markup"
+                                | "SafeText"
+                                | "EscapedHtml"
+                                | "HtmlSafe"
+                                | "TrustedHtml"
+                        )
+                    }
+                    SinkKind::SqlQuery => {
+                        // Types that represent parameterized queries
+                        matches!(
+                            class_name.as_str(),
+                            "ParameterizedQuery"
+                                | "PreparedStatement"
+                                | "SafeQuery"
+                                | "Query"
+                                | "SqlParameter"
+                                | "BoundQuery"
+                        )
+                    }
+                    SinkKind::CommandExec => {
+                        // Types that represent safe command construction
+                        matches!(
+                            class_name.as_str(),
+                            "SafeCommand" | "EscapedArg" | "QuotedArg" | "ShellEscaped"
+                        )
+                    }
+                    SinkKind::FilePath => {
+                        // Types that represent validated/safe paths
+                        matches!(
+                            class_name.as_str(),
+                            "SafePath"
+                                | "ValidatedPath"
+                                | "CanonicalPath"
+                                | "SanitizedPath"
+                                | "SecurePath"
+                        )
+                    }
+                    SinkKind::Redirect => {
+                        // Types that represent validated URLs
+                        matches!(
+                            class_name.as_str(),
+                            "SafeUrl" | "ValidatedUrl" | "TrustedUrl" | "InternalUrl"
+                        )
+                    }
+                    SinkKind::XmlParse => {
+                        // Types that represent safe XML parsing
+                        matches!(class_name.as_str(), "SafeXml" | "ValidatedXml")
+                    }
+                    SinkKind::Deserialization => {
+                        // Types that represent safe deserialization
+                        matches!(class_name.as_str(), "SafeData" | "ValidatedInput")
+                    }
+                    _ => false,
+                }
+            }
+            // Primitive types that are inherently safe for certain sinks
+            Type::Int | Type::Float | Type::Bool => {
+                // Numeric and boolean types are generally safe for most sinks
+                // when used as-is (not string-interpolated)
+                matches!(
+                    sink,
+                    SinkKind::SqlQuery | SinkKind::Logging | SinkKind::FilePath
+                )
+            }
+            // Union types are safe if all members are safe
+            Type::Union(types) => types.iter().all(|t| t.is_safe_for(sink)),
+            // Optional types are safe if the inner type is safe (None is always safe)
+            Type::Optional(inner) => inner.is_safe_for(sink),
+            _ => false,
+        }
+    }
 }
 
 /// Type constraint for unification
@@ -321,6 +432,8 @@ pub struct FunctionSig {
     pub params: Vec<(String, Type)>,
     pub ret: Type,
     pub is_method: bool,
+    /// Sink kinds this function sanitizes (for security analysis)
+    pub sanitizes_for: Vec<SinkKind>,
 }
 
 /// Standard library type stubs
@@ -358,6 +471,7 @@ impl TypeStubs {
                 params: vec![("obj".to_string(), Type::Unknown)],
                 ret: Type::Int,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -366,6 +480,7 @@ impl TypeStubs {
                 params: vec![("obj".to_string(), Type::Unknown)],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -374,6 +489,7 @@ impl TypeStubs {
                 params: vec![("obj".to_string(), Type::Unknown)],
                 ret: Type::Int,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -382,6 +498,7 @@ impl TypeStubs {
                 params: vec![("obj".to_string(), Type::Unknown)],
                 ret: Type::Float,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -390,6 +507,7 @@ impl TypeStubs {
                 params: vec![("obj".to_string(), Type::Unknown)],
                 ret: Type::Bool,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -398,6 +516,7 @@ impl TypeStubs {
                 params: vec![("iterable".to_string(), Type::Unknown)],
                 ret: Type::List(Box::new(Type::Unknown)),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -406,6 +525,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Dict(Box::new(Type::Unknown), Box::new(Type::Unknown)),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -414,6 +534,7 @@ impl TypeStubs {
                 params: vec![("iterable".to_string(), Type::Unknown)],
                 ret: Type::Set(Box::new(Type::Unknown)),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -422,6 +543,7 @@ impl TypeStubs {
                 params: vec![("args".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -436,6 +558,7 @@ impl TypeStubs {
                     type_args: vec![],
                 },
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -450,6 +573,7 @@ impl TypeStubs {
                     type_args: vec![],
                 },
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -461,6 +585,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Bool,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -472,6 +597,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Bool,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -483,6 +609,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Unknown,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
 
@@ -494,6 +621,7 @@ impl TypeStubs {
                 params: vec![("key".to_string(), Type::String)],
                 ret: Type::Optional(Box::new(Type::String)),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         os_module.insert(
@@ -502,6 +630,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         os_module.insert(
@@ -510,6 +639,7 @@ impl TypeStubs {
                 params: vec![("path".to_string(), Type::String)],
                 ret: Type::List(Box::new(Type::String)),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         os_module.insert(
@@ -518,6 +648,7 @@ impl TypeStubs {
                 params: vec![("paths".to_string(), Type::String)],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         os_module.insert(
@@ -526,6 +657,7 @@ impl TypeStubs {
                 params: vec![("path".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.modules.insert("os".to_string(), os_module);
@@ -538,6 +670,7 @@ impl TypeStubs {
                 params: vec![("s".to_string(), Type::String)],
                 ret: Type::Unknown,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         json_module.insert(
@@ -546,6 +679,7 @@ impl TypeStubs {
                 params: vec![("obj".to_string(), Type::Unknown)],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         json_module.insert(
@@ -554,6 +688,7 @@ impl TypeStubs {
                 params: vec![("fp".to_string(), Type::Unknown)],
                 ret: Type::Unknown,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         json_module.insert(
@@ -565,6 +700,7 @@ impl TypeStubs {
                 ],
                 ret: Type::None,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.modules.insert("json".to_string(), json_module);
@@ -583,6 +719,7 @@ impl TypeStubs {
                     type_args: vec![],
                 })),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         re_module.insert(
@@ -597,6 +734,7 @@ impl TypeStubs {
                     type_args: vec![],
                 })),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         re_module.insert(
@@ -608,6 +746,7 @@ impl TypeStubs {
                 ],
                 ret: Type::List(Box::new(Type::String)),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.modules.insert("re".to_string(), re_module);
@@ -625,6 +764,7 @@ impl TypeStubs {
                 params: vec![("sep".to_string(), Type::Optional(Box::new(Type::String)))],
                 ret: Type::List(Box::new(Type::String)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         str_class.methods.insert(
@@ -633,6 +773,7 @@ impl TypeStubs {
                 params: vec![("iterable".to_string(), Type::List(Box::new(Type::String)))],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         str_class.methods.insert(
@@ -641,6 +782,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         str_class.methods.insert(
@@ -649,6 +791,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         str_class.methods.insert(
@@ -657,6 +800,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         str_class.methods.insert(
@@ -668,6 +812,7 @@ impl TypeStubs {
                 ],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         str_class.methods.insert(
@@ -676,6 +821,7 @@ impl TypeStubs {
                 params: vec![("prefix".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         str_class.methods.insert(
@@ -684,6 +830,7 @@ impl TypeStubs {
                 params: vec![("suffix".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("str".to_string(), str_class);
@@ -701,6 +848,7 @@ impl TypeStubs {
                 params: vec![("item".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -709,6 +857,7 @@ impl TypeStubs {
                 params: vec![("iterable".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -717,6 +866,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -725,6 +875,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::None,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -733,6 +884,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::None,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("list".to_string(), list_class);
@@ -756,6 +908,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         dict_class.methods.insert(
@@ -767,6 +920,7 @@ impl TypeStubs {
                     type_args: vec![],
                 },
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         dict_class.methods.insert(
@@ -778,6 +932,7 @@ impl TypeStubs {
                     type_args: vec![],
                 },
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         dict_class.methods.insert(
@@ -789,6 +944,7 @@ impl TypeStubs {
                     type_args: vec![],
                 },
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         dict_class.methods.insert(
@@ -797,9 +953,247 @@ impl TypeStubs {
                 params: vec![("other".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("dict".to_string(), dict_class);
+
+        // ==================== Security-related modules ====================
+        // These modules contain functions that sanitize data for specific sinks
+
+        // html module - HTML escaping functions
+        let mut html_module = HashMap::new();
+        html_module.insert(
+            "escape".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::HtmlOutput],
+            },
+        );
+        html_module.insert(
+            "unescape".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![],
+            },
+        );
+        stubs.modules.insert("html".to_string(), html_module);
+
+        // shlex module - Shell escaping functions
+        let mut shlex_module = HashMap::new();
+        shlex_module.insert(
+            "quote".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::CommandExec],
+            },
+        );
+        shlex_module.insert(
+            "join".to_string(),
+            FunctionSig {
+                params: vec![(
+                    "split_command".to_string(),
+                    Type::List(Box::new(Type::String)),
+                )],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::CommandExec],
+            },
+        );
+        shlex_module.insert(
+            "split".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::List(Box::new(Type::String)),
+                is_method: false,
+                sanitizes_for: vec![],
+            },
+        );
+        stubs.modules.insert("shlex".to_string(), shlex_module);
+
+        // os.path module - Path sanitization functions
+        let mut os_path_module = HashMap::new();
+        os_path_module.insert(
+            "normpath".to_string(),
+            FunctionSig {
+                params: vec![("path".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::FilePath, SinkKind::FileWrite],
+            },
+        );
+        os_path_module.insert(
+            "realpath".to_string(),
+            FunctionSig {
+                params: vec![("path".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::FilePath, SinkKind::FileWrite],
+            },
+        );
+        os_path_module.insert(
+            "abspath".to_string(),
+            FunctionSig {
+                params: vec![("path".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::FilePath, SinkKind::FileWrite],
+            },
+        );
+        os_path_module.insert(
+            "basename".to_string(),
+            FunctionSig {
+                params: vec![("path".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::FilePath, SinkKind::FileWrite],
+            },
+        );
+        os_path_module.insert(
+            "join".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("path".to_string(), Type::String),
+                    ("paths".to_string(), Type::String),
+                ],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![],
+            },
+        );
+        stubs.modules.insert("os.path".to_string(), os_path_module);
+
+        // sqlite3.Cursor module - Database query functions
+        let mut sqlite3_cursor_module = HashMap::new();
+        sqlite3_cursor_module.insert(
+            "execute".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("sql".to_string(), Type::String),
+                    (
+                        "parameters".to_string(),
+                        Type::Optional(Box::new(Type::Tuple(vec![]))),
+                    ),
+                ],
+                ret: Type::Instance {
+                    class_name: "Cursor".to_string(),
+                    type_args: vec![],
+                },
+                is_method: true,
+                // Note: Using parameterized queries is what makes SQL safe, not the execute function itself
+                // The sanitizes_for here indicates that execute with parameters is safer
+                sanitizes_for: vec![],
+            },
+        );
+        sqlite3_cursor_module.insert(
+            "executemany".to_string(),
+            FunctionSig {
+                params: vec![
+                    ("sql".to_string(), Type::String),
+                    (
+                        "seq_of_parameters".to_string(),
+                        Type::List(Box::new(Type::Tuple(vec![]))),
+                    ),
+                ],
+                ret: Type::Instance {
+                    class_name: "Cursor".to_string(),
+                    type_args: vec![],
+                },
+                is_method: true,
+                sanitizes_for: vec![],
+            },
+        );
+        stubs
+            .modules
+            .insert("sqlite3.Cursor".to_string(), sqlite3_cursor_module);
+
+        // urllib.parse module - URL encoding functions
+        let mut urllib_parse_module = HashMap::new();
+        urllib_parse_module.insert(
+            "quote".to_string(),
+            FunctionSig {
+                params: vec![("string".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::Redirect, SinkKind::HtmlOutput],
+            },
+        );
+        urllib_parse_module.insert(
+            "quote_plus".to_string(),
+            FunctionSig {
+                params: vec![("string".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::Redirect, SinkKind::HtmlOutput],
+            },
+        );
+        urllib_parse_module.insert(
+            "urlencode".to_string(),
+            FunctionSig {
+                params: vec![(
+                    "query".to_string(),
+                    Type::Dict(Box::new(Type::String), Box::new(Type::String)),
+                )],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::Redirect],
+            },
+        );
+        stubs
+            .modules
+            .insert("urllib.parse".to_string(), urllib_parse_module);
+
+        // werkzeug.utils module - Flask secure filename
+        let mut werkzeug_utils_module = HashMap::new();
+        werkzeug_utils_module.insert(
+            "secure_filename".to_string(),
+            FunctionSig {
+                params: vec![("filename".to_string(), Type::String)],
+                ret: Type::String,
+                is_method: false,
+                sanitizes_for: vec![SinkKind::FilePath, SinkKind::FileWrite],
+            },
+        );
+        stubs
+            .modules
+            .insert("werkzeug.utils".to_string(), werkzeug_utils_module);
+
+        // markupsafe module - Safe HTML markup
+        let mut markupsafe_module = HashMap::new();
+        markupsafe_module.insert(
+            "escape".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::Instance {
+                    class_name: "Markup".to_string(),
+                    type_args: vec![],
+                },
+                is_method: false,
+                sanitizes_for: vec![SinkKind::HtmlOutput],
+            },
+        );
+        markupsafe_module.insert(
+            "Markup".to_string(),
+            FunctionSig {
+                params: vec![("s".to_string(), Type::String)],
+                ret: Type::Instance {
+                    class_name: "Markup".to_string(),
+                    type_args: vec![],
+                },
+                is_method: false,
+                // Markup is NOT a sanitizer - it marks content as safe without escaping
+                sanitizes_for: vec![],
+            },
+        );
+        stubs
+            .modules
+            .insert("markupsafe".to_string(), markupsafe_module);
 
         stubs
     }
@@ -819,6 +1213,7 @@ impl TypeStubs {
                 params: vec![("string".to_string(), Type::String)],
                 ret: Type::Int,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -827,6 +1222,7 @@ impl TypeStubs {
                 params: vec![("string".to_string(), Type::String)],
                 ret: Type::Float,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -835,6 +1231,7 @@ impl TypeStubs {
                 params: vec![("value".to_string(), Type::Unknown)],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -843,6 +1240,7 @@ impl TypeStubs {
                 params: vec![("value".to_string(), Type::Unknown)],
                 ret: Type::Float,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -851,6 +1249,7 @@ impl TypeStubs {
                 params: vec![("value".to_string(), Type::Unknown)],
                 ret: Type::Bool,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -859,6 +1258,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::List(Box::new(Type::Unknown)),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -867,6 +1267,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Dict(Box::new(Type::String), Box::new(Type::Unknown)),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -875,6 +1276,7 @@ impl TypeStubs {
                 params: vec![("args".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -883,6 +1285,7 @@ impl TypeStubs {
                 params: vec![("text".to_string(), Type::String)],
                 ret: Type::Unknown,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -891,6 +1294,7 @@ impl TypeStubs {
                 params: vec![("value".to_string(), Type::Unknown)],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
 
@@ -907,6 +1311,7 @@ impl TypeStubs {
                 params: vec![("item".to_string(), Type::Unknown)],
                 ret: Type::Int,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         array_class.methods.insert(
@@ -915,6 +1320,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         array_class.methods.insert(
@@ -929,6 +1335,7 @@ impl TypeStubs {
                 )],
                 ret: Type::List(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         array_class.methods.insert(
@@ -943,6 +1350,7 @@ impl TypeStubs {
                 )],
                 ret: Type::List(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         array_class.methods.insert(
@@ -960,6 +1368,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         array_class.methods.insert(
@@ -974,6 +1383,7 @@ impl TypeStubs {
                 )],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         array_class.methods.insert(
@@ -982,6 +1392,7 @@ impl TypeStubs {
                 params: vec![("separator".to_string(), Type::String)],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         array_class
@@ -1002,6 +1413,7 @@ impl TypeStubs {
                 params: vec![("separator".to_string(), Type::String)],
                 ret: Type::List(Box::new(Type::String)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1010,6 +1422,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1018,6 +1431,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1026,6 +1440,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1037,6 +1452,7 @@ impl TypeStubs {
                 ],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1045,6 +1461,7 @@ impl TypeStubs {
                 params: vec![("searchString".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1053,6 +1470,7 @@ impl TypeStubs {
                 params: vec![("searchString".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1061,6 +1479,7 @@ impl TypeStubs {
                 params: vec![("searchString".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class
@@ -1086,6 +1505,7 @@ impl TypeStubs {
                 params: vec![("v".to_string(), Type::Unknown)],
                 ret: Type::Int,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -1094,6 +1514,7 @@ impl TypeStubs {
                 params: vec![("v".to_string(), Type::Unknown)],
                 ret: Type::Int,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -1102,6 +1523,7 @@ impl TypeStubs {
                 params: vec![("t".to_string(), Type::Unknown)],
                 ret: Type::Unknown,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -1110,6 +1532,7 @@ impl TypeStubs {
                 params: vec![("t".to_string(), Type::Unknown)],
                 ret: Type::Unknown,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -1121,6 +1544,7 @@ impl TypeStubs {
                 ],
                 ret: Type::List(Box::new(Type::Unknown)),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -1132,6 +1556,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Int,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -1146,6 +1571,7 @@ impl TypeStubs {
                 ],
                 ret: Type::None,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -1154,6 +1580,7 @@ impl TypeStubs {
                 params: vec![("v".to_string(), Type::Unknown)],
                 ret: Type::Never,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -1162,6 +1589,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Unknown,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -1170,6 +1598,7 @@ impl TypeStubs {
                 params: vec![("args".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.builtins.insert(
@@ -1178,6 +1607,7 @@ impl TypeStubs {
                 params: vec![("args".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
 
@@ -1189,6 +1619,7 @@ impl TypeStubs {
                 params: vec![("a".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         fmt_module.insert(
@@ -1200,6 +1631,7 @@ impl TypeStubs {
                 ],
                 ret: Type::None,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         fmt_module.insert(
@@ -1211,6 +1643,7 @@ impl TypeStubs {
                 ],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         fmt_module.insert(
@@ -1225,6 +1658,7 @@ impl TypeStubs {
                     type_args: vec![],
                 },
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.modules.insert("fmt".to_string(), fmt_module);
@@ -1240,6 +1674,7 @@ impl TypeStubs {
                 ],
                 ret: Type::List(Box::new(Type::String)),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         strings_module.insert(
@@ -1251,6 +1686,7 @@ impl TypeStubs {
                 ],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         strings_module.insert(
@@ -1262,6 +1698,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Bool,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         strings_module.insert(
@@ -1273,6 +1710,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Bool,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         strings_module.insert(
@@ -1284,6 +1722,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Bool,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         strings_module.insert(
@@ -1292,6 +1731,7 @@ impl TypeStubs {
                 params: vec![("s".to_string(), Type::String)],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         strings_module.insert(
@@ -1300,6 +1740,7 @@ impl TypeStubs {
                 params: vec![("s".to_string(), Type::String)],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         strings_module.insert(
@@ -1308,6 +1749,7 @@ impl TypeStubs {
                 params: vec![("s".to_string(), Type::String)],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         strings_module.insert(
@@ -1321,6 +1763,7 @@ impl TypeStubs {
                 ],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.modules.insert("strings".to_string(), strings_module);
@@ -1333,6 +1776,7 @@ impl TypeStubs {
                 params: vec![("key".to_string(), Type::String)],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         os_module.insert(
@@ -1347,6 +1791,7 @@ impl TypeStubs {
                     type_args: vec![],
                 },
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         os_module.insert(
@@ -1355,6 +1800,7 @@ impl TypeStubs {
                 params: vec![("code".to_string(), Type::Int)],
                 ret: Type::Never,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         os_module.insert(
@@ -1369,6 +1815,7 @@ impl TypeStubs {
                     },
                 ]),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.modules.insert("os".to_string(), os_module);
@@ -1387,6 +1834,7 @@ impl TypeStubs {
                     },
                 ]),
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         strconv_module.insert(
@@ -1395,6 +1843,7 @@ impl TypeStubs {
                 params: vec![("i".to_string(), Type::Int)],
                 ret: Type::String,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.modules.insert("strconv".to_string(), strconv_module);
@@ -1423,6 +1872,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Int,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1434,6 +1884,7 @@ impl TypeStubs {
                     type_args: vec![],
                 },
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1445,6 +1896,7 @@ impl TypeStubs {
                 ],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1453,6 +1905,7 @@ impl TypeStubs {
                 params: vec![("regex".to_string(), Type::String)],
                 ret: Type::List(Box::new(Type::String)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1461,6 +1914,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1469,6 +1923,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1477,6 +1932,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1485,6 +1941,7 @@ impl TypeStubs {
                 params: vec![("s".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1493,6 +1950,7 @@ impl TypeStubs {
                 params: vec![("prefix".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1501,6 +1959,7 @@ impl TypeStubs {
                 params: vec![("suffix".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1509,6 +1968,7 @@ impl TypeStubs {
                 params: vec![("obj".to_string(), Type::Unknown)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1517,6 +1977,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1528,6 +1989,7 @@ impl TypeStubs {
                 ],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("String".to_string(), string_class);
@@ -1545,6 +2007,7 @@ impl TypeStubs {
                 params: vec![("e".to_string(), Type::Unknown)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -1553,6 +2016,7 @@ impl TypeStubs {
                 params: vec![("index".to_string(), Type::Int)],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -1564,6 +2028,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -1572,6 +2037,7 @@ impl TypeStubs {
                 params: vec![("index".to_string(), Type::Int)],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -1580,6 +2046,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Int,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -1588,6 +2055,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -1596,6 +2064,7 @@ impl TypeStubs {
                 params: vec![("o".to_string(), Type::Unknown)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         list_class.methods.insert(
@@ -1604,6 +2073,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::None,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("List".to_string(), list_class);
@@ -1624,6 +2094,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         map_class.methods.insert(
@@ -1632,6 +2103,7 @@ impl TypeStubs {
                 params: vec![("key".to_string(), Type::Unknown)],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         map_class.methods.insert(
@@ -1640,6 +2112,7 @@ impl TypeStubs {
                 params: vec![("key".to_string(), Type::Unknown)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         map_class.methods.insert(
@@ -1648,6 +2121,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Int,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         map_class.methods.insert(
@@ -1656,6 +2130,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("Map".to_string(), map_class);
@@ -1668,6 +2143,7 @@ impl TypeStubs {
                 params: vec![("x".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         system_out.insert(
@@ -1676,6 +2152,7 @@ impl TypeStubs {
                 params: vec![("x".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: false,
+                sanitizes_for: vec![],
             },
         );
         stubs.modules.insert("System.out".to_string(), system_out);
@@ -1693,6 +2170,7 @@ impl TypeStubs {
                 params: vec![("s".to_string(), Type::String)],
                 ret: Type::Int,
                 is_method: false, // static method
+                sanitizes_for: vec![],
             },
         );
         integer_class.methods.insert(
@@ -1701,6 +2179,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("Integer".to_string(), integer_class);
@@ -1729,6 +2208,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Int,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1737,6 +2217,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1745,6 +2226,7 @@ impl TypeStubs {
                 params: vec![("s".to_string(), Type::String)],
                 ret: Type::None,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1759,6 +2241,7 @@ impl TypeStubs {
                 )],
                 ret: Type::None,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1767,6 +2250,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1775,6 +2259,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1783,6 +2268,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1791,6 +2277,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1799,6 +2286,7 @@ impl TypeStubs {
                 params: vec![("pat".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1807,6 +2295,7 @@ impl TypeStubs {
                 params: vec![("pat".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1815,6 +2304,7 @@ impl TypeStubs {
                 params: vec![("pat".to_string(), Type::String)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1826,6 +2316,7 @@ impl TypeStubs {
                     type_args: vec![],
                 },
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         string_class.methods.insert(
@@ -1837,6 +2328,7 @@ impl TypeStubs {
                 ],
                 ret: Type::String,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("String".to_string(), string_class);
@@ -1854,6 +2346,7 @@ impl TypeStubs {
                 params: vec![("value".to_string(), Type::Unknown)],
                 ret: Type::None,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         vec_class.methods.insert(
@@ -1862,6 +2355,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         vec_class.methods.insert(
@@ -1870,6 +2364,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Int,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         vec_class.methods.insert(
@@ -1878,6 +2373,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         vec_class.methods.insert(
@@ -1886,6 +2382,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::None,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         vec_class.methods.insert(
@@ -1894,6 +2391,7 @@ impl TypeStubs {
                 params: vec![("index".to_string(), Type::Int)],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         vec_class.methods.insert(
@@ -1902,6 +2400,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         vec_class.methods.insert(
@@ -1910,6 +2409,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         vec_class.methods.insert(
@@ -1921,6 +2421,7 @@ impl TypeStubs {
                     type_args: vec![],
                 },
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("Vec".to_string(), vec_class);
@@ -1938,6 +2439,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         option_class.methods.insert(
@@ -1946,6 +2448,7 @@ impl TypeStubs {
                 params: vec![("default".to_string(), Type::Unknown)],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         option_class.methods.insert(
@@ -1954,6 +2457,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         option_class.methods.insert(
@@ -1962,6 +2466,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         option_class.methods.insert(
@@ -1976,6 +2481,7 @@ impl TypeStubs {
                 )],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         option_class.methods.insert(
@@ -1990,6 +2496,7 @@ impl TypeStubs {
                 )],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("Option".to_string(), option_class);
@@ -2007,6 +2514,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         result_class.methods.insert(
@@ -2015,6 +2523,7 @@ impl TypeStubs {
                 params: vec![("msg".to_string(), Type::String)],
                 ret: Type::Unknown,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         result_class.methods.insert(
@@ -2023,6 +2532,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         result_class.methods.insert(
@@ -2031,6 +2541,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         result_class.methods.insert(
@@ -2039,6 +2550,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         result_class.methods.insert(
@@ -2047,6 +2559,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("Result".to_string(), result_class);
@@ -2067,6 +2580,7 @@ impl TypeStubs {
                 ],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         hashmap_class.methods.insert(
@@ -2075,6 +2589,7 @@ impl TypeStubs {
                 params: vec![("key".to_string(), Type::Unknown)],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         hashmap_class.methods.insert(
@@ -2083,6 +2598,7 @@ impl TypeStubs {
                 params: vec![("key".to_string(), Type::Unknown)],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         hashmap_class.methods.insert(
@@ -2091,6 +2607,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Int,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         hashmap_class.methods.insert(
@@ -2099,6 +2616,7 @@ impl TypeStubs {
                 params: vec![],
                 ret: Type::Bool,
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         hashmap_class.methods.insert(
@@ -2107,6 +2625,7 @@ impl TypeStubs {
                 params: vec![("key".to_string(), Type::Unknown)],
                 ret: Type::Optional(Box::new(Type::Unknown)),
                 is_method: true,
+                sanitizes_for: vec![],
             },
         );
         stubs.classes.insert("HashMap".to_string(), hashmap_class);
@@ -2136,6 +2655,88 @@ impl TypeStubs {
         self.classes
             .get(class_name)
             .and_then(|c| c.attributes.get(attr))
+    }
+
+    /// Check if a function sanitizes data for a specific sink kind.
+    ///
+    /// This is used by type-aware security analysis to determine if a function
+    /// call makes tainted data safe for a particular sink.
+    ///
+    /// # Arguments
+    ///
+    /// * `module` - The module name (e.g., "html", "shlex", "os.path")
+    /// * `func` - The function name (e.g., "escape", "quote", "normpath")
+    /// * `sink` - The sink kind to check
+    ///
+    /// # Returns
+    ///
+    /// `true` if the function sanitizes for the given sink
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use narsil_mcp::type_inference::TypeStubs;
+    /// use narsil_mcp::taint::types::SinkKind;
+    ///
+    /// let stubs = TypeStubs::python_stdlib();
+    /// assert!(stubs.is_sanitizer_for("html", "escape", &SinkKind::HtmlOutput));
+    /// assert!(stubs.is_sanitizer_for("shlex", "quote", &SinkKind::CommandExec));
+    /// ```
+    #[must_use]
+    pub fn is_sanitizer_for(&self, module: &str, func: &str, sink: &SinkKind) -> bool {
+        // First check module functions
+        if let Some(sig) = self.lookup_module_func(module, func) {
+            return sig.sanitizes_for.contains(sink);
+        }
+
+        // Then check builtins (module will be empty string)
+        if module.is_empty() {
+            if let Some(sig) = self.lookup_builtin(func) {
+                return sig.sanitizes_for.contains(sink);
+            }
+        }
+
+        // Finally check class methods (module is class name)
+        if let Some(sig) = self.lookup_method(module, func) {
+            return sig.sanitizes_for.contains(sink);
+        }
+
+        false
+    }
+
+    /// Get all sanitizers for a specific sink kind.
+    ///
+    /// Returns a list of (module, function) pairs that sanitize for the given sink.
+    #[must_use]
+    pub fn get_sanitizers_for(&self, sink: &SinkKind) -> Vec<(String, String)> {
+        let mut sanitizers = Vec::new();
+
+        // Check all modules
+        for (module, funcs) in &self.modules {
+            for (func, sig) in funcs {
+                if sig.sanitizes_for.contains(sink) {
+                    sanitizers.push((module.clone(), func.clone()));
+                }
+            }
+        }
+
+        // Check builtins
+        for (func, sig) in &self.builtins {
+            if sig.sanitizes_for.contains(sink) {
+                sanitizers.push((String::new(), func.clone()));
+            }
+        }
+
+        // Check class methods
+        for (class, def) in &self.classes {
+            for (method, sig) in &def.methods {
+                if sig.sanitizes_for.contains(sink) {
+                    sanitizers.push((class.clone(), method.clone()));
+                }
+            }
+        }
+
+        sanitizers
     }
 }
 
@@ -2288,6 +2889,146 @@ impl InferredTypes {
     }
 }
 
+/// Registry for tracking trait/interface implementations.
+///
+/// This is used to prevent false positives in dead code detection by
+/// recognizing that methods implementing a trait/interface are not unused
+/// even if they appear to have no direct callers.
+///
+/// # Examples
+///
+/// ```ignore
+/// use narsil_mcp::type_inference::TraitImplementationRegistry;
+///
+/// let mut registry = TraitImplementationRegistry::new();
+/// registry.register_implementation(
+///     "FileReader",
+///     "io.Reader",
+///     "src/reader.rs",
+///     vec!["read".to_string()],
+/// );
+///
+/// assert!(registry.implements_trait("FileReader", "io.Reader"));
+/// assert!(registry.is_trait_method("FileReader", "read"));
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct TraitImplementationRegistry {
+    /// Map from (type_name, trait_name) -> (file_path, method_names)
+    implementations: HashMap<(String, String), (String, Vec<String>)>,
+    /// Map from trait_name -> list of implementing types
+    trait_implementors: HashMap<String, Vec<String>>,
+}
+
+impl TraitImplementationRegistry {
+    /// Create a new empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register that a type implements a trait.
+    ///
+    /// # Arguments
+    ///
+    /// * `implementing_type` - The name of the type implementing the trait
+    /// * `trait_name` - The name of the trait/interface being implemented
+    /// * `file_path` - The file where the implementation is defined
+    /// * `methods` - The methods that are part of this trait implementation
+    pub fn register_implementation(
+        &mut self,
+        implementing_type: &str,
+        trait_name: &str,
+        file_path: &str,
+        methods: Vec<String>,
+    ) {
+        let key = (implementing_type.to_string(), trait_name.to_string());
+        self.implementations
+            .insert(key, (file_path.to_string(), methods));
+
+        // Track implementors of this trait
+        self.trait_implementors
+            .entry(trait_name.to_string())
+            .or_default()
+            .push(implementing_type.to_string());
+    }
+
+    /// Check if a type implements a specific trait.
+    ///
+    /// # Arguments
+    ///
+    /// * `type_name` - The name of the type to check
+    /// * `trait_name` - The name of the trait to check for
+    ///
+    /// # Returns
+    ///
+    /// `true` if the type implements the trait
+    #[must_use]
+    pub fn implements_trait(&self, type_name: &str, trait_name: &str) -> bool {
+        let key = (type_name.to_string(), trait_name.to_string());
+        self.implementations.contains_key(&key)
+    }
+
+    /// Get the methods that a type implements for a specific trait.
+    ///
+    /// # Arguments
+    ///
+    /// * `type_name` - The name of the type
+    /// * `trait_name` - The name of the trait
+    ///
+    /// # Returns
+    ///
+    /// The list of methods if the implementation exists, `None` otherwise
+    #[must_use]
+    pub fn get_trait_methods(&self, type_name: &str, trait_name: &str) -> Option<Vec<String>> {
+        let key = (type_name.to_string(), trait_name.to_string());
+        self.implementations
+            .get(&key)
+            .map(|(_, methods)| methods.clone())
+    }
+
+    /// Check if a method on a type is a trait implementation method.
+    ///
+    /// This is useful for dead code detection - trait methods should not be
+    /// flagged as unused even if they have no direct callers, because they
+    /// may be called through the trait interface.
+    ///
+    /// # Arguments
+    ///
+    /// * `type_name` - The name of the type
+    /// * `method_name` - The name of the method to check
+    ///
+    /// # Returns
+    ///
+    /// `true` if the method is part of any trait implementation for this type
+    #[must_use]
+    pub fn is_trait_method(&self, type_name: &str, method_name: &str) -> bool {
+        // Check all implementations for this type
+        for ((impl_type, _), (_, methods)) in &self.implementations {
+            if impl_type == type_name && methods.contains(&method_name.to_string()) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get all types that implement a specific trait.
+    ///
+    /// # Arguments
+    ///
+    /// * `trait_name` - The name of the trait
+    ///
+    /// # Returns
+    ///
+    /// List of type names that implement the trait
+    #[must_use]
+    pub fn get_implementors(&self, trait_name: &str) -> Vec<String> {
+        self.trait_implementors
+            .get(trait_name)
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
 /// Main type inferencer
 pub struct TypeInferencer<'a> {
     /// Source code (stored for potential future AST parsing)
@@ -2296,6 +3037,8 @@ pub struct TypeInferencer<'a> {
     cfg: Option<&'a ControlFlowGraph>,
     /// Type stubs for stdlib
     stubs: TypeStubs,
+    /// Registered function signatures for type checking
+    registered_functions: HashMap<String, (Vec<(String, Type)>, Type)>,
     /// Accumulated constraints
     constraints: Vec<Constraint>,
     /// Type environment
@@ -2320,10 +3063,58 @@ impl<'a> TypeInferencer<'a> {
             _source: source,
             cfg,
             stubs,
+            registered_functions: HashMap::new(),
             constraints: Vec::new(),
             env: TypeEnv::new(),
             _language: language.to_string(),
         }
+    }
+
+    /// Register a function signature for type checking.
+    ///
+    /// This allows the type checker to verify that calls to this function
+    /// use the correct argument types and that the return type is used correctly.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The function name
+    /// * `params` - Parameter names and their types
+    /// * `return_type` - The function's return type
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use narsil_mcp::type_inference::{Type, TypeInferencer};
+    ///
+    /// let mut inferencer = TypeInferencer::new(source, None, "python");
+    /// inferencer.register_function(
+    ///     "greet",
+    ///     vec![("name".to_string(), Type::String)],
+    ///     Type::String,
+    /// );
+    /// ```
+    pub fn register_function(
+        &mut self,
+        name: &str,
+        params: Vec<(String, Type)>,
+        return_type: Type,
+    ) {
+        self.registered_functions
+            .insert(name.to_string(), (params, return_type));
+    }
+
+    /// Get a registered function's signature.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The function name to look up
+    ///
+    /// # Returns
+    ///
+    /// The function's parameters and return type if registered
+    #[must_use]
+    pub fn get_registered_function(&self, name: &str) -> Option<&(Vec<(String, Type)>, Type)> {
+        self.registered_functions.get(name)
     }
 
     /// Infer types for a function from its CFG
@@ -2781,7 +3572,7 @@ impl<'a> TypeInferencer<'a> {
     pub fn check_type_errors(&mut self) -> Vec<TypeError> {
         let mut errors = Vec::new();
 
-        // Check for uses of undefined variables
+        // Check for uses of undefined variables (CFG-based)
         if let Some(cfg) = self.cfg {
             for block in cfg.blocks.values() {
                 for stmt in &block.statements {
@@ -2807,7 +3598,316 @@ impl<'a> TypeInferencer<'a> {
             }
         }
 
+        // Check for type errors in registered function calls by parsing source
+        self.check_function_call_errors(&mut errors);
+
+        // Check for return type mismatches
+        self.check_return_type_errors(&mut errors);
+
         errors
+    }
+
+    /// Check for type errors in function calls by parsing the source.
+    fn check_function_call_errors(&self, errors: &mut Vec<TypeError>) {
+        // Parse function calls from source and check against registered signatures
+        for (line_num, line) in self._source.lines().enumerate() {
+            let line_num = line_num + 1; // 1-indexed
+
+            // Check for calls to registered functions
+            for (func_name, (params, _return_type)) in &self.registered_functions {
+                if let Some(call_info) = self.extract_function_call(line, func_name) {
+                    // Check argument count
+                    if call_info.args.len() != params.len() {
+                        errors.push(TypeError {
+                            message: format!(
+                                "Function '{}' expects {} argument(s), got {}",
+                                func_name,
+                                params.len(),
+                                call_info.args.len()
+                            ),
+                            line: line_num,
+                            column: call_info.column,
+                            kind: TypeErrorKind::ArgumentCount,
+                        });
+                        continue;
+                    }
+
+                    // Check argument types
+                    for (i, (arg_text, (param_name, expected_type))) in
+                        call_info.args.iter().zip(params.iter()).enumerate()
+                    {
+                        if let Some(actual_type) = self.infer_literal(arg_text) {
+                            if !actual_type.is_subtype_of(expected_type) {
+                                let expected_name =
+                                    type_to_language_name(expected_type, &self._language);
+                                let actual_name =
+                                    type_to_language_name(&actual_type, &self._language);
+                                errors.push(TypeError {
+                                    message: format!(
+                                        "Argument {} to '{}': expected {}, got {}",
+                                        i + 1,
+                                        func_name,
+                                        expected_name,
+                                        actual_name
+                                    ),
+                                    line: line_num,
+                                    column: call_info.column,
+                                    kind: TypeErrorKind::TypeMismatch,
+                                });
+                            }
+                        }
+                        // If we can't infer the literal type, check by parameter name
+                        else if let Some(var_type) = self.env.lookup(arg_text) {
+                            if !var_type.is_subtype_of(expected_type) {
+                                let expected_name =
+                                    type_to_language_name(expected_type, &self._language);
+                                let actual_name = type_to_language_name(var_type, &self._language);
+                                errors.push(TypeError {
+                                    message: format!(
+                                        "Argument '{}' to '{}': expected {}, got {}",
+                                        param_name, func_name, expected_name, actual_name
+                                    ),
+                                    line: line_num,
+                                    column: call_info.column,
+                                    kind: TypeErrorKind::TypeMismatch,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check for return type mismatches by parsing return statements.
+    fn check_return_type_errors(&self, errors: &mut Vec<TypeError>) {
+        // Find function definitions with type annotations and check return statements
+        // We only track the expected return type, not the function name (which we don't use)
+        let mut current_return_type: Option<Type> = None;
+
+        for (line_num, line) in self._source.lines().enumerate() {
+            let line_num = line_num + 1;
+            let trimmed = line.trim();
+
+            // Detect Python function definition with return type annotation
+            if trimmed.starts_with("def ") && trimmed.contains("->") {
+                if let Some(return_type) = self.parse_return_type_annotation(trimmed) {
+                    current_return_type = Some(return_type);
+                }
+            }
+
+            // Check return statements against current function's expected return type
+            if let Some(ref expected_type) = current_return_type {
+                if trimmed.starts_with("return ") {
+                    let return_expr = trimmed.strip_prefix("return ").unwrap().trim();
+                    // Strip comments (Python # comments)
+                    let return_expr = strip_trailing_comment(return_expr);
+                    if let Some(actual_type) = self.infer_literal(&return_expr) {
+                        if !actual_type.is_subtype_of(expected_type) {
+                            let expected_name =
+                                type_to_language_name(expected_type, &self._language);
+                            let actual_name = type_to_language_name(&actual_type, &self._language);
+                            errors.push(TypeError {
+                                message: format!(
+                                    "return type mismatch: expected {}, got {}",
+                                    expected_name, actual_name
+                                ),
+                                line: line_num,
+                                column: 0,
+                                kind: TypeErrorKind::TypeMismatch,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Parse just the return type annotation from a function definition.
+    fn parse_return_type_annotation(&self, line: &str) -> Option<Type> {
+        // Pattern: def name(...) -> type:
+        if let Some(arrow_pos) = line.find("->") {
+            let after_arrow = &line[arrow_pos + 2..];
+            let colon_pos = after_arrow.find(':')?;
+            let type_str = after_arrow[..colon_pos].trim();
+            return Some(self.parse_type_annotation(type_str));
+        }
+        None
+    }
+
+    /// Extract function call information from a line of code.
+    fn extract_function_call(&self, line: &str, func_name: &str) -> Option<FunctionCallInfo> {
+        // Find the function call pattern: func_name(args)
+        let pattern = format!("{}(", func_name);
+        if let Some(start) = line.find(&pattern) {
+            let after_paren = start + pattern.len();
+            // Find the matching closing parenthesis
+            if let Some(close_paren) = self.find_matching_paren(line, after_paren) {
+                let args_str = &line[after_paren..close_paren];
+                let args = self.parse_arguments(args_str);
+                return Some(FunctionCallInfo {
+                    column: start,
+                    args,
+                });
+            }
+        }
+        None
+    }
+
+    /// Find the matching closing parenthesis.
+    fn find_matching_paren(&self, text: &str, start: usize) -> Option<usize> {
+        let mut depth = 1;
+        let mut in_string = false;
+        let mut string_char = ' ';
+
+        for (i, c) in text[start..].char_indices() {
+            if in_string {
+                if c == string_char && (i == 0 || text[start..].chars().nth(i - 1) != Some('\\')) {
+                    in_string = false;
+                }
+            } else {
+                match c {
+                    '"' | '\'' => {
+                        in_string = true;
+                        string_char = c;
+                    }
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Some(start + i);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        None
+    }
+
+    /// Parse function arguments from a comma-separated string.
+    fn parse_arguments(&self, args_str: &str) -> Vec<String> {
+        if args_str.trim().is_empty() {
+            return Vec::new();
+        }
+
+        let mut args = Vec::new();
+        let mut current = String::new();
+        let mut depth = 0;
+        let mut in_string = false;
+        let mut string_char = ' ';
+
+        for c in args_str.chars() {
+            if in_string {
+                current.push(c);
+                if c == string_char {
+                    in_string = false;
+                }
+            } else {
+                match c {
+                    '"' | '\'' => {
+                        in_string = true;
+                        string_char = c;
+                        current.push(c);
+                    }
+                    '(' | '[' | '{' => {
+                        depth += 1;
+                        current.push(c);
+                    }
+                    ')' | ']' | '}' => {
+                        depth -= 1;
+                        current.push(c);
+                    }
+                    ',' if depth == 0 => {
+                        args.push(current.trim().to_string());
+                        current.clear();
+                    }
+                    _ => current.push(c),
+                }
+            }
+        }
+
+        if !current.trim().is_empty() {
+            args.push(current.trim().to_string());
+        }
+
+        args
+    }
+
+    /// Parse a type annotation string into a Type.
+    fn parse_type_annotation(&self, type_str: &str) -> Type {
+        match type_str.to_lowercase().as_str() {
+            "int" => Type::Int,
+            "float" => Type::Float,
+            "str" | "string" => Type::String,
+            "bool" | "boolean" => Type::Bool,
+            "none" | "null" => Type::None,
+            _ => Type::Instance {
+                class_name: type_str.to_string(),
+                type_args: vec![],
+            },
+        }
+    }
+}
+
+/// Information about a function call extracted from source.
+struct FunctionCallInfo {
+    column: usize,
+    args: Vec<String>,
+}
+
+/// Convert a Type to a language-specific name for error messages.
+fn type_to_language_name(ty: &Type, language: &str) -> String {
+    match ty {
+        Type::Int => {
+            if language == "python" || language == "py" {
+                "int".to_string()
+            } else {
+                "number".to_string()
+            }
+        }
+        Type::Float => {
+            if language == "python" || language == "py" {
+                "float".to_string()
+            } else {
+                "number".to_string()
+            }
+        }
+        Type::String => {
+            if language == "python" || language == "py" {
+                "str".to_string()
+            } else {
+                "string".to_string()
+            }
+        }
+        Type::Bool => {
+            if language == "python" || language == "py" {
+                "bool".to_string()
+            } else {
+                "boolean".to_string()
+            }
+        }
+        Type::None => {
+            if language == "python" || language == "py" {
+                "None".to_string()
+            } else {
+                "null".to_string()
+            }
+        }
+        Type::Instance { class_name, .. } => class_name.clone(),
+        Type::List(inner) => format!("list[{}]", type_to_language_name(inner, language)),
+        Type::Dict(k, v) => format!(
+            "dict[{}, {}]",
+            type_to_language_name(k, language),
+            type_to_language_name(v, language)
+        ),
+        Type::Optional(inner) => format!("{}?", type_to_language_name(inner, language)),
+        Type::Union(types) => types
+            .iter()
+            .map(|t| type_to_language_name(t, language))
+            .collect::<Vec<_>>()
+            .join(" | "),
+        _ => format!("{:?}", ty),
     }
 }
 
@@ -2840,6 +3940,40 @@ fn is_keyword(s: &str) -> bool {
             | "None" | "True" | "False" | "null" | "undefined" | "true" | "false"
             | "self" | "this"
     )
+}
+
+/// Strip trailing comments from a code expression.
+///
+/// Handles Python-style # comments while being careful not to strip
+/// # characters that are inside string literals.
+fn strip_trailing_comment(s: &str) -> String {
+    let mut result = String::new();
+    let mut in_string = false;
+    let mut string_char = ' ';
+
+    for c in s.chars() {
+        if in_string {
+            result.push(c);
+            if c == string_char {
+                in_string = false;
+            }
+        } else {
+            match c {
+                '"' | '\'' => {
+                    in_string = true;
+                    string_char = c;
+                    result.push(c);
+                }
+                '#' => {
+                    // Start of comment, stop here
+                    break;
+                }
+                _ => result.push(c),
+            }
+        }
+    }
+
+    result.trim().to_string()
 }
 
 fn extract_identifiers(text: &str) -> Vec<String> {
@@ -4479,5 +5613,332 @@ mod tests {
             Some(Type::Instance { class_name, type_args })
             if class_name == "Map" && type_args.len() == 2
         ));
+    }
+
+    // ==================== Type-Aware Security Analysis Tests ====================
+    // These tests verify that type information can be used to identify sanitizers
+    // and reduce false positives in security analysis.
+
+    #[test]
+    fn test_function_sig_sanitizer_metadata() {
+        // FunctionSig should track which sinks a function sanitizes
+        let sig = FunctionSig {
+            params: vec![("input".to_string(), Type::String)],
+            ret: Type::String,
+            is_method: false,
+            sanitizes_for: vec![SinkKind::HtmlOutput],
+        };
+
+        assert!(!sig.sanitizes_for.is_empty());
+        assert!(sig.sanitizes_for.contains(&SinkKind::HtmlOutput));
+    }
+
+    #[test]
+    fn test_type_stubs_html_escape_sanitizer() {
+        // html.escape should be marked as a sanitizer for HtmlOutput
+        let stubs = TypeStubs::python_stdlib();
+
+        // Look up html.escape
+        let escape_sig = stubs.lookup_module_func("html", "escape");
+        assert!(
+            escape_sig.is_some(),
+            "html.escape should be in Python stdlib stubs"
+        );
+
+        let sig = escape_sig.unwrap();
+        assert!(
+            sig.sanitizes_for.contains(&SinkKind::HtmlOutput),
+            "html.escape should sanitize for HtmlOutput"
+        );
+    }
+
+    #[test]
+    fn test_type_stubs_sql_parameterized_sanitizer() {
+        // Parameterized query functions should sanitize for SqlQuery
+        let stubs = TypeStubs::python_stdlib();
+
+        // Look up sqlite3.execute with placeholders (parameterized queries)
+        // This is represented in the type system as a sanitizer
+        let execute_sig = stubs.lookup_module_func("sqlite3.Cursor", "execute");
+        assert!(
+            execute_sig.is_some(),
+            "sqlite3.Cursor.execute should be in Python stdlib stubs"
+        );
+    }
+
+    #[test]
+    fn test_type_stubs_shell_quote_sanitizer() {
+        // shlex.quote should sanitize for CommandExec
+        let stubs = TypeStubs::python_stdlib();
+
+        let quote_sig = stubs.lookup_module_func("shlex", "quote");
+        assert!(
+            quote_sig.is_some(),
+            "shlex.quote should be in Python stdlib stubs"
+        );
+
+        let sig = quote_sig.unwrap();
+        assert!(
+            sig.sanitizes_for.contains(&SinkKind::CommandExec),
+            "shlex.quote should sanitize for CommandExec"
+        );
+    }
+
+    #[test]
+    fn test_type_stubs_path_sanitizer() {
+        // os.path.normpath should sanitize for FilePath
+        let stubs = TypeStubs::python_stdlib();
+
+        let normpath_sig = stubs.lookup_module_func("os.path", "normpath");
+        assert!(
+            normpath_sig.is_some(),
+            "os.path.normpath should be in Python stdlib stubs"
+        );
+
+        let sig = normpath_sig.unwrap();
+        assert!(
+            sig.sanitizes_for.contains(&SinkKind::FilePath),
+            "os.path.normpath should sanitize for FilePath"
+        );
+    }
+
+    #[test]
+    fn test_safe_type_for_sink() {
+        // Types can be marked as inherently safe for certain sinks
+        // SafeHtml type should be safe for HtmlOutput
+        let safe_html = Type::Instance {
+            class_name: "SafeHtml".to_string(),
+            type_args: vec![],
+        };
+
+        // This should return true when is_safe_for is implemented
+        assert!(
+            safe_html.is_safe_for(&SinkKind::HtmlOutput),
+            "SafeHtml type should be safe for HtmlOutput sink"
+        );
+    }
+
+    #[test]
+    fn test_safe_type_parameterized_query() {
+        // ParameterizedQuery type should be safe for SqlQuery
+        let param_query = Type::Instance {
+            class_name: "ParameterizedQuery".to_string(),
+            type_args: vec![],
+        };
+
+        assert!(
+            param_query.is_safe_for(&SinkKind::SqlQuery),
+            "ParameterizedQuery type should be safe for SqlQuery sink"
+        );
+    }
+
+    #[test]
+    fn test_lookup_sanitizer_returns_type_aware_info() {
+        // TypeStubs should have a method to check if a function sanitizes for a sink
+        let stubs = TypeStubs::python_stdlib();
+
+        // html.escape sanitizes HtmlOutput
+        assert!(
+            stubs.is_sanitizer_for("html", "escape", &SinkKind::HtmlOutput),
+            "html.escape should be a sanitizer for HtmlOutput"
+        );
+
+        // shlex.quote sanitizes CommandExec
+        assert!(
+            stubs.is_sanitizer_for("shlex", "quote", &SinkKind::CommandExec),
+            "shlex.quote should be a sanitizer for CommandExec"
+        );
+
+        // os.path.normpath sanitizes FilePath
+        assert!(
+            stubs.is_sanitizer_for("os.path", "normpath", &SinkKind::FilePath),
+            "os.path.normpath should be a sanitizer for FilePath"
+        );
+
+        // len is NOT a sanitizer for HtmlOutput
+        assert!(
+            !stubs.is_sanitizer_for("", "len", &SinkKind::HtmlOutput),
+            "len should NOT be a sanitizer for HtmlOutput"
+        );
+    }
+
+    // ==================== Type-Aware Dead Code Detection Tests ====================
+    // These tests verify that type information can prevent false positives
+    // in dead code detection for interface/trait implementations.
+
+    #[test]
+    fn test_trait_implementation_registry() {
+        // TraitRegistry should track which types implement which traits
+        let mut registry = TraitImplementationRegistry::new();
+
+        // Register that MyHandler implements Handler trait
+        registry.register_implementation(
+            "MyHandler",                 // implementing type
+            "Handler",                   // trait/interface
+            "src/handlers.rs",           // file
+            vec!["process".to_string()], // methods
+        );
+
+        // Should be able to look up implementations
+        assert!(
+            registry.implements_trait("MyHandler", "Handler"),
+            "MyHandler should implement Handler"
+        );
+
+        // Should return methods that are trait implementations
+        let methods = registry.get_trait_methods("MyHandler", "Handler");
+        assert!(methods.is_some());
+        assert!(methods.unwrap().contains(&"process".to_string()));
+    }
+
+    #[test]
+    fn test_is_trait_method_implementation() {
+        // Check if a method is a trait implementation
+        let mut registry = TraitImplementationRegistry::new();
+
+        registry.register_implementation(
+            "FileReader",
+            "io.Reader",
+            "src/reader.rs",
+            vec!["read".to_string()],
+        );
+
+        // read() on FileReader is a trait method, should not be flagged as unused
+        assert!(
+            registry.is_trait_method("FileReader", "read"),
+            "read should be recognized as a trait method of FileReader"
+        );
+
+        // some_internal_method is not a trait method
+        assert!(
+            !registry.is_trait_method("FileReader", "some_internal_method"),
+            "some_internal_method should NOT be a trait method"
+        );
+    }
+
+    #[test]
+    fn test_trait_registry_multiple_implementations() {
+        let mut registry = TraitImplementationRegistry::new();
+
+        // Multiple types implementing same trait
+        registry.register_implementation(
+            "FileReader",
+            "Reader",
+            "src/file.rs",
+            vec!["read".to_string()],
+        );
+        registry.register_implementation(
+            "NetworkReader",
+            "Reader",
+            "src/net.rs",
+            vec!["read".to_string()],
+        );
+
+        assert!(registry.implements_trait("FileReader", "Reader"));
+        assert!(registry.implements_trait("NetworkReader", "Reader"));
+
+        // Get all types implementing Reader
+        let implementors = registry.get_implementors("Reader");
+        assert_eq!(implementors.len(), 2);
+        assert!(implementors.contains(&"FileReader".to_string()));
+        assert!(implementors.contains(&"NetworkReader".to_string()));
+    }
+
+    // ==================== Type Mismatch Detection Tests ====================
+    // These tests verify enhanced type mismatch detection across function calls.
+
+    #[test]
+    fn test_function_call_type_mismatch_detection() {
+        let source = r#"
+def greet(name: str) -> str:
+    return "Hello, " + name
+
+def main():
+    result = greet(42)  # Type error: expected str, got int
+"#;
+
+        let mut inferencer = TypeInferencer::new(source, None, "python");
+
+        // Register the greet function signature
+        inferencer.register_function(
+            "greet",
+            vec![("name".to_string(), Type::String)],
+            Type::String,
+        );
+
+        let errors = inferencer.check_type_errors();
+
+        // Should detect the type mismatch
+        assert!(
+            errors.iter().any(|e| e.kind == TypeErrorKind::TypeMismatch
+                && e.message.contains("expected str")
+                && e.message.contains("got int")),
+            "Should detect type mismatch: expected str, got int. Errors: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn test_function_call_argument_count_error() {
+        let source = r#"
+def add(a: int, b: int) -> int:
+    return a + b
+
+def main():
+    result = add(1)  # Type error: missing argument
+"#;
+
+        let mut inferencer = TypeInferencer::new(source, None, "python");
+
+        inferencer.register_function(
+            "add",
+            vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Int)],
+            Type::Int,
+        );
+
+        let errors = inferencer.check_type_errors();
+
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.kind == TypeErrorKind::ArgumentCount),
+            "Should detect argument count mismatch"
+        );
+    }
+
+    #[test]
+    fn test_return_type_mismatch() {
+        let source = r#"
+def get_count() -> int:
+    return "not a number"  # Type error: return type mismatch
+"#;
+
+        let mut inferencer = TypeInferencer::new(source, None, "python");
+
+        // This should be detected as a return type mismatch
+        let errors = inferencer.check_type_errors();
+
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.kind == TypeErrorKind::TypeMismatch && e.message.contains("return")),
+            "Should detect return type mismatch"
+        );
+    }
+
+    #[test]
+    fn test_parse_return_type_annotation() {
+        let inferencer = TypeInferencer::new("", None, "python");
+
+        // Test parsing function definition
+        let result = inferencer.parse_return_type_annotation("def get_count() -> int:");
+        assert!(result.is_some(), "Should parse return type");
+        assert_eq!(result.unwrap(), Type::Int);
+    }
+
+    #[test]
+    fn test_strip_trailing_comment() {
+        let result = super::strip_trailing_comment(r#""not a number"  # Type error"#);
+        assert_eq!(result, r#""not a number""#);
     }
 }
