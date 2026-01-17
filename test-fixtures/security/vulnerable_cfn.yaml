@@ -1,0 +1,130 @@
+# Vulnerable CloudFormation Template - Test Fixture
+# This file intentionally contains security misconfigurations for testing
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Vulnerable CloudFormation template for security testing
+
+Resources:
+  # IAC-023: S3 bucket with public access
+  VulnerableS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: vulnerable-cfn-bucket
+      AccessControl: PublicReadWrite
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  # IAC-024: Security group with wide open access
+  VulnerableSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow all traffic
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIpv6: ::/0
+
+  # IAC-025: RDS publicly accessible
+  # IAC-026: Hardcoded password
+  VulnerableRDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: vulnerable-rds
+      DBInstanceClass: db.t3.micro
+      Engine: mysql
+      MasterUsername: admin
+      MasterUserPassword: "MySuperSecretPassword123"
+      AllocatedStorage: 20
+      PubliclyAccessible: true
+
+  # IAC-026: Another hardcoded password example
+  AnotherDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: another-vulnerable-db
+      DBInstanceClass: db.t3.micro
+      Engine: postgres
+      MasterUsername: admin
+      AdminPassword: "AnotherSecretPassword456"
+      AllocatedStorage: 20
+      PubliclyAccessible: false
+
+  # IAC-027: IAM policy with wildcard permissions
+  VulnerableIAMPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: VulnerablePolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: "*"
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - "s3:*"
+            Resource: "*"
+      Roles:
+        - !Ref VulnerableRole
+
+  VulnerableRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: VulnerableRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+
+  # IAC-028: Lambda without VPC configuration
+  VulnerableLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: vulnerable-function
+      Runtime: python3.9
+      Handler: index.handler
+      Role: !GetAtt VulnerableRole.Arn
+      Code:
+        ZipFile: |
+          def handler(event, context):
+              return "Hello"
+      # No VpcConfig specified
+
+  # Additional vulnerable Lambda
+  AnotherVulnerableLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: another-vulnerable-function
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Role: !GetAtt VulnerableRole.Arn
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+              return "Hello";
+          };
+      # No VpcConfig - IAC-028
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+
+Outputs:
+  BucketName:
+    Value: !Ref VulnerableS3Bucket
+  DatabaseEndpoint:
+    Value: !GetAtt VulnerableRDSInstance.Endpoint.Address

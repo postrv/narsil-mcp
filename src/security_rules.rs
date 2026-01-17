@@ -373,6 +373,18 @@ impl SecurityRulesEngine {
         if let Err(e) = self.load_ruleset_yaml(kotlin_yaml) {
             eprintln!("Warning: Failed to load Kotlin rules: {}", e);
         }
+
+        // Configuration security rules (YAML misconfigurations)
+        let config_yaml = include_str!("../rules/config.yaml");
+        if let Err(e) = self.load_ruleset_yaml(config_yaml) {
+            eprintln!("Warning: Failed to load Config rules: {}", e);
+        }
+
+        // Infrastructure as Code security rules (Docker, K8s, Terraform, CloudFormation)
+        let iac_yaml = include_str!("../rules/iac.yaml");
+        if let Err(e) = self.load_ruleset_yaml(iac_yaml) {
+            eprintln!("Warning: Failed to load IaC rules: {}", e);
+        }
     }
 
     /// Load a ruleset from YAML string
@@ -3028,6 +3040,371 @@ GlobalScope.launch {
             new_rule_count >= 10,
             "Should have at least 10 new language-specific rules, got {}",
             new_rule_count
+        );
+    }
+
+    // ============= Configuration Security Rules Tests =============
+
+    #[test]
+    fn test_config_rules_loading() {
+        let engine = SecurityRulesEngine::new();
+        // Verify config rules are loaded
+        assert!(
+            engine.get_rule("CONFIG-001").is_some(),
+            "CONFIG-001 (debug mode) should exist"
+        );
+        assert!(
+            engine.get_rule("CONFIG-007").is_some(),
+            "CONFIG-007 (default credentials) should exist"
+        );
+        assert!(
+            engine.get_rule("CONFIG-012").is_some(),
+            "CONFIG-012 (exposed secrets) should exist"
+        );
+    }
+
+    #[test]
+    fn test_config_debug_mode_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+debug: true
+debug_mode: true
+FLASK_DEBUG: 1
+NODE_ENV: "development"
+"#;
+        let findings = engine.scan(code, "config.yaml", "yaml");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "CONFIG-001"),
+            "Should detect debug mode enabled"
+        );
+    }
+
+    #[test]
+    fn test_config_cors_wildcard_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+cors:
+  origin: "*"
+  allowed_origins: ["*"]
+CORS_ORIGIN_ALLOW_ALL: True
+"#;
+        let findings = engine.scan(code, "config.yaml", "yaml");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "CONFIG-003"),
+            "Should detect CORS wildcard origin"
+        );
+    }
+
+    #[test]
+    fn test_config_default_credentials_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+database:
+  username: "admin"
+  password: "password"
+  user: "root"
+DB_PASSWORD: "admin"
+"#;
+        let findings = engine.scan(code, "config.yaml", "yaml");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "CONFIG-007"),
+            "Should detect default credentials"
+        );
+    }
+
+    #[test]
+    fn test_config_disabled_security_features_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+security:
+  csrf:
+    enabled: false
+  xss_protection: false
+WTF_CSRF_ENABLED: False
+"#;
+        let findings = engine.scan(code, "config.yaml", "yaml");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "CONFIG-008"),
+            "Should detect disabled security features"
+        );
+    }
+
+    // ============= Infrastructure as Code Security Rules Tests =============
+
+    #[test]
+    fn test_iac_rules_loading() {
+        let engine = SecurityRulesEngine::new();
+        // Verify IaC rules are loaded
+        assert!(
+            engine.get_rule("IAC-001").is_some(),
+            "IAC-001 (docker root) should exist"
+        );
+        assert!(
+            engine.get_rule("IAC-007").is_some(),
+            "IAC-007 (k8s host network) should exist"
+        );
+        assert!(
+            engine.get_rule("IAC-015").is_some(),
+            "IAC-015 (terraform s3 public) should exist"
+        );
+        assert!(
+            engine.get_rule("IAC-023").is_some(),
+            "IAC-023 (cfn s3 public) should exist"
+        );
+    }
+
+    #[test]
+    fn test_docker_running_as_root_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+FROM ubuntu:latest
+USER root
+RUN apt-get update
+CMD ["nginx"]
+"#;
+        let findings = engine.scan(code, "Dockerfile", "dockerfile");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-001"),
+            "Should detect Docker running as root"
+        );
+    }
+
+    #[test]
+    fn test_docker_latest_tag_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+FROM ubuntu:latest
+FROM nginx
+image: myapp:latest
+"#;
+        let findings = engine.scan(code, "Dockerfile", "dockerfile");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-002"),
+            "Should detect Docker latest tag usage"
+        );
+    }
+
+    #[test]
+    fn test_docker_privileged_container_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+services:
+  app:
+    image: myapp
+    privileged: true
+"#;
+        let findings = engine.scan(code, "docker-compose.yaml", "yaml");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-003"),
+            "Should detect Docker privileged container"
+        );
+    }
+
+    #[test]
+    fn test_k8s_host_network_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+apiVersion: v1
+kind: Pod
+spec:
+  hostNetwork: true
+  containers:
+  - name: app
+    image: nginx
+"#;
+        let findings = engine.scan(code, "pod.yaml", "yaml");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-007"),
+            "Should detect K8s host network enabled"
+        );
+    }
+
+    #[test]
+    fn test_k8s_dangerous_capabilities_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: app
+    securityContext:
+      capabilities:
+        add:
+        - SYS_ADMIN
+"#;
+        let findings = engine.scan(code, "pod.yaml", "yaml");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-010"),
+            "Should detect K8s dangerous capabilities"
+        );
+    }
+
+    #[test]
+    fn test_terraform_s3_public_access_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+resource "aws_s3_bucket" "example" {
+  bucket = "my-bucket"
+  acl    = "public-read-write"
+}
+
+resource "aws_s3_bucket_public_access_block" "example" {
+  bucket = aws_s3_bucket.example.id
+  block_public_acls = false
+}
+"#;
+        let findings = engine.scan(code, "main.tf", "terraform");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-015"),
+            "Should detect Terraform S3 public access"
+        );
+    }
+
+    #[test]
+    fn test_terraform_security_group_open_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+resource "aws_security_group" "allow_all" {
+  name = "allow_all"
+  ingress {
+    from_port   = 0
+    to_port     = 65535
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+"#;
+        let findings = engine.scan(code, "main.tf", "terraform");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-017"),
+            "Should detect Terraform wide-open security group"
+        );
+    }
+
+    #[test]
+    fn test_terraform_hardcoded_credentials_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+provider "aws" {
+  access_key = "AKIAIOSFODNN7EXAMPLE"
+  secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+}
+
+resource "aws_db_instance" "db" {
+  password = "SuperSecretPassword123!"
+}
+"#;
+        let findings = engine.scan(code, "main.tf", "terraform");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-020"),
+            "Should detect Terraform hardcoded credentials"
+        );
+    }
+
+    #[test]
+    fn test_cfn_s3_public_access_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: my-bucket
+      AccessControl: PublicReadWrite
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+"#;
+        let findings = engine.scan(code, "template.yaml", "yaml");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-023"),
+            "Should detect CloudFormation S3 public access"
+        );
+    }
+
+    #[test]
+    fn test_cfn_hardcoded_secrets_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+Resources:
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      MasterUserPassword: "MySuperSecretPassword"
+"#;
+        let findings = engine.scan(code, "template.yaml", "yaml");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-026"),
+            "Should detect CloudFormation hardcoded secrets"
+        );
+    }
+
+    #[test]
+    fn test_cfn_iam_wildcard_permissions_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+Resources:
+  Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: "*"
+            Resource: "*"
+"#;
+        let findings = engine.scan(code, "template.yaml", "yaml");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "IAC-027"),
+            "Should detect CloudFormation IAM wildcard permissions"
+        );
+    }
+
+    #[test]
+    fn test_config_and_iac_rules_count() {
+        let engine = SecurityRulesEngine::new();
+
+        // Count config rules (CONFIG-001 through CONFIG-015)
+        let mut config_rule_count = 0;
+        for i in 1..=15 {
+            let rule_id = format!("CONFIG-{:03}", i);
+            if engine.get_rule(&rule_id).is_some() {
+                config_rule_count += 1;
+            }
+        }
+        assert!(
+            config_rule_count >= 15,
+            "Should have at least 15 config rules, got {}",
+            config_rule_count
+        );
+
+        // Count IaC rules (IAC-001 through IAC-032)
+        let mut iac_rule_count = 0;
+        for i in 1..=32 {
+            let rule_id = format!("IAC-{:03}", i);
+            if engine.get_rule(&rule_id).is_some() {
+                iac_rule_count += 1;
+            }
+        }
+        assert!(
+            iac_rule_count >= 32,
+            "Should have at least 32 IaC rules, got {}",
+            iac_rule_count
         );
     }
 }

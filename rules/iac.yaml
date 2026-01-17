@@ -1,0 +1,665 @@
+# Infrastructure as Code (IaC) Security Rules
+# Detects security misconfigurations in Docker, Kubernetes, Terraform, and CloudFormation
+
+name: Infrastructure as Code Security Rules
+version: "1.0.0"
+description: Rules for detecting security misconfigurations in IaC templates and manifests
+
+rules:
+  # ===== DOCKER RULES =====
+
+  # IAC-001: Docker Running as Root
+  - id: IAC-001
+    name: Docker Container Running as Root
+    severity: High
+    cwe: ["CWE-250", "CWE-269"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'USER\s+root'
+        - '(?i)user\s*[=:]\s*[''"]?root'
+        - '(?i)runAsUser\s*[=:]\s*0'
+        - '(?i)runAsNonRoot\s*[=:]\s*false'
+      safe_patterns:
+        - 'USER nobody'
+        - 'USER nonroot'
+        - 'runAsNonRoot: true'
+    languages: []
+    message: Container configured to run as root user
+    remediation: Use a non-root user with USER directive or runAsNonRoot security context
+    enabled: true
+    tags: ["docker", "kubernetes", "privilege"]
+
+  # IAC-002: Docker Latest Tag
+  - id: IAC-002
+    name: Docker Image Using Latest Tag
+    severity: Medium
+    cwe: ["CWE-829"]
+    owasp: ["A08:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'FROM\s+[a-z0-9_/-]+:latest'
+        - 'FROM\s+[a-z0-9_/-]+\s*$'
+        - '(?i)image\s*[=:]\s*[''"]?[a-z0-9_/-]+:latest'
+        - '(?i)image\s*[=:]\s*[''"]?[a-z0-9_/-]+[''"]?\s*$'
+      safe_patterns:
+        - ':[0-9]+\.'
+        - ':v[0-9]'
+        - '@sha256:'
+    languages: []
+    message: Docker image using 'latest' tag or no tag - builds may not be reproducible
+    remediation: Pin image versions using specific tags or SHA256 digests
+    enabled: true
+    tags: ["docker", "versioning", "supply-chain"]
+
+  # IAC-003: Docker Privileged Container
+  - id: IAC-003
+    name: Docker Privileged Container
+    severity: Critical
+    cwe: ["CWE-250"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '--privileged'
+        - '(?i)privileged\s*[=:]\s*true'
+        - '(?i)securityContext:\s*\n\s*privileged:\s*true'
+      safe_patterns: []
+    languages: []
+    message: Container running in privileged mode - full host access
+    remediation: Avoid privileged mode; use specific capabilities with --cap-add if needed
+    enabled: true
+    tags: ["docker", "kubernetes", "privilege", "container-escape"]
+
+  # IAC-004: Docker Exposed Ports
+  - id: IAC-004
+    name: Docker Sensitive Port Exposed
+    severity: Medium
+    cwe: ["CWE-284"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'EXPOSE\s+22\b'
+        - 'EXPOSE\s+23\b'
+        - 'EXPOSE\s+3389\b'
+        - 'EXPOSE\s+5900\b'
+        - '(?i)port\s*[=:]\s*22\b'
+        - '(?i)containerPort\s*[=:]\s*22\b'
+      safe_patterns: []
+    languages: []
+    message: Sensitive management port (SSH/Telnet/RDP/VNC) exposed in container
+    remediation: Avoid exposing management ports; use kubectl exec or docker exec instead
+    enabled: true
+    tags: ["docker", "kubernetes", "network", "ports"]
+
+  # IAC-005: Docker ADD Instead of COPY
+  - id: IAC-005
+    name: Docker ADD Command Usage
+    severity: Low
+    cwe: ["CWE-829"]
+    owasp: ["A08:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'ADD\s+https?://'
+        - 'ADD\s+[^-]'
+      safe_patterns:
+        - 'COPY'
+    languages: []
+    message: Using ADD instead of COPY - ADD has implicit unpack and URL fetch behavior
+    remediation: Use COPY for local files; use curl/wget + COPY for remote files
+    enabled: true
+    tags: ["docker", "best-practices"]
+
+  # IAC-006: Docker Secrets in Build
+  - id: IAC-006
+    name: Secrets in Docker Build Arguments
+    severity: High
+    cwe: ["CWE-798", "CWE-312"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'ARG\s+[A-Z_]*PASSWORD'
+        - 'ARG\s+[A-Z_]*SECRET'
+        - 'ARG\s+[A-Z_]*API_KEY'
+        - 'ARG\s+[A-Z_]*TOKEN'
+        - 'ENV\s+[A-Z_]*PASSWORD\s*='
+        - 'ENV\s+[A-Z_]*SECRET\s*='
+      safe_patterns:
+        - 'RUN --mount=type=secret'
+    languages: []
+    message: Secrets passed as build arguments may be visible in image history
+    remediation: Use Docker BuildKit secrets (--mount=type=secret) or multi-stage builds
+    enabled: true
+    tags: ["docker", "secrets", "credentials"]
+
+  # ===== KUBERNETES RULES =====
+
+  # IAC-007: K8s Host Network
+  - id: IAC-007
+    name: Kubernetes Host Network Enabled
+    severity: High
+    cwe: ["CWE-284"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)hostNetwork\s*[=:]\s*true'
+      safe_patterns: []
+    languages: []
+    message: Pod using host network namespace - bypasses network isolation
+    remediation: Disable hostNetwork unless absolutely necessary; use NetworkPolicies
+    enabled: true
+    tags: ["kubernetes", "network", "isolation"]
+
+  # IAC-008: K8s Host PID
+  - id: IAC-008
+    name: Kubernetes Host PID Enabled
+    severity: High
+    cwe: ["CWE-284"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)hostPID\s*[=:]\s*true'
+      safe_patterns: []
+    languages: []
+    message: Pod using host PID namespace - can see and signal host processes
+    remediation: Disable hostPID; processes should be isolated within the container
+    enabled: true
+    tags: ["kubernetes", "isolation", "privilege"]
+
+  # IAC-009: K8s Host IPC
+  - id: IAC-009
+    name: Kubernetes Host IPC Enabled
+    severity: High
+    cwe: ["CWE-284"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)hostIPC\s*[=:]\s*true'
+      safe_patterns: []
+    languages: []
+    message: Pod using host IPC namespace - can access host shared memory
+    remediation: Disable hostIPC; use Kubernetes volumes for inter-container communication
+    enabled: true
+    tags: ["kubernetes", "isolation", "privilege"]
+
+  # IAC-010: K8s Capabilities
+  - id: IAC-010
+    name: Kubernetes Dangerous Capabilities Added
+    severity: High
+    cwe: ["CWE-250"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)capabilities:\s*\n\s*add:\s*\n\s*-\s*SYS_ADMIN'
+        - '(?i)capabilities:\s*\n\s*add:\s*\n\s*-\s*ALL'
+        - '(?i)capabilities:\s*\n\s*add:\s*\n\s*-\s*NET_ADMIN'
+        - '(?i)capabilities:\s*\n\s*add:\s*\n\s*-\s*SYS_PTRACE'
+        - '(?i)add:\s*\[\s*[''"]?SYS_ADMIN'
+        - '(?i)add:\s*\[\s*[''"]?ALL'
+      safe_patterns:
+        - 'drop:\s*\n\s*-\s*ALL'
+    languages: []
+    message: Dangerous Linux capabilities added to container
+    remediation: Drop all capabilities and add only those strictly required
+    enabled: true
+    tags: ["kubernetes", "capabilities", "privilege"]
+
+  # IAC-011: K8s Missing Resource Limits
+  - id: IAC-011
+    name: Kubernetes Missing Resource Limits
+    severity: Medium
+    cwe: ["CWE-770"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)containers:\s*\n\s*-\s*name:(?:(?!limits:).)*$'
+        - '(?i)resources:\s*\{\}'
+      safe_patterns:
+        - 'limits:'
+        - 'requests:'
+    languages: []
+    message: Container missing resource limits - may consume excessive resources
+    remediation: Set CPU and memory limits and requests for all containers
+    enabled: true
+    tags: ["kubernetes", "resources", "dos-protection"]
+
+  # IAC-012: K8s Allow Privilege Escalation
+  - id: IAC-012
+    name: Kubernetes Privilege Escalation Allowed
+    severity: High
+    cwe: ["CWE-250", "CWE-269"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)allowPrivilegeEscalation\s*[=:]\s*true'
+      safe_patterns:
+        - 'allowPrivilegeEscalation: false'
+    languages: []
+    message: Container allows privilege escalation
+    remediation: Set allowPrivilegeEscalation to false in securityContext
+    enabled: true
+    tags: ["kubernetes", "privilege", "escalation"]
+
+  # IAC-013: K8s Secret in Environment
+  - id: IAC-013
+    name: Kubernetes Secret Value in Plain Text
+    severity: High
+    cwe: ["CWE-312", "CWE-798"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)env:\s*\n\s*-\s*name:\s*[A-Z_]*PASSWORD\s*\n\s*value:'
+        - '(?i)env:\s*\n\s*-\s*name:\s*[A-Z_]*SECRET\s*\n\s*value:'
+        - '(?i)env:\s*\n\s*-\s*name:\s*[A-Z_]*API_KEY\s*\n\s*value:'
+        - '(?i)env:\s*\n\s*-\s*name:\s*[A-Z_]*TOKEN\s*\n\s*value:'
+      safe_patterns:
+        - 'valueFrom:'
+        - 'secretKeyRef:'
+    languages: []
+    message: Secret value hardcoded in environment variable
+    remediation: Use Kubernetes Secrets with valueFrom/secretKeyRef
+    enabled: true
+    tags: ["kubernetes", "secrets", "credentials"]
+
+  # IAC-014: K8s Default Service Account
+  - id: IAC-014
+    name: Kubernetes Using Default Service Account
+    severity: Medium
+    cwe: ["CWE-284"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)serviceAccountName\s*[=:]\s*[''"]?default[''"]?'
+        - '(?i)automountServiceAccountToken\s*[=:]\s*true'
+      safe_patterns:
+        - 'automountServiceAccountToken: false'
+    languages: []
+    message: Pod using default service account or automounting token
+    remediation: Use dedicated service accounts; set automountServiceAccountToken to false
+    enabled: true
+    tags: ["kubernetes", "rbac", "authentication"]
+
+  # ===== TERRAFORM RULES =====
+
+  # IAC-015: Terraform S3 Public Access
+  - id: IAC-015
+    name: Terraform S3 Bucket Public Access
+    severity: Critical
+    cwe: ["CWE-284", "CWE-732"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'acl\s*=\s*[''"]public-read'
+        - 'acl\s*=\s*[''"]public-read-write'
+        - 'block_public_acls\s*=\s*false'
+        - 'block_public_policy\s*=\s*false'
+        - 'ignore_public_acls\s*=\s*false'
+        - 'restrict_public_buckets\s*=\s*false'
+      safe_patterns:
+        - 'acl\s*=\s*[''"]private'
+        - 'block_public_acls\s*=\s*true'
+    languages: []
+    message: S3 bucket configured with public access
+    remediation: Set ACL to private and enable all public access block settings
+    enabled: true
+    tags: ["terraform", "aws", "s3", "public-access"]
+
+  # IAC-016: Terraform S3 Encryption
+  - id: IAC-016
+    name: Terraform S3 Bucket Without Encryption
+    severity: High
+    cwe: ["CWE-311"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'resource\s*[''"]aws_s3_bucket[''"](?:(?!server_side_encryption_configuration).)*\}'
+      safe_patterns:
+        - 'server_side_encryption_configuration'
+        - 'aws_s3_bucket_server_side_encryption'
+    languages: []
+    message: S3 bucket without server-side encryption configured
+    remediation: Enable server-side encryption with aws_s3_bucket_server_side_encryption_configuration
+    enabled: true
+    tags: ["terraform", "aws", "s3", "encryption"]
+
+  # IAC-017: Terraform Security Group Open
+  - id: IAC-017
+    name: Terraform Security Group Wide Open
+    severity: Critical
+    cwe: ["CWE-284"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'cidr_blocks\s*=\s*\[\s*[''"]0\.0\.0\.0/0[''"]'
+        - 'ipv6_cidr_blocks\s*=\s*\[\s*[''"]::/0[''"]'
+        - 'from_port\s*=\s*0\s*\n.*to_port\s*=\s*(0|65535)'
+      safe_patterns: []
+    languages: []
+    message: Security group rule allows traffic from/to any IP address
+    remediation: Restrict CIDR blocks to specific IP ranges; avoid 0.0.0.0/0
+    enabled: true
+    tags: ["terraform", "aws", "security-group", "network"]
+
+  # IAC-018: Terraform RDS Public
+  - id: IAC-018
+    name: Terraform RDS Publicly Accessible
+    severity: High
+    cwe: ["CWE-284"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)publicly_accessible\s*=\s*true'
+      safe_patterns:
+        - 'publicly_accessible\s*=\s*false'
+    languages: []
+    message: RDS instance configured as publicly accessible
+    remediation: Set publicly_accessible to false; use VPN or bastion for access
+    enabled: true
+    tags: ["terraform", "aws", "rds", "database"]
+
+  # IAC-019: Terraform RDS Encryption
+  - id: IAC-019
+    name: Terraform RDS Without Encryption
+    severity: High
+    cwe: ["CWE-311"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'storage_encrypted\s*=\s*false'
+        - 'resource\s*[''"]aws_db_instance[''"](?:(?!storage_encrypted).)*\}'
+      safe_patterns:
+        - 'storage_encrypted\s*=\s*true'
+    languages: []
+    message: RDS instance without storage encryption
+    remediation: Enable storage_encrypted and specify a KMS key
+    enabled: true
+    tags: ["terraform", "aws", "rds", "encryption"]
+
+  # IAC-020: Terraform Hardcoded Secrets
+  - id: IAC-020
+    name: Terraform Hardcoded Credentials
+    severity: Critical
+    cwe: ["CWE-798"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'access_key\s*=\s*[''"][A-Z0-9]{20}[''"]'
+        - 'secret_key\s*=\s*[''"][a-zA-Z0-9/+=]{40}[''"]'
+        - 'password\s*=\s*[''"][^''"]{8,}[''"]'
+        - 'master_password\s*=\s*[''"][^''"]+[''"]'
+        - 'admin_password\s*=\s*[''"][^''"]+[''"]'
+      safe_patterns:
+        - 'var\.'
+        - 'data\.'
+        - 'aws_secretsmanager'
+        - 'random_password'
+    languages: []
+    message: Hardcoded credentials in Terraform configuration
+    remediation: Use variables, Terraform Vault provider, or AWS Secrets Manager
+    enabled: true
+    tags: ["terraform", "secrets", "credentials"]
+
+  # IAC-021: Terraform EBS Encryption
+  - id: IAC-021
+    name: Terraform EBS Volume Without Encryption
+    severity: Medium
+    cwe: ["CWE-311"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'encrypted\s*=\s*false'
+        - 'resource\s*[''"]aws_ebs_volume[''"](?:(?!encrypted).)*\}'
+        - 'resource\s*[''"]aws_instance[''"][^}]*ebs_block_device(?:(?!encrypted).)*\}'
+      safe_patterns:
+        - 'encrypted\s*=\s*true'
+    languages: []
+    message: EBS volume without encryption
+    remediation: Enable encryption on EBS volumes with encrypted = true
+    enabled: true
+    tags: ["terraform", "aws", "ebs", "encryption"]
+
+  # IAC-022: Terraform CloudTrail Not Enabled
+  - id: IAC-022
+    name: Terraform CloudTrail Missing Features
+    severity: Medium
+    cwe: ["CWE-778"]
+    owasp: ["A09:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'enable_logging\s*=\s*false'
+        - 'include_global_service_events\s*=\s*false'
+        - 'is_multi_region_trail\s*=\s*false'
+        - 'enable_log_file_validation\s*=\s*false'
+      safe_patterns: []
+    languages: []
+    message: CloudTrail not fully configured for audit logging
+    remediation: Enable logging, global service events, multi-region, and log file validation
+    enabled: true
+    tags: ["terraform", "aws", "cloudtrail", "logging"]
+
+  # ===== CLOUDFORMATION RULES =====
+
+  # IAC-023: CFN S3 Public Access
+  - id: IAC-023
+    name: CloudFormation S3 Public Access
+    severity: Critical
+    cwe: ["CWE-284", "CWE-732"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'AccessControl:\s*PublicRead'
+        - 'AccessControl:\s*PublicReadWrite'
+        - 'BlockPublicAcls:\s*false'
+        - 'BlockPublicPolicy:\s*false'
+      safe_patterns:
+        - 'AccessControl:\s*Private'
+        - 'BlockPublicAcls:\s*true'
+    languages: []
+    message: S3 bucket configured with public access in CloudFormation
+    remediation: Set AccessControl to Private and enable PublicAccessBlockConfiguration
+    enabled: true
+    tags: ["cloudformation", "aws", "s3", "public-access"]
+
+  # IAC-024: CFN Security Group
+  - id: IAC-024
+    name: CloudFormation Security Group Wide Open
+    severity: Critical
+    cwe: ["CWE-284"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'CidrIp:\s*0\.0\.0\.0/0'
+        - 'CidrIpv6:\s*::/0'
+        - 'FromPort:\s*0\s*\n.*ToPort:\s*(0|65535)'
+      safe_patterns: []
+    languages: []
+    message: Security group in CloudFormation allows traffic from/to any IP
+    remediation: Restrict CidrIp to specific IP ranges; avoid 0.0.0.0/0 for ingress
+    enabled: true
+    tags: ["cloudformation", "aws", "security-group", "network"]
+
+  # IAC-025: CFN RDS Public
+  - id: IAC-025
+    name: CloudFormation RDS Publicly Accessible
+    severity: High
+    cwe: ["CWE-284"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'PubliclyAccessible:\s*(true|[''"]true[''"])'
+      safe_patterns:
+        - 'PubliclyAccessible:\s*false'
+    languages: []
+    message: RDS instance publicly accessible in CloudFormation
+    remediation: Set PubliclyAccessible to false
+    enabled: true
+    tags: ["cloudformation", "aws", "rds", "database"]
+
+  # IAC-026: CFN Hardcoded Secrets
+  - id: IAC-026
+    name: CloudFormation Hardcoded Secrets
+    severity: Critical
+    cwe: ["CWE-798"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'MasterUserPassword:\s*[''"][^!{][^''"]*[''"]'
+        - 'AdminPassword:\s*[''"][^!{][^''"]*[''"]'
+        - 'Password:\s*[''"][^!{][^''"]*[''"]'
+      safe_patterns:
+        - '!Ref'
+        - '!Sub'
+        - '!GetAtt'
+        - 'NoEcho'
+        - 'AWS::SSM'
+        - 'secretsmanager'
+    languages: []
+    message: Hardcoded password in CloudFormation template
+    remediation: Use Parameters with NoEcho, SSM Parameter Store, or Secrets Manager
+    enabled: true
+    tags: ["cloudformation", "secrets", "credentials"]
+
+  # IAC-027: CFN IAM Policy Too Permissive
+  - id: IAC-027
+    name: CloudFormation IAM Policy Overly Permissive
+    severity: High
+    cwe: ["CWE-250"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Action:\s*[''"]?\*[''"]?'
+        - 'Resource:\s*[''"]?\*[''"]?'
+        - 'Effect:\s*Allow.*Action:\s*\*'
+        - '["'']\*["'']\s*#?\s*all actions'
+      safe_patterns:
+        - 'Condition:'
+        - 'StringEquals'
+    languages: []
+    message: IAM policy with wildcard permissions
+    remediation: Follow least privilege principle; specify exact actions and resources
+    enabled: true
+    tags: ["cloudformation", "aws", "iam", "permissions"]
+
+  # IAC-028: CFN Lambda Not in VPC
+  - id: IAC-028
+    name: CloudFormation Lambda Without VPC
+    severity: Medium
+    cwe: ["CWE-284"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Type:\s*AWS::Lambda::Function(?:(?!VpcConfig).)*$'
+      safe_patterns:
+        - 'VpcConfig:'
+        - 'SubnetIds:'
+    languages: []
+    message: Lambda function not configured with VPC
+    remediation: Configure VpcConfig with SubnetIds and SecurityGroupIds for network isolation
+    enabled: true
+    tags: ["cloudformation", "aws", "lambda", "network"]
+
+  # ===== HELM/K8S YAML RULES =====
+
+  # IAC-029: Helm/K8s Tiller Enabled
+  - id: IAC-029
+    name: Helm Tiller Deprecated
+    severity: Medium
+    cwe: ["CWE-284"]
+    owasp: ["A08:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)tiller'
+        - '(?i)helm.*2\.'
+      safe_patterns:
+        - 'helm 3'
+        - 'without-tiller'
+    languages: []
+    message: Reference to deprecated Helm Tiller component
+    remediation: Upgrade to Helm 3 which does not require Tiller
+    enabled: true
+    tags: ["helm", "kubernetes", "deprecated"]
+
+  # IAC-030: K8s No Network Policy
+  - id: IAC-030
+    name: Kubernetes Namespace Without Network Policy
+    severity: Medium
+    cwe: ["CWE-284"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'kind:\s*Namespace(?:(?!NetworkPolicy).)*---'
+        - 'kind:\s*Deployment(?:(?!NetworkPolicy).)*---'
+      safe_patterns:
+        - 'kind: NetworkPolicy'
+    languages: []
+    message: Workload deployed without NetworkPolicy for traffic control
+    remediation: Create NetworkPolicy resources to control pod-to-pod traffic
+    enabled: true
+    tags: ["kubernetes", "network", "isolation"]
+
+  # IAC-031: K8s ReadOnlyRootFilesystem
+  - id: IAC-031
+    name: Kubernetes Writable Root Filesystem
+    severity: Medium
+    cwe: ["CWE-284"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)readOnlyRootFilesystem\s*[=:]\s*false'
+        - 'securityContext:(?:(?!readOnlyRootFilesystem).)*\}'
+      safe_patterns:
+        - 'readOnlyRootFilesystem: true'
+    languages: []
+    message: Container root filesystem is writable
+    remediation: Set readOnlyRootFilesystem to true; use emptyDir volumes for temp files
+    enabled: true
+    tags: ["kubernetes", "filesystem", "hardening"]
+
+  # IAC-032: K8s Pod Security Standard
+  - id: IAC-032
+    name: Kubernetes Missing Pod Security Standards
+    severity: Medium
+    cwe: ["CWE-284"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'kind:\s*Namespace(?:(?!pod-security).)*metadata:'
+      safe_patterns:
+        - 'pod-security.kubernetes.io'
+        - 'enforce:'
+    languages: []
+    message: Namespace without Pod Security Standards labels
+    remediation: Add pod-security.kubernetes.io labels to enforce security standards
+    enabled: true
+    tags: ["kubernetes", "pod-security", "standards"]

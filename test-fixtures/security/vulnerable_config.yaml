@@ -1,0 +1,105 @@
+# Vulnerable Configuration File - Test Fixture
+# This file intentionally contains security misconfigurations for testing
+
+# CONFIG-001: Debug Mode Enabled
+debug: true
+debug_mode: true
+FLASK_DEBUG: 1
+NODE_ENV: "development"
+
+# CONFIG-002: Verbose Error Messages
+show_errors: true
+display_errors: "on"
+error_reporting: E_ALL
+
+# CONFIG-003: CORS Wildcard
+cors:
+  origin: "*"
+  allowed_origins: ["*"]
+CORS_ORIGIN_ALLOW_ALL: True
+
+# CONFIG-004: Insecure Cookies
+session:
+  cookie:
+    secure: false
+    httponly: false
+    samesite: "none"
+SESSION_COOKIE_SECURE: False
+SESSION_COOKIE_HTTPONLY: False
+
+# CONFIG-005: Exposed Admin
+admin:
+  bind: "0.0.0.0"
+  host: "0.0.0.0"
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+# CONFIG-006: Weak Session
+session:
+  timeout: 0
+  expire: never
+
+# CONFIG-007: Default Credentials
+database:
+  username: "admin"
+  password: "password"
+  user: "root"
+DB_PASSWORD: "admin"
+
+# CONFIG-008: Disabled Security Features
+security:
+  csrf:
+    enabled: false
+  xss_protection: false
+WTF_CSRF_ENABLED: False
+
+# CONFIG-009: Insecure Protocol
+ssl:
+  enabled: false
+https:
+  required: false
+SECURE_SSL_REDIRECT: False
+
+# CONFIG-010: Exposed Paths
+paths:
+  root_path: "/"
+  document_root: "/var/www"
+  upload_path: "/tmp"
+  log_path: "/var/log/app/debug.log"
+
+# CONFIG-011: Unrestricted Upload
+upload:
+  allowed_extensions: ["*"]
+  allowed_types: "*"
+  max_size: 10000000000
+  file_types: "any"
+
+# CONFIG-012: Exposed Secrets (fake values for testing)
+api_key: "PLACEHOLDER_API_KEY_VALUE_LONG"
+secret_key: "PLACEHOLDER_SECRET_KEY_VALUE_LONG"
+auth_token: "PLACEHOLDER_AUTH_TOKEN_VALUE_LONG"
+
+# CONFIG-013: Permissive Rate Limiting
+rate_limit:
+  enabled: false
+  max_requests: 1000000
+throttle:
+  enabled: false
+
+# CONFIG-014: Insecure Logging
+logging:
+  log_password: true
+  log_credentials: true
+  mask_sensitive: false
+  level: "debug"
+
+# CONFIG-015: Missing Security Headers
+headers:
+  x_frame_options: false
+  content_security_policy: false
+  hsts:
+    enabled: false
+SECURE_HSTS_SECONDS: 0

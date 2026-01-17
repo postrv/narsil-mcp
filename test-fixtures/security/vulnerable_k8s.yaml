@@ -1,0 +1,87 @@
+# Vulnerable Kubernetes Manifest - Test Fixture
+# This file intentionally contains security misconfigurations for testing
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vulnerable-app
+  # IAC-032: Missing pod-security.kubernetes.io labels
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vulnerable-pod
+  namespace: vulnerable-app
+spec:
+  # IAC-007: Host network enabled
+  hostNetwork: true
+  # IAC-008: Host PID enabled
+  hostPID: true
+  # IAC-009: Host IPC enabled
+  hostIPC: true
+  # IAC-014: Using default service account
+  serviceAccountName: default
+  automountServiceAccountToken: true
+
+  containers:
+  - name: vulnerable-container
+    # IAC-002: Using latest tag
+    image: nginx:latest
+    ports:
+    # IAC-004: Exposing SSH port
+    - containerPort: 22
+
+    # IAC-013: Hardcoded secrets in environment
+    env:
+    - name: DATABASE_PASSWORD
+      value: "PLACEHOLDER_PASSWORD"
+    - name: API_SECRET_KEY
+      value: "PLACEHOLDER_SECRET"
+    - name: AUTH_TOKEN
+      value: "PLACEHOLDER_TOKEN_VALUE"
+
+    securityContext:
+      # IAC-001: Running as root
+      runAsUser: 0
+      runAsNonRoot: false
+      # IAC-012: Allow privilege escalation
+      allowPrivilegeEscalation: true
+      # IAC-003: Privileged container
+      privileged: true
+      # IAC-031: Writable root filesystem
+      readOnlyRootFilesystem: false
+      # IAC-010: Dangerous capabilities
+      capabilities:
+        add:
+        - SYS_ADMIN
+        - NET_ADMIN
+        - ALL
+
+    # IAC-011: No resource limits defined
+    # resources: {} is missing
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-deployment
+  namespace: vulnerable-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vulnerable
+  template:
+    metadata:
+      labels:
+        app: vulnerable
+    spec:
+      containers:
+      - name: app
+        image: myapp
+        # IAC-002: No tag specified
+        securityContext:
+          runAsNonRoot: false
+          allowPrivilegeEscalation: true

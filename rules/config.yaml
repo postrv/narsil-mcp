@@ -1,0 +1,353 @@
+# Configuration Security Rules
+# Detects security misconfigurations in YAML, JSON, and other config files
+
+name: Configuration Security Rules
+version: "1.0.0"
+description: Rules for detecting security misconfigurations in configuration files
+
+rules:
+  # CONFIG-001: Debug Mode Enabled
+  - id: CONFIG-001
+    name: Debug Mode Enabled in Production
+    severity: High
+    cwe: ["CWE-489", "CWE-215"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)debug\s*[=:]\s*true'
+        - '(?i)debug_mode\s*[=:]\s*true'
+        - '(?i)DEBUG\s*[=:]\s*[''"]?true'
+        - '(?i)DEBUG\s*[=:]\s*1'
+        - '(?i)FLASK_DEBUG\s*[=:]\s*1'
+        - '(?i)DJANGO_DEBUG\s*[=:]\s*[Tt]rue'
+        - '(?i)NODE_ENV\s*[=:]\s*[''"]?development'
+      safe_patterns:
+        - '(?i)debug\s*[=:]\s*false'
+        - '# disabled'
+        - 'production'
+    languages: []
+    message: Debug mode appears to be enabled - should be disabled in production
+    remediation: Set debug mode to false and ensure NODE_ENV/environment is set to 'production'
+    enabled: true
+    tags: ["config", "debug", "production"]
+
+  # CONFIG-002: Verbose Error Messages
+  - id: CONFIG-002
+    name: Verbose Error Messages Enabled
+    severity: Medium
+    cwe: ["CWE-209", "CWE-200"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)show_errors\s*[=:]\s*true'
+        - '(?i)display_errors\s*[=:]\s*[''"]?(on|true|1)'
+        - '(?i)error_reporting\s*[=:]\s*E_ALL'
+        - '(?i)detailed_errors\s*[=:]\s*true'
+        - '(?i)expose_stack_trace\s*[=:]\s*true'
+      safe_patterns: []
+    languages: []
+    message: Verbose error messages enabled - may expose sensitive information
+    remediation: Disable detailed error messages in production; log errors server-side instead
+    enabled: true
+    tags: ["config", "error-handling", "information-disclosure"]
+
+  # CONFIG-003: CORS Wildcard Origin
+  - id: CONFIG-003
+    name: CORS Wildcard Origin Allowed
+    severity: High
+    cwe: ["CWE-346", "CWE-942"]
+    owasp: ["A05:2021", "A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)access.control.allow.origin\s*[=:]\s*[''"]?\*'
+        - '(?i)cors.origin\s*[=:]\s*[''"]?\*'
+        - '(?i)allowed.origins\s*[=:]\s*\[?\s*[''"]?\*'
+        - '(?i)CORS_ORIGIN_ALLOW_ALL\s*[=:]\s*[Tt]rue'
+        - '(?i)allowedOrigins\s*[=:]\s*[''"]?\*'
+      safe_patterns:
+        - 'localhost'
+        - '127.0.0.1'
+    languages: []
+    message: CORS allows requests from any origin - enables cross-site attacks
+    remediation: Restrict CORS to specific trusted origins instead of using wildcard
+    enabled: true
+    tags: ["config", "cors", "web-security"]
+
+  # CONFIG-004: Insecure Cookie Configuration
+  - id: CONFIG-004
+    name: Insecure Cookie Configuration
+    severity: High
+    cwe: ["CWE-614", "CWE-1004"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)cookie.*secure\s*[=:]\s*false'
+        - '(?i)cookie.*httponly\s*[=:]\s*false'
+        - '(?i)SESSION_COOKIE_SECURE\s*[=:]\s*[Ff]alse'
+        - '(?i)SESSION_COOKIE_HTTPONLY\s*[=:]\s*[Ff]alse'
+        - '(?i)CSRF_COOKIE_SECURE\s*[=:]\s*[Ff]alse'
+        - '(?i)cookie\.samesite\s*[=:]\s*[''"]?none'
+      safe_patterns: []
+    languages: []
+    message: Insecure cookie configuration - cookies may be stolen or manipulated
+    remediation: Set Secure=true, HttpOnly=true, and SameSite=Strict/Lax for sensitive cookies
+    enabled: true
+    tags: ["config", "cookies", "session-management"]
+
+  # CONFIG-005: Exposed Admin Interface
+  - id: CONFIG-005
+    name: Admin Interface Publicly Exposed
+    severity: High
+    cwe: ["CWE-284", "CWE-668"]
+    owasp: ["A01:2021", "A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)admin.*bind.*0\.0\.0\.0'
+        - '(?i)admin.*host\s*[=:]\s*[''"]?0\.0\.0\.0'
+        - '(?i)management.*address.*0\.0\.0\.0'
+        - '(?i)actuator.*expose.*\*'
+        - '(?i)management\.endpoints\.web\.exposure\.include\s*[=:]\s*\*'
+      safe_patterns:
+        - '127.0.0.1'
+        - 'localhost'
+    languages: []
+    message: Admin/management interface exposed to all network interfaces
+    remediation: Bind admin interfaces to localhost (127.0.0.1) or use firewall rules
+    enabled: true
+    tags: ["config", "admin", "network"]
+
+  # CONFIG-006: Weak Session Configuration
+  - id: CONFIG-006
+    name: Weak Session Configuration
+    severity: Medium
+    cwe: ["CWE-384", "CWE-613"]
+    owasp: ["A07:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)session.*timeout\s*[=:]\s*0'
+        - '(?i)session.*expir(e|y)\s*[=:]\s*(never|false|0)'
+        - '(?i)SESSION_EXPIRE_AT_BROWSER_CLOSE\s*[=:]\s*[Ff]alse'
+        - '(?i)session\.gc_maxlifetime\s*[=:]\s*[0-9]{7,}'
+        - '(?i)idle.timeout\s*[=:]\s*0'
+      safe_patterns: []
+    languages: []
+    message: Weak session timeout configuration - sessions may persist indefinitely
+    remediation: Set appropriate session timeout (15-30 minutes for sensitive applications)
+    enabled: true
+    tags: ["config", "session", "authentication"]
+
+  # CONFIG-007: Insecure Default Credentials
+  - id: CONFIG-007
+    name: Default Credentials in Configuration
+    severity: Critical
+    cwe: ["CWE-798", "CWE-259"]
+    owasp: ["A07:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)password\s*[=:]\s*[''"]?(admin|password|123456|root|default|changeme|test)[''"]?'
+        - '(?i)user(name)?\s*[=:]\s*[''"]?(admin|root|test|user)[''"]?.*password'
+        - '(?i)default.*password\s*[=:]\s*[''"][^''"]+[''"]'
+        - '(?i)DB_PASSWORD\s*[=:]\s*[''"]?(password|admin|root)[''"]?'
+      safe_patterns:
+        - 'placeholder'
+        - 'example'
+        - 'CHANGE_ME'
+        - '${.*}'
+        - '\$\{.*\}'
+      # Exclude test files
+    languages: []
+    message: Default or weak credentials found in configuration
+    remediation: Use strong, unique passwords and store them securely (environment variables or secret management)
+    enabled: true
+    tags: ["config", "credentials", "authentication"]
+
+  # CONFIG-008: Disabled Security Features
+  - id: CONFIG-008
+    name: Security Feature Disabled
+    severity: High
+    cwe: ["CWE-693"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)csrf.*enabled\s*[=:]\s*false'
+        - '(?i)xss.*protection\s*[=:]\s*false'
+        - '(?i)csrf.*protection\s*[=:]\s*false'
+        - '(?i)CSRF_ENABLED\s*[=:]\s*[Ff]alse'
+        - '(?i)WTF_CSRF_ENABLED\s*[=:]\s*[Ff]alse'
+        - '(?i)security.*enabled\s*[=:]\s*false'
+        - '(?i)auth.*required\s*[=:]\s*false'
+        - '(?i)authentication.*enabled\s*[=:]\s*false'
+      safe_patterns: []
+    languages: []
+    message: Security feature explicitly disabled in configuration
+    remediation: Enable security features (CSRF protection, XSS filtering, authentication)
+    enabled: true
+    tags: ["config", "security-controls", "csrf"]
+
+  # CONFIG-009: Insecure Protocol Configuration
+  - id: CONFIG-009
+    name: Insecure Protocol Enabled
+    severity: High
+    cwe: ["CWE-319"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)ssl.*enabled\s*[=:]\s*false'
+        - '(?i)tls.*enabled\s*[=:]\s*false'
+        - '(?i)https.*required\s*[=:]\s*false'
+        - '(?i)force.*ssl\s*[=:]\s*false'
+        - '(?i)SECURE_SSL_REDIRECT\s*[=:]\s*[Ff]alse'
+        - '(?i)protocol\s*[=:]\s*[''"]?http[''"]?\s*$'
+      safe_patterns:
+        - 'localhost'
+        - '127.0.0.1'
+        - 'development'
+    languages: []
+    message: Insecure protocol configuration - SSL/TLS may be disabled
+    remediation: Enable SSL/TLS and force HTTPS in production environments
+    enabled: true
+    tags: ["config", "ssl", "encryption"]
+
+  # CONFIG-010: Exposed Internal Paths
+  - id: CONFIG-010
+    name: Internal Path Exposure
+    severity: Medium
+    cwe: ["CWE-200"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)root.*path\s*[=:]\s*[''"]?/'
+        - '(?i)document.*root\s*[=:]\s*[''"]?/var/www'
+        - '(?i)upload.*path\s*[=:]\s*[''"]?/tmp'
+        - '(?i)log.*path\s*[=:]\s*[''"]?/var/log/[^''"]*[''"]?'
+        - '(?i)backup.*path\s*[=:]\s*[''"]?/[^''"]*[''"]?'
+      safe_patterns: []
+    languages: []
+    message: Internal filesystem path exposed in configuration
+    remediation: Avoid hardcoding absolute paths; use relative paths or environment variables
+    enabled: true
+    tags: ["config", "paths", "information-disclosure"]
+
+  # CONFIG-011: Unrestricted File Upload
+  - id: CONFIG-011
+    name: Unrestricted File Upload Configuration
+    severity: High
+    cwe: ["CWE-434"]
+    owasp: ["A04:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)allowed.*extensions\s*[=:]\s*\[?\s*[''"]?\*'
+        - '(?i)allowed.*types\s*[=:]\s*\[?\s*[''"]?\*'
+        - '(?i)upload.*max.*size\s*[=:]\s*[0-9]{9,}'
+        - '(?i)file.*types\s*[=:]\s*[''"]?any'
+        - '(?i)accept.*all.*files\s*[=:]\s*true'
+      safe_patterns: []
+    languages: []
+    message: Unrestricted file upload configuration detected
+    remediation: Restrict allowed file extensions and MIME types; set reasonable size limits
+    enabled: true
+    tags: ["config", "upload", "validation"]
+
+  # CONFIG-012: Exposed Secrets in Config
+  - id: CONFIG-012
+    name: Secrets Exposed in Configuration
+    severity: Critical
+    cwe: ["CWE-798", "CWE-312"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)api[_-]?key\s*[=:]\s*[''"][a-zA-Z0-9_-]{20,}[''"]'
+        - '(?i)secret[_-]?key\s*[=:]\s*[''"][a-zA-Z0-9_-]{20,}[''"]'
+        - '(?i)private[_-]?key\s*[=:]\s*[''"][^''"]{20,}[''"]'
+        - '(?i)auth[_-]?token\s*[=:]\s*[''"][a-zA-Z0-9_-]{20,}[''"]'
+        - '(?i)access[_-]?token\s*[=:]\s*[''"][a-zA-Z0-9_-]{20,}[''"]'
+      safe_patterns:
+        - '${.*}'
+        - '\$\{.*\}'
+        - 'CHANGE_ME'
+        - 'your-.*-here'
+        - 'PLACEHOLDER'
+        - 'example'
+    languages: []
+    message: Potential secret or API key hardcoded in configuration
+    remediation: Use environment variables or a secret management system instead of hardcoding
+    enabled: true
+    tags: ["config", "secrets", "credentials"]
+
+  # CONFIG-013: Permissive Rate Limiting
+  - id: CONFIG-013
+    name: Permissive Rate Limiting
+    severity: Medium
+    cwe: ["CWE-770", "CWE-307"]
+    owasp: ["A04:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)rate.*limit.*enabled\s*[=:]\s*false'
+        - '(?i)throttle.*enabled\s*[=:]\s*false'
+        - '(?i)rate.*limit\s*[=:]\s*(0|unlimited|-1)'
+        - '(?i)max.*requests\s*[=:]\s*[0-9]{6,}'
+        - '(?i)RATELIMIT_ENABLED\s*[=:]\s*[Ff]alse'
+      safe_patterns: []
+    languages: []
+    message: Rate limiting disabled or set too high
+    remediation: Enable rate limiting with appropriate thresholds to prevent abuse
+    enabled: true
+    tags: ["config", "rate-limiting", "dos-protection"]
+
+  # CONFIG-014: Insecure Logging Configuration
+  - id: CONFIG-014
+    name: Sensitive Data in Logs
+    severity: Medium
+    cwe: ["CWE-532"]
+    owasp: ["A09:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)log.*password\s*[=:]\s*true'
+        - '(?i)log.*credentials\s*[=:]\s*true'
+        - '(?i)log.*secrets\s*[=:]\s*true'
+        - '(?i)mask.*sensitive\s*[=:]\s*false'
+        - '(?i)log\.level\s*[=:]\s*[''"]?(trace|debug)'
+      safe_patterns:
+        - 'development'
+        - 'test'
+    languages: []
+    message: Logging configuration may expose sensitive data
+    remediation: Never log passwords or secrets; use appropriate log levels in production
+    enabled: true
+    tags: ["config", "logging", "information-disclosure"]
+
+  # CONFIG-015: Missing Security Headers
+  - id: CONFIG-015
+    name: Missing Security Headers
+    severity: Medium
+    cwe: ["CWE-693", "CWE-1021"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '(?i)x.frame.options\s*[=:]\s*false'
+        - '(?i)content.security.policy\s*[=:]\s*false'
+        - '(?i)x.content.type.options\s*[=:]\s*false'
+        - '(?i)strict.transport.security\s*[=:]\s*false'
+        - '(?i)hsts.*enabled\s*[=:]\s*false'
+        - '(?i)SECURE_HSTS_SECONDS\s*[=:]\s*0'
+      safe_patterns: []
+    languages: []
+    message: Security header configuration disabled
+    remediation: Enable security headers (X-Frame-Options, CSP, HSTS, X-Content-Type-Options)
+    enabled: true
+    tags: ["config", "headers", "web-security"]
