@@ -1803,6 +1803,9 @@ impl CodeIntelEngine {
                             // Update search index
                             self.search_index.index_file(&rel_path, &content);
 
+                            // Smart cache invalidation - only invalidate entries that depend on this file
+                            self.query_cache.invalidate_for_file(&rel_path);
+
                             info!("Re-indexed file: {}", rel_path);
                             count += 1;
                         }
@@ -1823,6 +1826,9 @@ impl CodeIntelEngine {
 
                     // Remove from file cache
                     self.file_cache.remove(&change.path);
+
+                    // Smart cache invalidation - only invalidate entries that depend on this file
+                    self.query_cache.invalidate_for_file(&rel_path);
 
                     info!("Removed file from index: {}", rel_path);
                     count += 1;

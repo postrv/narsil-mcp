@@ -1,11 +1,6 @@
 //! Persistent index storage and watch mode for incremental updates
 //!
 //! Saves index to disk and watches for file changes to update incrementally.
-//!
-//! Contains IncrementalIndexer and FileWatcher for Phase 2 watch mode improvements.
-
-// Allow dead code for planned features not yet wired up
-#![allow(dead_code)]
 
 use anyhow::{Context, Result};
 #[cfg(feature = "native")]
@@ -89,7 +84,6 @@ impl PersistedIndex {
     }
 
     /// Check if a file needs re-indexing
-    #[allow(dead_code)]
     pub fn needs_reindex(&self, path: &Path) -> Result<bool> {
         let metadata = std::fs::metadata(path)?;
         let modified = metadata
@@ -113,7 +107,6 @@ impl PersistedIndex {
     }
 
     /// Update file in index
-    #[allow(dead_code)]
     pub fn update_file(&mut self, path: PathBuf, symbols: Vec<Symbol>) -> Result<()> {
         let metadata = std::fs::metadata(&path)?;
         let hash = hash_file(&path)?;
@@ -141,7 +134,6 @@ impl PersistedIndex {
     }
 
     /// Remove file from index
-    #[allow(dead_code)]
     pub fn remove_file(&mut self, path: &Path) {
         self.files.remove(path);
         self.updated_at = SystemTime::now()
@@ -151,13 +143,11 @@ impl PersistedIndex {
     }
 
     /// Get all symbols across all files
-    #[allow(dead_code)]
     pub fn all_symbols(&self) -> Vec<&Symbol> {
         self.files.values().flat_map(|f| f.symbols.iter()).collect()
     }
 
     /// Get symbols for a specific file
-    #[allow(dead_code)]
     pub fn file_symbols(&self, path: &Path) -> Option<&[Symbol]> {
         self.files.get(path).map(|f| f.symbols.as_slice())
     }

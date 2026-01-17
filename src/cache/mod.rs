@@ -2,9 +2,9 @@
 //!
 //! Provides intelligent caching for security scans, call graphs, and other
 //! computationally expensive operations. Features:
-//! - Hash-based invalidation (file content hash + mtime)
 //! - TTL-based expiration (configurable, default 30 minutes)
 //! - Bounded cache size with LRU eviction
+//! - Smart file-based invalidation (only invalidate affected entries)
 //!
 //! # Modules
 //!
@@ -22,7 +22,6 @@
 //! assert_eq!(cache.get("key"), Some("value".to_string()));
 //! ```
 
-mod invalidation;
 pub mod query_cache;
 
 use dashmap::DashMap;
