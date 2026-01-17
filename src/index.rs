@@ -724,6 +724,47 @@ impl CodeIntelEngine {
             }
         }
 
+        // Transform symbols to RDF knowledge graph if enabled
+        #[cfg(feature = "graph")]
+        if let Some(ref graph) = self.knowledge_graph {
+            use crate::persistence::{RepositoryTransformer, SymbolTransformer};
+
+            // Get the symbols we just indexed
+            if let Some(symbols) = self.symbols.get(&repo_name) {
+                let symbol_count = symbols.len();
+                if let Err(e) = SymbolTransformer::transform_many(graph, &repo_name, symbols.iter())
+                {
+                    warn!(
+                        "Failed to transform symbols to RDF for {}: {}",
+                        repo_name, e
+                    );
+                } else {
+                    // Also add repository metadata
+                    let file_paths: Vec<String> = symbols
+                        .iter()
+                        .map(|s| s.file_path.clone())
+                        .collect::<std::collections::HashSet<_>>()
+                        .into_iter()
+                        .collect();
+                    if let Err(e) = RepositoryTransformer::transform(
+                        graph,
+                        &repo_name,
+                        file_paths.iter().map(|s| s.as_str()),
+                    ) {
+                        warn!(
+                            "Failed to transform repository metadata to RDF for {}: {}",
+                            repo_name, e
+                        );
+                    } else {
+                        info!(
+                            "Transformed {} symbols to RDF knowledge graph for {}",
+                            symbol_count, repo_name
+                        );
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 

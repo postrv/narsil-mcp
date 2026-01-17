@@ -28,7 +28,13 @@
 mod graph;
 
 #[cfg(feature = "graph")]
+mod transform;
+
+#[cfg(feature = "graph")]
 pub use graph::*;
+
+#[cfg(feature = "graph")]
+pub use transform::*;
 
 // Re-export common types for use without the feature flag
 pub mod ontology;
