@@ -1,0 +1,149 @@
+# Kotlin Language-Specific Security Rules
+# These rules focus on Kotlin-specific vulnerabilities beyond standard OWASP patterns
+
+name: Kotlin Security Rules
+version: "1.0.0"
+description: Kotlin-specific security rules for null safety bypasses, coroutine issues, and Android security patterns
+
+rules:
+  # KOTLIN-006: Null Safety Bypass with !!
+  - id: KOTLIN-006
+    name: Kotlin Null Safety Bypass
+    severity: Medium
+    cwe: ["CWE-476"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        # Force unwrap operator
+        - '\w+!!'
+        - '!![\.\[]'
+        - '\)\s*!!'
+      safe_patterns:
+        - '// !! intentional'
+        - '// force unwrap'
+    languages: ["kotlin"]
+    message: Use of !! operator bypasses null safety - may cause NullPointerException at runtime
+    remediation: Use safe call operator (?.) with elvis operator (?:) or let/also blocks. Only use !! when null is logically impossible
+    enabled: true
+    tags: ["null-safety", "exception", "kotlin"]
+
+  # KOTLIN-007: GlobalScope Coroutine
+  - id: KOTLIN-007
+    name: Kotlin GlobalScope Usage
+    severity: Medium
+    cwe: ["CWE-400", "CWE-770"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'GlobalScope\.launch'
+        - 'GlobalScope\.async'
+        - 'GlobalScope\.'
+      safe_patterns: []
+    languages: ["kotlin"]
+    message: GlobalScope creates unstructured concurrency - coroutines may leak or outlive their intended scope
+    remediation: Use structured concurrency with viewModelScope, lifecycleScope, or a custom CoroutineScope. Avoid GlobalScope except for truly application-lifetime coroutines
+    enabled: true
+    tags: ["coroutine", "concurrency", "resource-leak"]
+
+  # KOTLIN-008: Lateinit Without Check
+  - id: KOTLIN-008
+    name: Kotlin Lateinit Property
+    severity: Low
+    cwe: ["CWE-908"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'lateinit\s+var'
+      safe_patterns:
+        - '::.*\.isInitialized'
+    languages: ["kotlin"]
+    message: Lateinit property may throw UninitializedPropertyAccessException if accessed before initialization
+    remediation: Check ::property.isInitialized before access, or use lazy initialization, or nullable type with null check
+    enabled: true
+    tags: ["initialization", "kotlin", "exception"]
+
+  # KOTLIN-009: Runblocking in Main Thread
+  - id: KOTLIN-009
+    name: Kotlin Runblocking on Main Thread
+    severity: High
+    cwe: ["CWE-410"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'runBlocking\s*\{'
+        - 'runBlocking\s*\('
+      safe_patterns:
+        - 'Dispatchers\.IO'
+        - 'Dispatchers\.Default'
+    languages: ["kotlin"]
+    message: runBlocking may block the main/UI thread causing ANR (Application Not Responding)
+    remediation: Use launch or async with appropriate dispatcher. Only use runBlocking in main functions or tests
+    enabled: true
+    tags: ["coroutine", "blocking", "performance"]
+
+  # KOTLIN-010: Unchecked Cast
+  - id: KOTLIN-010
+    name: Kotlin Unchecked Cast
+    severity: Medium
+    cwe: ["CWE-704"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - '\s+as\s+\w+'
+        - '@Suppress\s*\(\s*"UNCHECKED_CAST"\s*\)'
+      safe_patterns:
+        - '\s+as\?\s+'
+        - '\s+is\s+'
+    languages: ["kotlin"]
+    message: Unchecked cast may cause ClassCastException at runtime
+    remediation: Use safe cast (as?) with null check, or verify type with is operator before casting
+    enabled: true
+    tags: ["type-safety", "cast", "exception"]
+
+  # KOTLIN-011: Exposed Internal Class
+  - id: KOTLIN-011
+    name: Kotlin Data Class Exposure
+    severity: Low
+    cwe: ["CWE-200"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'data\s+class\s+\w+\s*\([^)]*password[^)]*\)'
+        - 'data\s+class\s+\w+\s*\([^)]*secret[^)]*\)'
+        - 'data\s+class\s+\w+\s*\([^)]*token[^)]*\)'
+        - 'data\s+class\s+\w+\s*\([^)]*apiKey[^)]*\)'
+      safe_patterns: []
+    languages: ["kotlin"]
+    message: Data class may expose sensitive data via toString(), equals(), or copy() auto-generated methods
+    remediation: Override toString() to exclude sensitive fields. Consider using regular class for entities with sensitive data
+    enabled: true
+    tags: ["data-exposure", "kotlin", "logging"]
+
+  # KOTLIN-012: Mutable Collection Exposure
+  - id: KOTLIN-012
+    name: Kotlin Mutable Collection Exposure
+    severity: Low
+    cwe: ["CWE-374"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'fun\s+\w+\([^)]*\)\s*:\s*MutableList'
+        - 'fun\s+\w+\([^)]*\)\s*:\s*MutableSet'
+        - 'fun\s+\w+\([^)]*\)\s*:\s*MutableMap'
+        - 'val\s+\w+\s*:\s*MutableList'
+        - 'val\s+\w+\s*:\s*MutableSet'
+      safe_patterns:
+        - 'private'
+        - 'internal'
+    languages: ["kotlin"]
+    message: Exposing mutable collection allows external modification of internal state
+    remediation: Return immutable view (toList(), toSet()) or defensive copy. Use List, Set, Map for public API
+    enabled: true
+    tags: ["immutability", "encapsulation", "kotlin"]

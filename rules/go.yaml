@@ -1,0 +1,114 @@
+# Go Language-Specific Security Rules
+# These rules focus on Go-specific vulnerabilities beyond standard OWASP patterns
+
+name: Go Security Rules
+version: "1.0.0"
+description: Go-specific security rules for concurrency issues, unsafe operations, and idiomatic Go security patterns
+
+rules:
+  # GO-006: Goroutine Data Race
+  - id: GO-006
+    name: Go Goroutine Data Race
+    severity: High
+    cwe: ["CWE-362", "CWE-366"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        # Writing to package-level variable in goroutine without sync
+        - 'go\s+func\s*\([^)]*\)\s*\{[^}]*\+\+[^}]*\}'
+        - 'go\s+func\s*\([^)]*\)\s*\{[^}]*\+=[^}]*\}'
+        - 'go\s+func\s*\([^)]*\)\s*\{[^}]*=[^}]*\}'
+        # Accessing shared variable without mutex in goroutine
+        - '\bgo\b.*\bcounter\s*\+\+'
+        - '\bgo\b.*\bcount\s*\+\+'
+      safe_patterns:
+        - 'sync\.Mutex'
+        - 'sync\.RWMutex'
+        - 'atomic\.'
+        - '<-.*chan'
+    languages: ["go"]
+    message: Potential data race detected - shared variable accessed in goroutine without synchronization
+    remediation: Use sync.Mutex, sync.RWMutex, atomic operations, or channels for safe concurrent access
+    enabled: true
+    tags: ["concurrency", "race-condition", "goroutine"]
+
+  # GO-007: Unsafe Pointer Operations
+  - id: GO-007
+    name: Go Unsafe Pointer Usage
+    severity: High
+    cwe: ["CWE-119", "CWE-787", "CWE-125"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'unsafe\.Pointer'
+        - 'uintptr\s*\('
+        - '\*\(\*\w+\)\(unsafe\.'
+        # Pointer arithmetic patterns
+        - 'uintptr\s*\+\s*\d+'
+      safe_patterns: []
+    languages: ["go"]
+    message: Use of unsafe.Pointer detected - may cause memory safety issues
+    remediation: Avoid unsafe package unless absolutely necessary. Use reflect package for type introspection. If unsafe is required, ensure proper bounds checking and alignment
+    enabled: true
+    tags: ["unsafe", "memory-safety", "pointer"]
+
+  # GO-008: Defer in Loop
+  - id: GO-008
+    name: Go Defer in Loop
+    severity: Medium
+    cwe: ["CWE-400", "CWE-770"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'for\s+.*\{[^}]*defer\s+'
+        - 'range\s+.*\{[^}]*defer\s+'
+      safe_patterns: []
+    languages: ["go"]
+    message: Defer statement inside loop - deferred calls won't execute until function returns, potentially causing resource exhaustion
+    remediation: Move defer outside the loop, or wrap loop body in an anonymous function with its own defer
+    enabled: true
+    tags: ["resource-management", "performance", "defer"]
+
+  # GO-009: Ignored Error Return
+  - id: GO-009
+    name: Go Ignored Error
+    severity: Medium
+    cwe: ["CWE-252", "CWE-754"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - '\w+\s*,\s*_\s*:?=\s*\w+\([^)]*\)'
+        - '_\s*=\s*\w+\.\w+\([^)]*\)'
+      safe_patterns:
+        - '_\s*=\s*fmt\.'
+        - '_\s*=\s*log\.'
+    languages: ["go"]
+    message: Error return value ignored - may mask failures or security issues
+    remediation: Always handle errors explicitly. At minimum, log the error. Consider whether error should abort the operation
+    enabled: true
+    tags: ["error-handling", "robustness"]
+
+  # GO-010: Context Without Timeout
+  - id: GO-010
+    name: Go Context Without Timeout
+    severity: Medium
+    cwe: ["CWE-400", "CWE-835"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'context\.Background\(\)'
+        - 'context\.TODO\(\)'
+      safe_patterns:
+        - 'context\.WithTimeout'
+        - 'context\.WithDeadline'
+        - 'context\.WithCancel'
+    languages: ["go"]
+    message: Context without timeout may cause goroutine leaks or denial of service
+    remediation: Use context.WithTimeout or context.WithDeadline for operations that should not run indefinitely
+    enabled: true
+    tags: ["context", "timeout", "resource-management"]

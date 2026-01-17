@@ -349,6 +349,30 @@ impl SecurityRulesEngine {
         if let Err(e) = self.load_ruleset_yaml(bash_yaml) {
             eprintln!("Warning: Failed to load Bash rules: {}", e);
         }
+
+        // Go-specific security rules
+        let go_yaml = include_str!("../rules/go.yaml");
+        if let Err(e) = self.load_ruleset_yaml(go_yaml) {
+            eprintln!("Warning: Failed to load Go rules: {}", e);
+        }
+
+        // Java-specific security rules
+        let java_yaml = include_str!("../rules/java.yaml");
+        if let Err(e) = self.load_ruleset_yaml(java_yaml) {
+            eprintln!("Warning: Failed to load Java rules: {}", e);
+        }
+
+        // C#-specific security rules
+        let csharp_yaml = include_str!("../rules/csharp.yaml");
+        if let Err(e) = self.load_ruleset_yaml(csharp_yaml) {
+            eprintln!("Warning: Failed to load C# rules: {}", e);
+        }
+
+        // Kotlin-specific security rules
+        let kotlin_yaml = include_str!("../rules/kotlin.yaml");
+        if let Err(e) = self.load_ruleset_yaml(kotlin_yaml) {
+            eprintln!("Warning: Failed to load Kotlin rules: {}", e);
+        }
     }
 
     /// Load a ruleset from YAML string
@@ -2758,6 +2782,252 @@ function process(data: any): any {
         assert!(
             findings.iter().any(|f| f.rule_id == "RUST-001"),
             "Should detect Rust unsafe block with auto-loaded rules"
+        );
+    }
+
+    // ============= Go Language-Specific Rules Tests =============
+
+    #[test]
+    fn test_go_rules_loading_from_dedicated_file() {
+        let engine = SecurityRulesEngine::new();
+        // Verify new Go-specific rules are loaded
+        assert!(
+            engine.get_rule("GO-006").is_some(),
+            "GO-006 (goroutine race) should exist"
+        );
+        assert!(
+            engine.get_rule("GO-007").is_some(),
+            "GO-007 (unsafe pointer) should exist"
+        );
+    }
+
+    #[test]
+    fn test_go_goroutine_race_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        // Bad: Writing to shared variable in goroutine without synchronization
+        let code = r#"
+var counter int
+
+func increment() {
+    go func() {
+        counter++  // BAD: Data race
+    }()
+}
+"#;
+        let findings = engine.scan(code, "race.go", "go");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "GO-006"),
+            "Should detect goroutine data race pattern"
+        );
+    }
+
+    #[test]
+    fn test_go_unsafe_pointer_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+import "unsafe"
+
+func convert(p *int) uintptr {
+    return uintptr(unsafe.Pointer(p))  // BAD: unsafe pointer conversion
+}
+"#;
+        let findings = engine.scan(code, "unsafe.go", "go");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "GO-007"),
+            "Should detect Go unsafe pointer usage"
+        );
+    }
+
+    // ============= Java Language-Specific Rules Tests =============
+
+    #[test]
+    fn test_java_rules_loading_from_dedicated_file() {
+        let engine = SecurityRulesEngine::new();
+        assert!(
+            engine.get_rule("JAVA-006").is_some(),
+            "JAVA-006 (JNDI injection) should exist"
+        );
+        assert!(
+            engine.get_rule("JAVA-007").is_some(),
+            "JAVA-007 (expression language injection) should exist"
+        );
+    }
+
+    #[test]
+    fn test_java_jndi_injection_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+InitialContext ctx = new InitialContext();
+ctx.lookup(userInput);  // BAD: JNDI injection
+"#;
+        let findings = engine.scan(code, "JndiService.java", "java");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "JAVA-006"),
+            "Should detect Java JNDI injection"
+        );
+    }
+
+    #[test]
+    fn test_java_expression_language_injection_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+ValueExpression ve = factory.createValueExpression(ctx, userInput, String.class);
+"#;
+        let findings = engine.scan(code, "ElService.java", "java");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "JAVA-007"),
+            "Should detect Java Expression Language injection"
+        );
+    }
+
+    // ============= C# Language-Specific Rules Tests =============
+
+    #[test]
+    fn test_csharp_rules_loading_from_dedicated_file() {
+        let engine = SecurityRulesEngine::new();
+        assert!(
+            engine.get_rule("CSHARP-006").is_some(),
+            "CSHARP-006 (dynamic LINQ) should exist"
+        );
+        assert!(
+            engine.get_rule("CSHARP-007").is_some(),
+            "CSHARP-007 (.NET config debug mode) should exist"
+        );
+    }
+
+    #[test]
+    fn test_csharp_dynamic_linq_injection_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+var result = db.Users.Where(userInput).ToList();
+"#;
+        let findings = engine.scan(code, "UserService.cs", "csharp");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "CSHARP-006"),
+            "Should detect C# dynamic LINQ injection"
+        );
+    }
+
+    #[test]
+    fn test_csharp_debug_config_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+<compilation debug="true" targetFramework="4.8">
+"#;
+        let findings = engine.scan(code, "web.config", "csharp");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "CSHARP-007"),
+            "Should detect C# debug mode in config"
+        );
+    }
+
+    #[test]
+    fn test_csharp_custom_errors_off_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+<customErrors mode="Off"/>
+"#;
+        let findings = engine.scan(code, "web.config", "csharp");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "CSHARP-008"),
+            "Should detect C# customErrors mode Off"
+        );
+    }
+
+    // ============= Kotlin Language-Specific Rules Tests =============
+
+    #[test]
+    fn test_kotlin_rules_loading_from_dedicated_file() {
+        let engine = SecurityRulesEngine::new();
+        assert!(
+            engine.get_rule("KOTLIN-006").is_some(),
+            "KOTLIN-006 (null safety bypass) should exist"
+        );
+        assert!(
+            engine.get_rule("KOTLIN-007").is_some(),
+            "KOTLIN-007 (GlobalScope) should exist"
+        );
+    }
+
+    #[test]
+    fn test_kotlin_null_safety_bypass_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+val name = nullableValue!!  // BAD: Force unwrap
+"#;
+        let findings = engine.scan(code, "User.kt", "kotlin");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "KOTLIN-006"),
+            "Should detect Kotlin !! operator (null safety bypass)"
+        );
+    }
+
+    #[test]
+    fn test_kotlin_lateinit_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+class User {
+    lateinit var name: String  // WARNING: potential UninitializedPropertyAccessException
+}
+"#;
+        let findings = engine.scan(code, "User.kt", "kotlin");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "KOTLIN-008"),
+            "Should detect Kotlin lateinit usage"
+        );
+    }
+
+    #[test]
+    fn test_kotlin_globalscope_detection() {
+        let engine = SecurityRulesEngine::new();
+
+        let code = r#"
+GlobalScope.launch {
+    doWork()  // BAD: Unstructured concurrency
+}
+"#;
+        let findings = engine.scan(code, "Service.kt", "kotlin");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "KOTLIN-007"),
+            "Should detect Kotlin GlobalScope usage"
+        );
+    }
+
+    #[test]
+    fn test_all_new_language_rules_count() {
+        let engine = SecurityRulesEngine::new();
+
+        // Count new rules (GO-006+, JAVA-006+, CSHARP-006+, KOTLIN-006+)
+        let mut new_rule_count = 0;
+        for rule_id in [
+            "GO-006",
+            "GO-007",
+            "JAVA-006",
+            "JAVA-007",
+            "CSHARP-006",
+            "CSHARP-007",
+            "CSHARP-008",
+            "KOTLIN-006",
+            "KOTLIN-007",
+            "KOTLIN-008",
+        ] {
+            if engine.get_rule(rule_id).is_some() {
+                new_rule_count += 1;
+            }
+        }
+        assert!(
+            new_rule_count >= 10,
+            "Should have at least 10 new language-specific rules, got {}",
+            new_rule_count
         );
     }
 }

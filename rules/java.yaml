@@ -1,0 +1,122 @@
+# Java Language-Specific Security Rules
+# These rules focus on Java-specific vulnerabilities beyond standard OWASP patterns
+
+name: Java Security Rules
+version: "1.0.0"
+description: Java-specific security rules for JNDI injection, expression language, and JVM security patterns
+
+rules:
+  # JAVA-006: JNDI Injection
+  - id: JAVA-006
+    name: Java JNDI Injection
+    severity: Critical
+    cwe: ["CWE-74", "CWE-917"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        # InitialContext.lookup with variable
+        - 'InitialContext[^;]*\.lookup\s*\([^"'']'
+        - '\.lookup\s*\(\s*\w+\s*\)'
+        - '\.lookup\s*\(\s*request\.'
+        - '\.lookup\s*\(\s*userInput'
+        # DirContext lookup
+        - 'DirContext[^;]*\.lookup\s*\([^"'']'
+        - 'ctx\.lookup\s*\([^"'']'
+      safe_patterns:
+        - '\.lookup\s*\(\s*"[^"]*"\s*\)'
+        - '\.lookup\s*\(\s*''[^'']*''\s*\)'
+    languages: ["java"]
+    message: Potential JNDI injection - user input in JNDI lookup can lead to remote code execution (CVE-2021-44228 Log4Shell class)
+    remediation: Never pass user input to JNDI lookup. Use allowlists for JNDI names. Disable remote class loading with com.sun.jndi.ldap.object.trustURLCodebase=false
+    enabled: true
+    tags: ["injection", "jndi", "rce", "log4shell"]
+
+  # JAVA-007: Expression Language Injection
+  - id: JAVA-007
+    name: Java Expression Language Injection
+    severity: Critical
+    cwe: ["CWE-917", "CWE-94"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'createValueExpression\s*\([^,]+,\s*\w+'
+        - 'createMethodExpression\s*\([^,]+,\s*\w+'
+        - 'ExpressionFactory[^;]*\.\w+\([^,]+,\s*\w+'
+        - 'evaluateExpression\s*\([^"'']'
+        - '\.evaluate\s*\(\s*\w+\s*,'
+      safe_patterns:
+        - 'createValueExpression\s*\([^,]+,\s*"'
+    languages: ["java"]
+    message: Expression Language injection - user input in EL expression can lead to code execution
+    remediation: Never pass user input to expression evaluation. Sanitize and validate all input before EL processing
+    enabled: true
+    tags: ["injection", "expression-language", "rce"]
+
+  # JAVA-008: Unsafe Reflection
+  - id: JAVA-008
+    name: Java Unsafe Reflection
+    severity: High
+    cwe: ["CWE-470"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Class\.forName\s*\(\s*\w+'
+        - 'Class\.forName\s*\(\s*request\.'
+        - 'getMethod\s*\(\s*\w+\s*,'
+        - 'getDeclaredMethod\s*\(\s*\w+\s*,'
+        - '\.invoke\s*\([^)]*\w+\s*,'
+        - 'newInstance\s*\(\s*\)'
+      safe_patterns:
+        - 'Class\.forName\s*\(\s*"'
+        - 'getMethod\s*\(\s*"'
+    languages: ["java"]
+    message: Unsafe reflection with user-controlled class or method name can lead to arbitrary code execution
+    remediation: Use allowlists for permitted class and method names. Never use user input directly in reflection APIs
+    enabled: true
+    tags: ["reflection", "rce"]
+
+  # JAVA-009: Runtime.exec Command Injection
+  - id: JAVA-009
+    name: Java Runtime.exec Command Injection
+    severity: Critical
+    cwe: ["CWE-78"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Runtime\.getRuntime\(\)\.exec\s*\([^"'']'
+        - 'ProcessBuilder\s*\([^)]*\+[^)]*\)'
+        - 'ProcessBuilder\s*\(\s*\w+\s*\)'
+        - '\.exec\s*\(\s*cmd\s*\)'
+        - '\.exec\s*\(\s*command\s*\)'
+      safe_patterns:
+        - '\.exec\s*\(\s*"[^"]*"\s*\)'
+        - '\.exec\s*\(\s*new\s+String\[\]'
+    languages: ["java"]
+    message: Command injection via Runtime.exec or ProcessBuilder with user input
+    remediation: Avoid shell command execution with user input. Use allowlists for permitted commands. Pass arguments as array, not concatenated string
+    enabled: true
+    tags: ["injection", "command", "rce"]
+
+  # JAVA-010: Weak Random Number Generator
+  - id: JAVA-010
+    name: Java Weak Random
+    severity: Medium
+    cwe: ["CWE-330", "CWE-338"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'new\s+Random\s*\('
+        - 'Math\.random\s*\('
+        - 'java\.util\.Random'
+      safe_patterns:
+        - 'SecureRandom'
+    languages: ["java"]
+    message: Use of weak pseudo-random number generator - not suitable for security purposes
+    remediation: Use java.security.SecureRandom for cryptographic operations, tokens, and security-sensitive random values
+    enabled: true
+    tags: ["crypto", "random"]

@@ -1,0 +1,136 @@
+# C# Language-Specific Security Rules
+# These rules focus on C#/.NET-specific vulnerabilities beyond standard OWASP patterns
+
+name: C# Security Rules
+version: "1.0.0"
+description: C#/.NET-specific security rules for LINQ injection, configuration issues, and .NET security patterns
+
+rules:
+  # CSHARP-006: Dynamic LINQ Injection
+  - id: CSHARP-006
+    name: C# Dynamic LINQ Injection
+    severity: High
+    cwe: ["CWE-89", "CWE-943"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        # Dynamic LINQ with user input
+        - '\.Where\s*\(\s*\w+\s*\)'
+        - '\.Where\s*\(\s*request\.'
+        - '\.OrderBy\s*\(\s*\w+\s*\)'
+        - 'System\.Linq\.Dynamic'
+        - 'DynamicExpression\.'
+        - '\.ParseLambda\s*\('
+        # String interpolation in LINQ
+        - '\.Where\s*\(\s*\$"'
+        - '\.OrderBy\s*\(\s*\$"'
+      safe_patterns:
+        - '\.Where\s*\(\s*x\s*=>'
+        - '\.Where\s*\(\s*\w+\s*=>'
+        - '\.OrderBy\s*\(\s*x\s*=>'
+    languages: ["csharp"]
+    message: Dynamic LINQ query with user input may allow data exfiltration or manipulation
+    remediation: Use parameterized queries with lambda expressions. Never construct LINQ queries from user input strings
+    enabled: true
+    tags: ["injection", "linq", "data-access"]
+
+  # CSHARP-007: Debug Mode in Production Config
+  - id: CSHARP-007
+    name: C# Debug Mode in Config
+    severity: Medium
+    cwe: ["CWE-489", "CWE-215"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '<compilation\s+debug\s*=\s*"true"'
+        - 'debug\s*=\s*"true"'
+        - '<compilation[^>]+debug="true"'
+      safe_patterns:
+        - 'debug="false"'
+    languages: ["csharp"]
+    message: Debug mode enabled in configuration - exposes detailed error information in production
+    remediation: Set compilation debug="false" in production web.config. Use release builds for deployment
+    enabled: true
+    tags: ["config", "information-disclosure"]
+
+  # CSHARP-008: Custom Errors Disabled
+  - id: CSHARP-008
+    name: C# Custom Errors Off
+    severity: Medium
+    cwe: ["CWE-209", "CWE-215"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - '<customErrors\s+mode\s*=\s*"Off"'
+        - 'customErrors.*mode="Off"'
+        - '<customErrors[^>]+mode="Off"'
+      safe_patterns:
+        - 'mode="RemoteOnly"'
+        - 'mode="On"'
+    languages: ["csharp"]
+    message: Custom errors disabled - detailed error information exposed to users
+    remediation: Set customErrors mode="RemoteOnly" or mode="On" in production. Create custom error pages
+    enabled: true
+    tags: ["config", "information-disclosure"]
+
+  # CSHARP-009: ViewState MAC Disabled
+  - id: CSHARP-009
+    name: C# ViewState MAC Disabled
+    severity: Critical
+    cwe: ["CWE-642", "CWE-352"]
+    owasp: ["A07:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'EnableViewStateMac\s*=\s*"?false"?'
+        - 'enableViewStateMac\s*=\s*"?false"?'
+        - 'ViewStateEncryptionMode\s*=\s*"?Never"?'
+      safe_patterns: []
+    languages: ["csharp"]
+    message: ViewState MAC validation disabled - allows ViewState tampering attacks
+    remediation: Always keep EnableViewStateMac=true. Never disable ViewState MAC validation
+    enabled: true
+    tags: ["config", "tampering", "integrity"]
+
+  # CSHARP-010: Request Validation Disabled
+  - id: CSHARP-010
+    name: C# Request Validation Disabled
+    severity: High
+    cwe: ["CWE-79", "CWE-20"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'ValidateRequest\s*=\s*"?false"?'
+        - 'validateRequest\s*=\s*"?false"?'
+        - '\[ValidateInput\s*\(\s*false\s*\)\]'
+        - 'AllowHtml'
+      safe_patterns: []
+    languages: ["csharp"]
+    message: Request validation disabled - increases XSS vulnerability
+    remediation: Keep request validation enabled. Use AntiXSS library or proper output encoding instead of disabling validation
+    enabled: true
+    tags: ["xss", "validation", "input"]
+
+  # CSHARP-011: Insecure Cookie Configuration
+  - id: CSHARP-011
+    name: C# Insecure Cookie
+    severity: Medium
+    cwe: ["CWE-614", "CWE-1004"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'httpOnlyCookies\s*=\s*"?false"?'
+        - 'requireSSL\s*=\s*"?false"?'
+        - '\.HttpOnly\s*=\s*false'
+        - '\.Secure\s*=\s*false'
+      safe_patterns: []
+    languages: ["csharp"]
+    message: Insecure cookie configuration - missing HttpOnly or Secure flag
+    remediation: Set HttpOnly=true to prevent XSS access. Set Secure=true for HTTPS-only transmission
+    enabled: true
+    tags: ["cookie", "session", "config"]
