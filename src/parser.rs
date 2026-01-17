@@ -396,6 +396,79 @@ impl LanguageParser {
                     (variable_declaration (identifier) @var.name) @var.def
                 "#,
             },
+            // Erlang
+            // Erlang uses `-module(name).` for modules and `name(Args) -> Body.` for functions
+            LanguageConfig {
+                name: "erlang".to_string(),
+                language: tree_sitter_erlang::LANGUAGE.into(),
+                extensions: vec!["erl", "hrl"],
+                symbol_query: r#"
+                    (function_clause name: (atom) @function.name) @function.def
+                    (module_attribute name: (atom) @mod.name) @mod.def
+                    (record_decl name: (atom) @struct.name) @struct.def
+                "#,
+            },
+            // Elm
+            // Elm uses `name : Type` for type annotations and `name args = body` for functions
+            LanguageConfig {
+                name: "elm".to_string(),
+                language: tree_sitter_elm::LANGUAGE.into(),
+                extensions: vec!["elm"],
+                symbol_query: r#"
+                    (value_declaration (function_declaration_left (lower_case_identifier) @function.name)) @function.def
+                    (type_alias_declaration (upper_case_identifier) @type.name) @type.def
+                    (type_declaration (upper_case_identifier) @type.name) @type.def
+                "#,
+            },
+            // Fortran
+            // Fortran uses PROGRAM, SUBROUTINE, FUNCTION, MODULE keywords
+            LanguageConfig {
+                name: "fortran".to_string(),
+                language: tree_sitter_fortran::LANGUAGE.into(),
+                extensions: vec!["f90", "f95", "f03", "f08", "f", "for", "fpp"],
+                symbol_query: r#"
+                    (program_statement (name) @function.name) @function.def
+                    (subroutine_statement (name) @function.name) @function.def
+                    (function_statement (name) @function.name) @function.def
+                    (module_statement (name) @mod.name) @mod.def
+                "#,
+            },
+            // PowerShell
+            // PowerShell uses `function Name { }` for functions and `class Name { }` for classes
+            LanguageConfig {
+                name: "powershell".to_string(),
+                language: tree_sitter_powershell::LANGUAGE.into(),
+                extensions: vec!["ps1", "psm1", "psd1"],
+                symbol_query: r#"
+                    (function_statement (function_name) @function.name) @function.def
+                    (class_statement (simple_name) @class.name) @class.def
+                    (enum_statement (simple_name) @enum.name) @enum.def
+                "#,
+            },
+            // Nix
+            // Nix uses `name = value;` for bindings, often with let...in or attribute sets
+            LanguageConfig {
+                name: "nix".to_string(),
+                language: tree_sitter_nix::LANGUAGE.into(),
+                extensions: vec!["nix"],
+                symbol_query: r#"
+                    (binding attrpath: (attrpath (identifier) @var.name)) @var.def
+                "#,
+            },
+            // Groovy
+            // Groovy uses Java-like syntax with `class`, `interface`, `enum`, and `def`
+            LanguageConfig {
+                name: "groovy".to_string(),
+                language: tree_sitter_groovy::LANGUAGE.into(),
+                extensions: vec!["groovy", "gradle"],
+                symbol_query: r#"
+                    (method_declaration name: (identifier) @method.name) @method.def
+                    (class_declaration name: (identifier) @class.name) @class.def
+                    (interface_declaration name: (identifier) @interface.name) @interface.def
+                    (enum_declaration name: (identifier) @enum.name) @enum.def
+                    (function_definition (identifier) @function.name) @function.def
+                "#,
+            },
         ];
 
         // Wrap configs in lazy wrappers (queries compiled on first use, not during init)
@@ -1343,6 +1416,330 @@ pub fn main() !void {
         assert!(
             names.contains(&&"main".to_string()),
             "Should find function main"
+        );
+    }
+
+    #[test]
+    fn test_parse_erlang() {
+        let parser = LanguageParser::new().unwrap();
+        let content = r#"
+-module(greeting).
+-export([hello/1, goodbye/1]).
+
+%% Public function
+hello(Name) ->
+    io:format("Hello, ~s!~n", [Name]).
+
+%% Another public function
+goodbye(Name) ->
+    io:format("Goodbye, ~s!~n", [Name]).
+
+%% Private helper function
+format_message(Msg, Name) ->
+    io_lib:format("~s, ~s!", [Msg, Name]).
+
+-record(person, {name, age}).
+
+greet_person(#person{name = Name}) ->
+    hello(Name).
+        "#;
+
+        let parsed = parser.parse_file(Path::new("test.erl"), content).unwrap();
+        assert_eq!(parsed.language, "erlang");
+        assert!(!parsed.symbols.is_empty());
+
+        let names: Vec<_> = parsed.symbols.iter().map(|s| &s.name).collect();
+        assert!(
+            names.contains(&&"hello".to_string()),
+            "Should find function hello, found: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&&"goodbye".to_string()),
+            "Should find function goodbye"
+        );
+    }
+
+    #[test]
+    fn test_parse_elm() {
+        let parser = LanguageParser::new().unwrap();
+        let content = r#"
+module Main exposing (main)
+
+import Html exposing (Html, text, div)
+
+-- Type alias
+type alias Model =
+    { name : String
+    , count : Int
+    }
+
+-- Custom type
+type Msg
+    = Increment
+    | Decrement
+    | Reset
+
+-- Function definitions
+greet : String -> String
+greet name =
+    "Hello, " ++ name ++ "!"
+
+add : Int -> Int -> Int
+add a b =
+    a + b
+
+main : Html msg
+main =
+    text (greet "World")
+        "#;
+
+        let parsed = parser.parse_file(Path::new("test.elm"), content).unwrap();
+        assert_eq!(parsed.language, "elm");
+        assert!(!parsed.symbols.is_empty());
+
+        let names: Vec<_> = parsed.symbols.iter().map(|s| &s.name).collect();
+        assert!(
+            names.contains(&&"greet".to_string()),
+            "Should find function greet, found: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&&"add".to_string()),
+            "Should find function add"
+        );
+        assert!(
+            names.contains(&&"main".to_string()),
+            "Should find function main"
+        );
+    }
+
+    #[test]
+    fn test_parse_fortran() {
+        let parser = LanguageParser::new().unwrap();
+        let content = r#"
+program hello
+    implicit none
+    call greet("World")
+contains
+    subroutine greet(name)
+        character(len=*), intent(in) :: name
+        print *, "Hello, ", name
+    end subroutine greet
+
+    function add(a, b) result(c)
+        integer, intent(in) :: a, b
+        integer :: c
+        c = a + b
+    end function add
+end program hello
+
+module math_utils
+    implicit none
+contains
+    function multiply(x, y) result(z)
+        real, intent(in) :: x, y
+        real :: z
+        z = x * y
+    end function multiply
+end module math_utils
+        "#;
+
+        let parsed = parser.parse_file(Path::new("test.f90"), content).unwrap();
+        assert_eq!(parsed.language, "fortran");
+        assert!(!parsed.symbols.is_empty());
+
+        let names: Vec<_> = parsed.symbols.iter().map(|s| &s.name).collect();
+        assert!(
+            names.contains(&&"hello".to_string()),
+            "Should find program hello, found: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&&"greet".to_string()),
+            "Should find subroutine greet"
+        );
+        assert!(
+            names.contains(&&"add".to_string()),
+            "Should find function add"
+        );
+    }
+
+    #[test]
+    fn test_parse_powershell() {
+        let parser = LanguageParser::new().unwrap();
+        let content = r#"
+function Get-Greeting {
+    param(
+        [string]$Name
+    )
+    return "Hello, $Name!"
+}
+
+function Add-Numbers {
+    param(
+        [int]$a,
+        [int]$b
+    )
+    return $a + $b
+}
+
+function Invoke-Process {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Path
+    )
+
+    process {
+        Get-Process | Where-Object { $_.Path -eq $Path }
+    }
+}
+
+class Person {
+    [string]$Name
+    [int]$Age
+
+    Person([string]$name, [int]$age) {
+        $this.Name = $name
+        $this.Age = $age
+    }
+
+    [string] Greet() {
+        return "Hello, I am $($this.Name)"
+    }
+}
+
+$greeting = Get-Greeting -Name "World"
+Write-Output $greeting
+        "#;
+
+        let parsed = parser.parse_file(Path::new("test.ps1"), content).unwrap();
+        assert_eq!(parsed.language, "powershell");
+        assert!(!parsed.symbols.is_empty());
+
+        let names: Vec<_> = parsed.symbols.iter().map(|s| &s.name).collect();
+        assert!(
+            names.contains(&&"Get-Greeting".to_string()),
+            "Should find function Get-Greeting, found: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&&"Add-Numbers".to_string()),
+            "Should find function Add-Numbers"
+        );
+    }
+
+    #[test]
+    fn test_parse_nix() {
+        let parser = LanguageParser::new().unwrap();
+        let content = r#"
+{ lib, stdenv, fetchurl }:
+
+let
+  greet = name: "Hello, ${name}!";
+
+  add = a: b: a + b;
+
+  person = {
+    name = "Alice";
+    age = 30;
+  };
+
+  buildPackage = { name, version, src }:
+    stdenv.mkDerivation {
+      inherit name version src;
+      buildPhase = "make";
+      installPhase = "make install";
+    };
+in
+{
+  greeting = greet "World";
+  sum = add 1 2;
+  package = buildPackage {
+    name = "example";
+    version = "1.0";
+    src = fetchurl { url = "https://example.com"; sha256 = "..."; };
+  };
+}
+        "#;
+
+        let parsed = parser.parse_file(Path::new("test.nix"), content).unwrap();
+        assert_eq!(parsed.language, "nix");
+        // Nix has a unique syntax, verify parsing succeeds
+        assert!(parsed.tree.is_some(), "Should successfully parse Nix code");
+        // If symbols are extracted, check for expected bindings
+        let names: Vec<_> = parsed.symbols.iter().map(|s| &s.name).collect();
+        eprintln!("Found Nix symbols: {:?}", names);
+    }
+
+    #[test]
+    fn test_parse_groovy() {
+        let parser = LanguageParser::new().unwrap();
+        let content = r#"
+package com.example
+
+class Person {
+    String name
+    int age
+
+    Person(String name, int age) {
+        this.name = name
+        this.age = age
+    }
+
+    String greet() {
+        return "Hello, my name is ${name}"
+    }
+
+    static int add(int a, int b) {
+        return a + b
+    }
+}
+
+interface Greeter {
+    String sayHello(String name)
+}
+
+trait Printable {
+    void print() {
+        println(this.toString())
+    }
+}
+
+enum Status {
+    ACTIVE,
+    INACTIVE,
+    PENDING
+}
+
+def standaloneFunction(x) {
+    return x * 2
+}
+
+def greeting = new Person("Alice", 30).greet()
+println greeting
+        "#;
+
+        let parsed = parser
+            .parse_file(Path::new("test.groovy"), content)
+            .unwrap();
+        assert_eq!(parsed.language, "groovy");
+        assert!(!parsed.symbols.is_empty());
+
+        let names: Vec<_> = parsed.symbols.iter().map(|s| &s.name).collect();
+        assert!(
+            names.contains(&&"Person".to_string()),
+            "Should find class Person, found: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&&"Greeter".to_string()),
+            "Should find interface Greeter"
+        );
+        assert!(
+            names.contains(&&"Status".to_string()),
+            "Should find enum Status"
         );
     }
 }

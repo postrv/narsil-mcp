@@ -82,6 +82,12 @@ tree-sitter-julia = "0.23"
 tree-sitter-r = "1.2"
 tree-sitter-perl = "1.1"
 tree-sitter-zig = "1.1"
+tree-sitter-erlang = "0.14"
+tree-sitter-elm = "5.9"
+tree-sitter-fortran = "0.5"
+tree-sitter-powershell = "0.25"
+tree-sitter-nix = "0.3"
+tree-sitter-groovy = "0.1"
 
 # File system and path handling
 walkdir = "2.5"
