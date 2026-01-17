@@ -24,6 +24,8 @@ mod metrics;
 mod neural;
 mod parser;
 mod persist;
+#[cfg(feature = "graph")]
+mod persistence;
 mod remote;
 mod repo;
 mod search;
@@ -149,6 +151,14 @@ struct ServerArgs {
     /// Cache TTL in seconds (default: 1800 = 30 minutes)
     #[arg(long, default_value = "1800")]
     cache_ttl: u64,
+
+    /// Enable RDF knowledge graph storage (requires --features graph)
+    #[arg(long)]
+    graph: bool,
+
+    /// Path for knowledge graph storage (default: <index_path>/graph)
+    #[arg(long)]
+    graph_path: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -201,8 +211,8 @@ async fn main() -> Result<()> {
 
     info!("Repos to index: {:?}", repos);
     info!(
-        "Features: call_graph={}, git={}, watch={}, persist={}, lsp={}, streaming={}, remote={}, neural={}, cache={}",
-        server_args.call_graph, server_args.git, server_args.watch, server_args.persist, server_args.lsp, server_args.streaming, server_args.remote, server_args.neural, !server_args.no_cache
+        "Features: call_graph={}, git={}, watch={}, persist={}, lsp={}, streaming={}, remote={}, neural={}, cache={}, graph={}",
+        server_args.call_graph, server_args.git, server_args.watch, server_args.persist, server_args.lsp, server_args.streaming, server_args.remote, server_args.neural, !server_args.no_cache, server_args.graph
     );
 
     // Build LSP config
@@ -265,6 +275,10 @@ async fn main() -> Result<()> {
         neural_config,
         cache_enabled: !server_args.no_cache,
         cache_ttl_seconds: server_args.cache_ttl,
+        #[cfg(feature = "graph")]
+        graph_enabled: server_args.graph,
+        #[cfg(feature = "graph")]
+        graph_path: server_args.graph_path,
     };
 
     // NOTE: Engine creation is now fast and returns immediately.

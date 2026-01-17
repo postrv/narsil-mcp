@@ -25,6 +25,10 @@ pub mod taint;
 pub mod tool_metadata;
 pub mod type_inference;
 
+// Knowledge graph persistence (requires oxigraph)
+#[cfg(feature = "graph")]
+pub mod persistence;
+
 // Native-only modules (require tokio, octocrab, lsp, etc.)
 #[cfg(feature = "native")]
 pub mod git;

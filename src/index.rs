@@ -103,6 +103,12 @@ pub struct EngineOptions {
     pub cache_enabled: bool,
     /// Cache TTL in seconds (default: 1800 = 30 minutes)
     pub cache_ttl_seconds: u64,
+    /// Enable RDF knowledge graph storage (requires graph feature)
+    #[cfg(feature = "graph")]
+    pub graph_enabled: bool,
+    /// Path for knowledge graph storage (defaults to index_path/graph if not set)
+    #[cfg(feature = "graph")]
+    pub graph_path: Option<std::path::PathBuf>,
 }
 
 impl Default for EngineOptions {
@@ -117,6 +123,10 @@ impl Default for EngineOptions {
             neural_config: NeuralConfig::default(),
             cache_enabled: true,
             cache_ttl_seconds: 1800,
+            #[cfg(feature = "graph")]
+            graph_enabled: false,
+            #[cfg(feature = "graph")]
+            graph_path: None,
         }
     }
 }
@@ -167,6 +177,9 @@ pub struct CodeIntelEngine {
     indexed_repos_count: AtomicUsize,
     /// Total number of repositories to index
     total_repos_count: AtomicUsize,
+    /// RDF knowledge graph for persistent code intelligence data (when graph is enabled)
+    #[cfg(feature = "graph")]
+    knowledge_graph: Option<Arc<crate::persistence::KnowledgeGraph>>,
 }
 
 impl CodeIntelEngine {
@@ -270,6 +283,35 @@ impl CodeIntelEngine {
             Arc::new(QueryCache::new(1, std::time::Duration::from_secs(0)))
         };
 
+        // Initialize knowledge graph if graph feature is enabled
+        #[cfg(feature = "graph")]
+        let knowledge_graph = if options.graph_enabled {
+            let graph_path = options
+                .graph_path
+                .clone()
+                .unwrap_or_else(|| expanded_index.join("graph"));
+            match crate::persistence::KnowledgeGraph::open(&graph_path) {
+                Ok(graph) => {
+                    info!("Knowledge graph opened at {:?}", graph_path);
+                    // Load ontology if the graph is new/empty
+                    if graph.is_empty() {
+                        if let Err(e) = graph.load_ontology() {
+                            warn!("Failed to load ontology into knowledge graph: {}", e);
+                        } else {
+                            info!("Loaded narsil ontology into knowledge graph");
+                        }
+                    }
+                    Some(Arc::new(graph))
+                }
+                Err(e) => {
+                    warn!("Failed to open knowledge graph at {:?}: {}", graph_path, e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let total_repos = expanded_repos.len();
 
         let engine = Self {
@@ -295,6 +337,8 @@ impl CodeIntelEngine {
             initialization_complete: AtomicBool::new(false),
             indexed_repos_count: AtomicUsize::new(0),
             total_repos_count: AtomicUsize::new(total_repos),
+            #[cfg(feature = "graph")]
+            knowledge_graph,
         };
 
         // Try to load persisted indexes first if persistence is enabled
@@ -751,6 +795,15 @@ impl CodeIntelEngine {
     /// Get a reference to the engine options
     pub fn options(&self) -> &EngineOptions {
         &self.options
+    }
+
+    /// Get a reference to the knowledge graph (if enabled).
+    ///
+    /// Returns `None` if the graph feature is disabled or if graph initialization failed.
+    #[cfg(feature = "graph")]
+    #[must_use]
+    pub fn knowledge_graph(&self) -> Option<Arc<crate::persistence::KnowledgeGraph>> {
+        self.knowledge_graph.clone()
     }
 
     /// Get cache statistics for metrics reporting
