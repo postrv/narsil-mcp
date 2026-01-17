@@ -782,7 +782,95 @@ impl CfgBuilder {
                 Ok(current)
             }
             // Block - process contents
-            "block" | "compound_statement" => self.process_block_node(current, node, source),
+            // Note: "statements" is Kotlin's container for statements inside function bodies
+            "block" | "compound_statement" | "statements" => {
+                self.process_block_node(current, node, source)
+            }
+
+            // ===================================================================================
+            // Multi-Language Control Flow Support
+            // ===================================================================================
+
+            // Switch statements (Go, Java, C#)
+            "switch_statement" | "expression_switch_statement" | "switch_expression" => {
+                self.process_switch(current, node, source)
+            }
+
+            // Try-catch statements (Java, C#, Kotlin)
+            "try_statement" | "try_expression" | "try_with_resources_statement" => {
+                self.process_try_catch(current, node, source)
+            }
+
+            // When expression (Kotlin)
+            "when_expression" => self.process_when(current, node, source),
+
+            // Enhanced for loop (Java)
+            "enhanced_for_statement" => self.process_enhanced_for(current, node, source),
+
+            // Foreach statement (C#)
+            "for_each_statement" | "foreach_statement" => {
+                self.process_foreach(current, node, source)
+            }
+
+            // Do-while loop (Java, C#, Kotlin)
+            "do_statement" | "do_while_statement" => self.process_do_while(current, node, source),
+
+            // Defer statement (Go)
+            "defer_statement" => {
+                self.add_statement(
+                    current,
+                    Statement {
+                        line,
+                        kind: StatementKind::Other,
+                        text: format!("defer: {}", text.chars().take(90).collect::<String>()),
+                    },
+                );
+                Ok(current)
+            }
+
+            // Go statements (goroutine launch)
+            "go_statement" => {
+                self.add_statement(
+                    current,
+                    Statement {
+                        line,
+                        kind: StatementKind::Call {
+                            function: "go".to_string(),
+                        },
+                        text,
+                    },
+                );
+                Ok(current)
+            }
+
+            // Select statement (Go channels)
+            "select_statement" => self.process_select(current, node, source),
+
+            // Using statement (C#)
+            "using_statement" => self.process_using(current, node, source),
+
+            // Lock statement (C#)
+            "lock_statement" => self.process_lock(current, node, source),
+
+            // Throw statement (Java, C#, Kotlin)
+            "throw_statement" | "throw_expression" => {
+                self.add_statement(
+                    current,
+                    Statement {
+                        line,
+                        kind: StatementKind::ControlFlow,
+                        text,
+                    },
+                );
+                // Throw can potentially exit the function
+                self.set_terminator(current, Terminator::Jump);
+                let next = self.create_block("after_throw");
+                Ok(next)
+            }
+
+            // Jump expression (Kotlin return, break, continue with labels)
+            "jump_expression" => self.process_jump_expression(current, node, source),
+
             // Other
             _ => {
                 // For other nodes, just add as expression if they have content
@@ -1098,6 +1186,577 @@ impl CfgBuilder {
 
         Ok(merge)
     }
+
+    // ===================================================================================
+    // Multi-Language Control Flow Processing Methods
+    // ===================================================================================
+
+    /// Process switch statements (Go, Java, C#)
+    fn process_switch(&mut self, current: BlockId, node: Node, source: &[u8]) -> Result<BlockId> {
+        let condition = extract_condition(node, source).unwrap_or_default();
+        let line = node.start_position().row + 1;
+
+        self.add_statement(
+            current,
+            Statement {
+                line,
+                kind: StatementKind::ControlFlow,
+                text: format!("switch {}", condition),
+            },
+        );
+        self.set_terminator(
+            current,
+            Terminator::Branch {
+                condition: condition.clone(),
+            },
+        );
+
+        let merge = self.create_block("switch_end");
+        let mut has_default = false;
+
+        // Helper function to process case nodes at any depth
+        fn process_switch_cases(
+            builder: &mut CfgBuilder,
+            node: Node,
+            source: &[u8],
+            current: BlockId,
+            merge: BlockId,
+            case_count: &mut usize,
+            has_default: &mut bool,
+        ) -> Result<()> {
+            let mut cursor = node.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let child = cursor.node();
+                    let child_kind = child.kind();
+
+                    // Go: expression_case, default_case
+                    // Java: switch_block_statement_group (inside switch_block)
+                    // C#: switch_section
+                    if child_kind == "expression_case"
+                        || child_kind == "default_case"
+                        || child_kind == "switch_block_statement_group"
+                        || child_kind == "switch_section"
+                    {
+                        *case_count += 1;
+                        let is_default = child_kind == "default_case"
+                            || child.utf8_text(source).unwrap_or("").contains("default:");
+
+                        if is_default {
+                            *has_default = true;
+                        }
+
+                        let case_label = if is_default {
+                            "default".to_string()
+                        } else {
+                            format!("case_{}", *case_count)
+                        };
+
+                        let case_block = builder.create_block(&case_label);
+                        builder.add_edge(current, case_block, EdgeKind::Jump);
+
+                        // Process case body
+                        let case_exit = builder.process_block_node(case_block, child, source)?;
+                        builder.add_edge(case_exit, merge, EdgeKind::FallThrough);
+                    }
+                    // Java: switch_block, C#: switch_body - contain the cases
+                    else if child_kind == "switch_block" || child_kind == "switch_body" {
+                        process_switch_cases(
+                            builder,
+                            child,
+                            source,
+                            current,
+                            merge,
+                            case_count,
+                            has_default,
+                        )?;
+                    }
+
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        let mut case_count = 0;
+        process_switch_cases(
+            self,
+            node,
+            source,
+            current,
+            merge,
+            &mut case_count,
+            &mut has_default,
+        )?;
+
+        // If no default case, add edge from current to merge
+        if !has_default {
+            self.add_edge(current, merge, EdgeKind::FalseBranch);
+        }
+
+        Ok(merge)
+    }
+
+    /// Process try-catch statements (Java, C#, Kotlin)
+    fn process_try_catch(
+        &mut self,
+        current: BlockId,
+        node: Node,
+        source: &[u8],
+    ) -> Result<BlockId> {
+        let line = node.start_position().row + 1;
+
+        self.add_statement(
+            current,
+            Statement {
+                line,
+                kind: StatementKind::ControlFlow,
+                text: "try".to_string(),
+            },
+        );
+
+        let try_block = self.create_block("try_body");
+        let merge = self.create_block("try_end");
+
+        self.add_edge(current, try_block, EdgeKind::FallThrough);
+
+        // Process try body and catch/finally clauses
+        let mut cursor = node.walk();
+        let mut try_exit = try_block;
+        let mut catch_blocks = Vec::new();
+
+        if cursor.goto_first_child() {
+            loop {
+                let child = cursor.node();
+                let child_kind = child.kind();
+
+                // Try block body
+                if child_kind == "block" && try_exit == try_block {
+                    try_exit = self.process_block_node(try_block, child, source)?;
+                }
+                // Catch clause (Java, C#)
+                else if child_kind == "catch_clause" {
+                    let catch_block = self.create_block("catch");
+                    catch_blocks.push(catch_block);
+                    self.add_edge(try_block, catch_block, EdgeKind::Jump); // Exception edge
+
+                    if let Some(body) = find_child_by_kind(child, "block") {
+                        let catch_exit = self.process_block_node(catch_block, body, source)?;
+                        self.add_edge(catch_exit, merge, EdgeKind::FallThrough);
+                    } else {
+                        self.add_edge(catch_block, merge, EdgeKind::FallThrough);
+                    }
+                }
+                // Kotlin catch clause
+                else if child_kind == "catch_block" {
+                    let catch_block = self.create_block("catch");
+                    catch_blocks.push(catch_block);
+                    self.add_edge(try_block, catch_block, EdgeKind::Jump);
+
+                    let catch_exit = self.process_block_node(catch_block, child, source)?;
+                    self.add_edge(catch_exit, merge, EdgeKind::FallThrough);
+                }
+                // Finally clause
+                else if child_kind == "finally_clause" || child_kind == "finally_block" {
+                    let finally_block = self.create_block("finally");
+
+                    // Connect try exit to finally
+                    // Note: catch exits go directly to merge (simplified model)
+                    // A full implementation would re-route catch exits through finally
+                    self.add_edge(try_exit, finally_block, EdgeKind::FallThrough);
+                    drop(catch_blocks); // Catch exits already connected to merge above
+
+                    if let Some(body) = find_child_by_kind(child, "block") {
+                        let finally_exit = self.process_block_node(finally_block, body, source)?;
+                        self.add_edge(finally_exit, merge, EdgeKind::FallThrough);
+                    } else {
+                        let finally_exit = self.process_block_node(finally_block, child, source)?;
+                        self.add_edge(finally_exit, merge, EdgeKind::FallThrough);
+                    }
+
+                    return Ok(merge);
+                }
+
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        // No finally - connect try exit to merge
+        self.add_edge(try_exit, merge, EdgeKind::FallThrough);
+
+        Ok(merge)
+    }
+
+    /// Process when expression (Kotlin)
+    fn process_when(&mut self, current: BlockId, node: Node, source: &[u8]) -> Result<BlockId> {
+        let condition = extract_condition(node, source).unwrap_or_default();
+        let line = node.start_position().row + 1;
+
+        self.add_statement(
+            current,
+            Statement {
+                line,
+                kind: StatementKind::ControlFlow,
+                text: format!("when {}", condition),
+            },
+        );
+        self.set_terminator(
+            current,
+            Terminator::Branch {
+                condition: condition.clone(),
+            },
+        );
+
+        let merge = self.create_block("when_end");
+        let mut has_else = false;
+
+        // Process each when entry
+        let mut cursor = node.walk();
+        if cursor.goto_first_child() {
+            let mut entry_count = 0;
+            loop {
+                let child = cursor.node();
+
+                if child.kind() == "when_entry" {
+                    entry_count += 1;
+
+                    // Check if this is an else entry
+                    let is_else = child
+                        .utf8_text(source)
+                        .unwrap_or("")
+                        .trim_start()
+                        .starts_with("else");
+                    if is_else {
+                        has_else = true;
+                    }
+
+                    let entry_label = if is_else {
+                        "when_else".to_string()
+                    } else {
+                        format!("when_entry_{}", entry_count)
+                    };
+
+                    let entry_block = self.create_block(&entry_label);
+                    self.add_edge(current, entry_block, EdgeKind::Jump);
+
+                    // Process entry body
+                    if let Some(body) = find_child_by_kind(child, "control_structure_body") {
+                        let entry_exit = self.process_block_node(entry_block, body, source)?;
+                        self.add_edge(entry_exit, merge, EdgeKind::FallThrough);
+                    } else {
+                        let entry_exit = self.process_block_node(entry_block, child, source)?;
+                        self.add_edge(entry_exit, merge, EdgeKind::FallThrough);
+                    }
+                }
+
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        // If no else, add edge from current to merge
+        if !has_else {
+            self.add_edge(current, merge, EdgeKind::FalseBranch);
+        }
+
+        Ok(merge)
+    }
+
+    /// Process enhanced for loop (Java: for (Type x : iterable))
+    fn process_enhanced_for(
+        &mut self,
+        current: BlockId,
+        node: Node,
+        source: &[u8],
+    ) -> Result<BlockId> {
+        let header = self.create_block("enhanced_for_header");
+        self.add_edge(current, header, EdgeKind::FallThrough);
+
+        self.add_statement(
+            header,
+            Statement {
+                line: node.start_position().row + 1,
+                kind: StatementKind::ControlFlow,
+                text: "enhanced for".to_string(),
+            },
+        );
+        self.set_terminator(header, Terminator::Loop);
+
+        let body_block = self.create_block("enhanced_for_body");
+        let exit_block = self.create_block("enhanced_for_exit");
+
+        self.push_loop(header, exit_block);
+
+        self.add_edge(header, body_block, EdgeKind::TrueBranch);
+        self.add_edge(header, exit_block, EdgeKind::FalseBranch);
+
+        // Process body
+        if let Some(body) =
+            find_child_by_kind(node, "block").or_else(|| find_child_by_kind(node, "statement"))
+        {
+            let body_exit = self.process_block_node(body_block, body, source)?;
+            self.add_edge(body_exit, header, EdgeKind::LoopBack);
+        } else {
+            self.add_edge(body_block, header, EdgeKind::LoopBack);
+        }
+
+        self.pop_loop();
+
+        Ok(exit_block)
+    }
+
+    /// Process foreach statement (C#: foreach (var x in collection))
+    fn process_foreach(&mut self, current: BlockId, node: Node, source: &[u8]) -> Result<BlockId> {
+        // Similar to enhanced for
+        self.process_enhanced_for(current, node, source)
+    }
+
+    /// Process do-while loop (Java, C#, Kotlin)
+    fn process_do_while(&mut self, current: BlockId, node: Node, source: &[u8]) -> Result<BlockId> {
+        let body_block = self.create_block("do_body");
+        let condition_block = self.create_block("do_condition");
+        let exit_block = self.create_block("do_exit");
+
+        self.add_edge(current, body_block, EdgeKind::FallThrough);
+
+        self.push_loop(condition_block, exit_block);
+
+        // Process body first (do-while executes body at least once)
+        if let Some(body) = find_child_by_kind(node, "block") {
+            let body_exit = self.process_block_node(body_block, body, source)?;
+            self.add_edge(body_exit, condition_block, EdgeKind::FallThrough);
+        } else {
+            self.add_edge(body_block, condition_block, EdgeKind::FallThrough);
+        }
+
+        // Condition
+        let condition = extract_do_while_condition(node, source).unwrap_or_default();
+        self.add_statement(
+            condition_block,
+            Statement {
+                line: node.end_position().row + 1,
+                kind: StatementKind::ControlFlow,
+                text: format!("while {}", condition),
+            },
+        );
+        self.set_terminator(
+            condition_block,
+            Terminator::Branch {
+                condition: condition.clone(),
+            },
+        );
+
+        self.add_edge(condition_block, body_block, EdgeKind::TrueBranch);
+        self.add_edge(condition_block, exit_block, EdgeKind::FalseBranch);
+
+        self.pop_loop();
+
+        Ok(exit_block)
+    }
+
+    /// Process select statement (Go channel operations)
+    fn process_select(&mut self, current: BlockId, node: Node, source: &[u8]) -> Result<BlockId> {
+        let line = node.start_position().row + 1;
+
+        self.add_statement(
+            current,
+            Statement {
+                line,
+                kind: StatementKind::ControlFlow,
+                text: "select".to_string(),
+            },
+        );
+        self.set_terminator(
+            current,
+            Terminator::Branch {
+                condition: "channel".to_string(),
+            },
+        );
+
+        let merge = self.create_block("select_end");
+
+        // Process each communication clause
+        let mut cursor = node.walk();
+        if cursor.goto_first_child() {
+            let mut case_count = 0;
+            loop {
+                let child = cursor.node();
+                if child.kind() == "communication_case" || child.kind() == "default_case" {
+                    case_count += 1;
+                    let case_block = self.create_block(&format!("select_case_{}", case_count));
+                    self.add_edge(current, case_block, EdgeKind::Jump);
+
+                    let case_exit = self.process_block_node(case_block, child, source)?;
+                    self.add_edge(case_exit, merge, EdgeKind::FallThrough);
+                }
+
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        Ok(merge)
+    }
+
+    /// Process using statement (C# resource management)
+    fn process_using(&mut self, current: BlockId, node: Node, source: &[u8]) -> Result<BlockId> {
+        let line = node.start_position().row + 1;
+
+        self.add_statement(
+            current,
+            Statement {
+                line,
+                kind: StatementKind::ControlFlow,
+                text: "using".to_string(),
+            },
+        );
+
+        // Process the using body
+        if let Some(body) = find_child_by_kind(node, "block") {
+            self.process_block_node(current, body, source)
+        } else {
+            Ok(current)
+        }
+    }
+
+    /// Process lock statement (C# synchronization)
+    fn process_lock(&mut self, current: BlockId, node: Node, source: &[u8]) -> Result<BlockId> {
+        let line = node.start_position().row + 1;
+
+        self.add_statement(
+            current,
+            Statement {
+                line,
+                kind: StatementKind::ControlFlow,
+                text: "lock".to_string(),
+            },
+        );
+
+        // Process the lock body
+        if let Some(body) = find_child_by_kind(node, "block") {
+            self.process_block_node(current, body, source)
+        } else {
+            Ok(current)
+        }
+    }
+
+    /// Process jump expression (Kotlin return/break/continue with optional labels)
+    fn process_jump_expression(
+        &mut self,
+        current: BlockId,
+        node: Node,
+        source: &[u8],
+    ) -> Result<BlockId> {
+        let text = node
+            .utf8_text(source)
+            .unwrap_or("")
+            .chars()
+            .take(100)
+            .collect::<String>();
+        let line = node.start_position().row + 1;
+
+        // Determine the type of jump
+        if text.starts_with("return") {
+            // Check if this return contains a when expression (Kotlin: return when (x) { ... })
+            if let Some(when_node) = find_child_by_kind(node, "when_expression") {
+                // Process the when expression first, then mark the merge block as a return
+                let when_exit = self.process_when(current, when_node, source)?;
+                self.add_statement(
+                    when_exit,
+                    Statement {
+                        line,
+                        kind: StatementKind::Return,
+                        text: "return (from when)".to_string(),
+                    },
+                );
+                self.set_terminator(when_exit, Terminator::Return);
+                self.set_exit(when_exit);
+                let next = self.create_block("after_return");
+                return Ok(next);
+            }
+
+            self.add_statement(
+                current,
+                Statement {
+                    line,
+                    kind: StatementKind::Return,
+                    text,
+                },
+            );
+            self.set_terminator(current, Terminator::Return);
+            self.set_exit(current);
+            let next = self.create_block("after_return");
+            Ok(next)
+        } else if text.starts_with("break") {
+            self.add_statement(
+                current,
+                Statement {
+                    line,
+                    kind: StatementKind::ControlFlow,
+                    text,
+                },
+            );
+            self.set_terminator(current, Terminator::Break);
+            if let Some(exit) = self.current_loop_exit() {
+                self.add_edge(current, exit, EdgeKind::LoopExit);
+            }
+            let next = self.create_block("after_break");
+            Ok(next)
+        } else if text.starts_with("continue") {
+            self.add_statement(
+                current,
+                Statement {
+                    line,
+                    kind: StatementKind::ControlFlow,
+                    text,
+                },
+            );
+            self.set_terminator(current, Terminator::Continue);
+            if let Some(header) = self.current_loop_header() {
+                self.add_edge(current, header, EdgeKind::LoopBack);
+            }
+            let next = self.create_block("after_continue");
+            Ok(next)
+        } else {
+            // Unknown jump type, treat as expression
+            self.add_statement(
+                current,
+                Statement {
+                    line,
+                    kind: StatementKind::Other,
+                    text,
+                },
+            );
+            Ok(current)
+        }
+    }
+}
+
+/// Extract condition from do-while statement
+fn extract_do_while_condition(node: Node, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            // Look for parenthesized expression or condition after 'while'
+            if child.kind() == "parenthesized_expression"
+                || child.kind() == "condition"
+                || child.kind() == "while_condition"
+            {
+                return child.utf8_text(source).ok().map(|s| s.to_string());
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
 }
 
 /// Find the pattern node within a match arm
@@ -1442,13 +2101,21 @@ fn walk_for_functions(
         let kind = node.kind();
 
         // Check if this is a function definition
+        // Supports: Rust, Python, JavaScript, TypeScript, Go, Java, C#, Kotlin, C, C++
         if matches!(
             kind,
+            // Rust
             "function_item"
+                // Python, C, C++
                 | "function_definition"
+                // JavaScript, TypeScript, Go, Kotlin
                 | "function_declaration"
+                // Python, JavaScript
                 | "method_definition"
+                // Java, C#
                 | "method_declaration"
+                // Java, C# constructors
+                | "constructor_declaration"
         ) {
             // Extract function name
             if let Some(name) = extract_function_name_from_node(node, source) {
@@ -1487,6 +2154,8 @@ fn extract_function_name_from_node(node: Node, source: &[u8]) -> Option<String> 
             || kind == "name"
             || kind == "field_identifier"
             || kind == "property_identifier"
+            || kind == "simple_identifier"
+        // Kotlin
         {
             return child.utf8_text(source).ok().map(|s| s.to_string());
         }
@@ -2532,5 +3201,487 @@ mod tests {
             "Should extract 'b', got {:?}",
             bindings
         );
+    }
+
+    // ===================================================================================
+    // Multi-Language CFG Support Tests (Go, Java, C#, Kotlin)
+    // ===================================================================================
+
+    #[test]
+    fn test_go_switch_statement_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_go::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+package main
+
+func test(x int) int {
+    switch x {
+    case 1:
+        return 10
+    case 2:
+        return 20
+    default:
+        return 0
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "test.go").unwrap();
+
+        assert!(!cfgs.is_empty(), "Should build CFG for Go function");
+        let cfg = &cfgs[0];
+
+        // Switch should create multiple branches
+        assert!(
+            cfg.blocks.len() >= 3,
+            "Switch should create multiple blocks"
+        );
+    }
+
+    #[test]
+    fn test_go_for_statement_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_go::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+package main
+
+func test() {
+    for i := 0; i < 10; i++ {
+        println(i)
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "test.go").unwrap();
+
+        assert!(!cfgs.is_empty(), "Should build CFG for Go for loop");
+        let cfg = &cfgs[0];
+
+        // For loop should create header, body, and exit blocks
+        assert!(
+            cfg.blocks.len() >= 3,
+            "For loop should create header, body, and exit blocks"
+        );
+    }
+
+    #[test]
+    fn test_go_defer_statement_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_go::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+package main
+
+func test() {
+    defer cleanup()
+    doWork()
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "test.go").unwrap();
+
+        assert!(
+            !cfgs.is_empty(),
+            "Should build CFG for Go function with defer"
+        );
+    }
+
+    #[test]
+    fn test_java_try_catch_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_java::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+class Test {
+    void test() {
+        try {
+            riskyOperation();
+        } catch (Exception e) {
+            handleError(e);
+        } finally {
+            cleanup();
+        }
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "Test.java").unwrap();
+
+        assert!(
+            !cfgs.is_empty(),
+            "Should build CFG for Java method with try-catch"
+        );
+        let cfg = &cfgs[0];
+
+        // Try-catch should create multiple blocks for try, catch, and finally
+        assert!(
+            cfg.blocks.len() >= 3,
+            "Try-catch should create blocks for try, catch, finally"
+        );
+    }
+
+    #[test]
+    fn test_java_enhanced_for_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_java::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+class Test {
+    void test(List<String> items) {
+        for (String item : items) {
+            process(item);
+        }
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "Test.java").unwrap();
+
+        assert!(
+            !cfgs.is_empty(),
+            "Should build CFG for Java enhanced for loop"
+        );
+        let cfg = &cfgs[0];
+
+        // Enhanced for loop should create header, body, and exit blocks
+        assert!(
+            cfg.blocks.len() >= 3,
+            "Enhanced for should create loop blocks"
+        );
+    }
+
+    #[test]
+    fn test_java_switch_expression_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_java::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+class Test {
+    void test(int x) {
+        switch (x) {
+            case 1:
+                System.out.println("one");
+                break;
+            case 2:
+                System.out.println("two");
+                break;
+            default:
+                System.out.println("other");
+        }
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "Test.java").unwrap();
+
+        assert!(!cfgs.is_empty(), "Should build CFG for Java switch");
+        let cfg = &cfgs[0];
+
+        // Switch should create multiple case blocks
+        assert!(
+            cfg.blocks.len() >= 3,
+            "Switch should create multiple blocks"
+        );
+    }
+
+    #[test]
+    fn test_csharp_foreach_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+class Test {
+    void Test(List<string> items) {
+        foreach (var item in items) {
+            Process(item);
+        }
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "Test.cs").unwrap();
+
+        assert!(!cfgs.is_empty(), "Should build CFG for C# foreach");
+        let cfg = &cfgs[0];
+
+        // Foreach should create loop blocks
+        assert!(cfg.blocks.len() >= 3, "Foreach should create loop blocks");
+    }
+
+    #[test]
+    fn test_csharp_using_statement_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+class Test {
+    void Test() {
+        using (var file = OpenFile()) {
+            file.Write("test");
+        }
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "Test.cs").unwrap();
+
+        assert!(!cfgs.is_empty(), "Should build CFG for C# using statement");
+    }
+
+    #[test]
+    fn test_csharp_switch_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+class Test {
+    void Test(int x) {
+        switch (x) {
+            case 1:
+                Console.WriteLine("one");
+                break;
+            case 2:
+                Console.WriteLine("two");
+                break;
+            default:
+                Console.WriteLine("other");
+                break;
+        }
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "Test.cs").unwrap();
+
+        assert!(!cfgs.is_empty(), "Should build CFG for C# switch");
+        let cfg = &cfgs[0];
+
+        // Switch should create multiple case blocks
+        assert!(
+            cfg.blocks.len() >= 3,
+            "Switch should create multiple blocks"
+        );
+    }
+
+    // Debug helper to dump AST nodes
+    fn dump_ast(node: tree_sitter::Node, depth: usize, source: &str) {
+        let indent = "  ".repeat(depth);
+        let text = node
+            .utf8_text(source.as_bytes())
+            .unwrap_or("")
+            .chars()
+            .take(40)
+            .collect::<String>()
+            .replace('\n', "\\n");
+        eprintln!(
+            "{}{}[{}] '{}'",
+            indent,
+            node.kind(),
+            node.start_position().row,
+            text
+        );
+        let mut cursor = node.walk();
+        if cursor.goto_first_child() {
+            loop {
+                dump_ast(cursor.node(), depth + 1, source);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_go_ast_dump() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_go::LANGUAGE.into())
+            .unwrap();
+        let source = r#"
+package main
+func test(x int) int {
+    switch x {
+    case 1:
+        return 10
+    default:
+        return 0
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        dump_ast(tree.root_node(), 0, source);
+    }
+
+    #[test]
+    fn test_java_ast_dump() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_java::LANGUAGE.into())
+            .unwrap();
+        let source = r#"
+class Test {
+    void test(int x) {
+        switch (x) {
+            case 1:
+                System.out.println("one");
+                break;
+            default:
+                System.out.println("other");
+        }
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        dump_ast(tree.root_node(), 0, source);
+    }
+
+    #[test]
+    fn test_csharp_ast_dump() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+            .unwrap();
+        let source = r#"
+class Test {
+    void Test(int x) {
+        switch (x) {
+            case 1:
+                Console.WriteLine("one");
+                break;
+            default:
+                Console.WriteLine("other");
+                break;
+        }
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        dump_ast(tree.root_node(), 0, source);
+    }
+
+    #[test]
+    fn test_kotlin_ast_dump() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_kotlin_sg::LANGUAGE.into())
+            .unwrap();
+        let source = r#"
+fun test(x: Int): String {
+    return when (x) {
+        1 -> "one"
+        2 -> "two"
+        else -> "other"
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        dump_ast(tree.root_node(), 0, source);
+    }
+
+    #[test]
+    fn test_kotlin_when_expression_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_kotlin_sg::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+fun test(x: Int): String {
+    return when (x) {
+        1 -> "one"
+        2 -> "two"
+        else -> "other"
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "Test.kt").unwrap();
+
+        assert!(
+            !cfgs.is_empty(),
+            "Should build CFG for Kotlin when expression"
+        );
+        let cfg = &cfgs[0];
+
+        // When should create multiple branches
+        assert!(cfg.blocks.len() >= 3, "When should create multiple blocks");
+    }
+
+    #[test]
+    fn test_kotlin_try_catch_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_kotlin_sg::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+fun test() {
+    try {
+        riskyOperation()
+    } catch (e: Exception) {
+        handleError(e)
+    } finally {
+        cleanup()
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "Test.kt").unwrap();
+
+        assert!(!cfgs.is_empty(), "Should build CFG for Kotlin try-catch");
+        let cfg = &cfgs[0];
+
+        // Try-catch should create multiple blocks
+        assert!(
+            cfg.blocks.len() >= 3,
+            "Try-catch should create multiple blocks"
+        );
+    }
+
+    #[test]
+    fn test_do_while_loop_cfg() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_java::LANGUAGE.into())
+            .unwrap();
+
+        let source = r#"
+class Test {
+    void test() {
+        int i = 0;
+        do {
+            i++;
+        } while (i < 10);
+    }
+}
+"#;
+        let tree = parser.parse(source, None).unwrap();
+        let cfgs = analyze_function(&tree, source, "Test.java").unwrap();
+
+        assert!(!cfgs.is_empty(), "Should build CFG for do-while loop");
+        let cfg = &cfgs[0];
+
+        // Do-while should create body and condition blocks
+        assert!(cfg.blocks.len() >= 3, "Do-while should create loop blocks");
     }
 }
