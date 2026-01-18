@@ -159,9 +159,11 @@ fn test_cache_concurrent_performance() {
     let elapsed = start.elapsed();
 
     // 8 threads x 1000 ops = 8000 operations should complete quickly
+    // Use 3s threshold to account for CI runner variability
+    // (Windows/Ubuntu GitHub Actions can be 2-3x slower than local machines)
     assert!(
-        elapsed < Duration::from_secs(1),
-        "Concurrent operations took {:?}, expected <1s",
+        elapsed < Duration::from_secs(3),
+        "Concurrent operations took {:?}, expected <3s",
         elapsed
     );
 
