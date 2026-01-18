@@ -4,16 +4,16 @@
 
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-615%20passed-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
+[![Tests](https://img.shields.io/badge/tests-1615%2B%20passed-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue.svg)](https://modelcontextprotocol.io)
 
-A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 76 specialized tools.
+A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 79 specialized tools.
 
 ## Why narsil-mcp?
 
 | Feature | narsil-mcp | XRAY | Serena | GitHub MCP |
 |---------|------------|------|--------|------------|
-| **Languages** | 21 | 4 | 30+ (LSP) | N/A |
+| **Languages** | 32 | 4 | 30+ (LSP) | N/A |
 | **Neural Search** | Yes | No | No | No |
 | **Taint Analysis** | Yes | No | No | No |
 | **SBOM/Licenses** | Yes | No | No | Partial |
@@ -33,7 +33,7 @@ A Rust-powered MCP (Model Context Protocol) server providing AI assistants with 
 ### Why Choose narsil-mcp?
 
 - **Written in Rust** - Blazingly fast, memory-safe, single binary (~30MB)
-- **Tree-sitter powered** - Accurate, incremental parsing for 21 languages
+- **Tree-sitter powered** - Accurate, incremental parsing for 32 languages
 - **Zero config** - Point at repos and go
 - **MCP compliant** - Works with Claude, Cursor, VS Code Copilot, Zed, and any MCP client
 - **Privacy-first** - Fully local, no data leaves your machine
@@ -68,6 +68,17 @@ A Rust-powered MCP (Model Context Protocol) server providing AI assistants with 
 | **Haskell** | `.hs`, `.lhs` | functions, data types, type classes |
 | **Elixir** | `.ex`, `.exs` | modules, functions |
 | **Clojure** | `.clj`, `.cljs`, `.cljc`, `.edn` | lists (basic AST) |
+| **Dart** | `.dart` | functions, classes, methods |
+| **Julia** | `.jl` | functions, modules, structs |
+| **R** | `.R`, `.r`, `.Rmd` | functions |
+| **Perl** | `.pl`, `.pm`, `.t` | functions, packages |
+| **Zig** | `.zig` | functions, variables |
+| **Erlang** | `.erl`, `.hrl` | functions, modules, records |
+| **Elm** | `.elm` | functions, types |
+| **Fortran** | `.f90`, `.f95`, `.f03`, `.f08` | programs, subroutines, functions, modules |
+| **PowerShell** | `.ps1`, `.psm1`, `.psd1` | functions, classes, enums |
+| **Nix** | `.nix` | bindings |
+| **Groovy** | `.groovy`, `.gradle` | methods, classes, interfaces, enums, functions |
 
 ## Installation
 
@@ -540,6 +551,32 @@ For **Claude Code** users, we provide a plugin with slash commands and a skill f
 
 See [narsil-plugin/README.md](narsil-plugin/README.md) for full documentation.
 
+### Ralph Automation Integration
+
+[Ralph](https://github.com/postrv/ralphing-la-vida-locum) is a Claude Code automation suite for autonomous code development. When narsil-mcp is available, Ralph gains enhanced code intelligence capabilities:
+
+| Feature | Without narsil-mcp | With narsil-mcp |
+|---------|-------------------|-----------------|
+| Security scanning | Basic (clippy) | OWASP/CWE vulnerability detection |
+| Code understanding | File-based | Call graphs, symbol references |
+| Architecture analysis | Manual | CCG L0/L1/L2 automatic layers |
+| Dependency analysis | cargo tree | Import graphs, circular detection |
+
+**Setup:**
+```bash
+# Install narsil-mcp (Ralph auto-detects it)
+cargo install narsil-mcp
+
+# Ralph's quality gates use these tools:
+narsil-mcp scan_security --repo <name>
+narsil-mcp check_type_errors --repo <name> --path src
+narsil-mcp find_injection_vulnerabilities --repo <name>
+```
+
+Ralph gracefully degrades when narsil-mcp is unavailable - all core automation features work without it.
+
+> **Documentation:** See [Ralph README](https://github.com/postrv/ralphing-la-vida-locum) for full integration details.
+
 ### Playbooks & Tutorials
 
 See **[docs/playbooks](docs/playbooks/)** for practical usage guides:
@@ -573,7 +610,7 @@ const symbols = client.findSymbols('Handler');
 
 > **Full documentation:** See [docs/wasm.md](docs/wasm.md) for build instructions, React examples, and API reference.
 
-## Available Tools (76)
+## Available Tools (79)
 
 ### Repository & File Management
 
@@ -823,7 +860,7 @@ Benchmarked on Apple M1 (criterion.rs):
 ## Development
 
 ```bash
-# Run tests (359 tests)
+# Run tests (1615+ tests)
 cargo test
 
 # Run benchmarks (criterion.rs)
@@ -894,7 +931,7 @@ narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
 
 ### Completed
 
-- [x] Multi-language symbol extraction (21 languages)
+- [x] Multi-language symbol extraction (32 languages)
 - [x] Full-text search with Tantivy (BM25 ranking)
 - [x] Hybrid search (BM25 + TF-IDF with RRF)
 - [x] AST-aware code chunking
@@ -925,7 +962,7 @@ narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
 - **Configurable tool presets** - Minimal, balanced, full, and security-focused presets
 - **Automatic editor detection** - Optimal defaults for Zed, VS Code, Claude Desktop
 - **Interactive setup wizard** - `narsil-mcp config init` for easy configuration
-- **Swift and Verilog support** - Now supporting 21 languages (added Scala, Lua, Haskell, Elixir, Clojure)
+- **32 language support** - Added Dart, Julia, R, Perl, Zig, Erlang, Elm, Fortran, PowerShell, Nix, Groovy, and more
 - **Improved performance** - Faster startup with background indexing
 
 ### v1.0.x
