@@ -2,9 +2,10 @@
 ///
 /// Tests the full MCP protocol flow with configuration system
 use anyhow::Result;
-use narsil_mcp::config::{
-    CategoryConfig, PerformanceConfig, ToolConfig, ToolFilter, ToolOverride, ToolsConfig,
+use narsil_mcp::config::schema::{
+    CategoryConfig, PerformanceConfig, ToolConfig, ToolOverride, ToolsConfig,
 };
+use narsil_mcp::config::ToolFilter;
 use narsil_mcp::index::{CodeIntelEngine, EngineOptions};
 use narsil_mcp::tool_metadata::TOOL_METADATA;
 use std::collections::HashMap;

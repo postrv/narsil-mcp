@@ -27,15 +27,8 @@ pub use filter::{ClientInfo, ToolFilter};
 pub use loader::ConfigLoader;
 pub use validation::validate_config;
 
-// Re-export schema types for public API. These are used by integration tests
-// and potentially external users to construct configurations programmatically.
-// The binary doesn't use them directly (only via ToolConfig serialization),
-// but they're essential parts of the library's public API.
-//
-// Suppress unused warnings for nested types that are part of ToolConfig's structure.
-// The binary deserializes these from YAML but never constructs them directly.
-#[allow(unused_imports)]
-pub use schema::{CategoryConfig, PerformanceConfig, ToolConfig, ToolOverride, ToolsConfig};
+// Schema types are available at narsil_mcp::config::schema::{CategoryConfig, ...}
+// for programmatic configuration construction.
 
 // Note: Preset is an internal implementation detail of the filter module and
 // is not re-exported. External code should use preset strings in YAML configs.

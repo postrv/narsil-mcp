@@ -118,6 +118,20 @@ pub enum ViewType {
     Flow,
 }
 
+/// Options for building graphs, consolidating multiple parameters
+#[derive(Debug, Clone)]
+pub struct GraphBuildOptions<'a> {
+    pub repo: &'a str,
+    pub root: Option<&'a str>,
+    pub depth: usize,
+    pub direction: &'a str,
+    pub include_metrics: bool,
+    pub include_excerpts: bool,
+    pub cluster_by: &'a str,
+    pub min_complexity: Option<usize>,
+    pub file_pattern: Option<&'a str>,
+}
+
 impl ViewType {
     fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
@@ -174,22 +188,20 @@ impl ToolHandler for GetCodeGraphHandler {
             .and_then(|f| f.get("file_pattern"))
             .and_then(|v| v.as_str());
 
+        let options = GraphBuildOptions {
+            repo,
+            root,
+            depth,
+            direction,
+            include_metrics,
+            include_excerpts,
+            cluster_by,
+            min_complexity,
+            file_pattern,
+        };
+
         let graph = match view {
-            ViewType::Call => {
-                self.build_call_graph(
-                    engine,
-                    repo,
-                    root,
-                    depth,
-                    direction,
-                    include_metrics,
-                    include_excerpts,
-                    cluster_by,
-                    min_complexity,
-                    file_pattern,
-                )
-                .await?
-            }
+            ViewType::Call => self.build_call_graph(engine, &options).await?,
             ViewType::Import => {
                 self.build_import_graph(engine, repo, root, depth, direction, cluster_by)
                     .await?
@@ -198,21 +210,7 @@ impl ToolHandler for GetCodeGraphHandler {
                 self.build_symbol_graph(engine, repo, root, depth, cluster_by)
                     .await?
             }
-            ViewType::Hybrid => {
-                self.build_hybrid_graph(
-                    engine,
-                    repo,
-                    root,
-                    depth,
-                    direction,
-                    include_metrics,
-                    include_excerpts,
-                    cluster_by,
-                    min_complexity,
-                    file_pattern,
-                )
-                .await?
-            }
+            ViewType::Hybrid => self.build_hybrid_graph(engine, &options).await?,
             ViewType::Flow => {
                 self.build_flow_graph(engine, repo, root, cluster_by)
                     .await?
@@ -236,22 +234,13 @@ impl GetCodeGraphHandler {
     // Call Graph Builder
     // ========================================================================
 
-    #[allow(clippy::too_many_arguments)]
     async fn build_call_graph(
         &self,
         engine: &CodeIntelEngine,
-        repo: &str,
-        root: Option<&str>,
-        depth: usize,
-        direction: &str,
-        include_metrics: bool,
-        include_excerpts: bool,
-        cluster_by: &str,
-        min_complexity: Option<usize>,
-        _file_pattern: Option<&str>,
+        options: &GraphBuildOptions<'_>,
     ) -> Result<CodeGraph> {
         // Access call graph data through engine
-        let call_graph_data = engine.get_call_graph_for_viz(repo)?;
+        let call_graph_data = engine.get_call_graph_for_viz(options.repo)?;
 
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
@@ -259,7 +248,7 @@ impl GetCodeGraphHandler {
         let mut edge_id = 0;
 
         // Determine starting points
-        let starting_nodes: Vec<String> = if let Some(r) = root {
+        let starting_nodes: Vec<String> = if let Some(r) = options.root {
             if let Some(func_name) = call_graph_data.find_function(r) {
                 vec![func_name]
             } else {
@@ -287,14 +276,14 @@ impl GetCodeGraphHandler {
         let mut queue: Vec<(String, usize)> = starting_nodes.into_iter().map(|n| (n, 0)).collect();
 
         while let Some((func_name, current_depth)) = queue.pop() {
-            if visited.contains(&func_name) || current_depth > depth {
+            if visited.contains(&func_name) || current_depth > options.depth {
                 continue;
             }
             visited.insert(func_name.clone());
 
             if let Some(node) = call_graph_data.get_node(&func_name) {
                 // Apply complexity filter
-                if let Some(min) = min_complexity {
+                if let Some(min) = options.min_complexity {
                     if node.metrics.cyclomatic < min {
                         continue;
                     }
@@ -307,7 +296,7 @@ impl GetCodeGraphHandler {
                     kind: "function".to_string(),
                     file_path: node.file_path.clone(),
                     line: node.line,
-                    metrics: if include_metrics {
+                    metrics: if options.include_metrics {
                         Some(NodeMetrics {
                             loc: node.metrics.loc,
                             cyclomatic: node.metrics.cyclomatic,
@@ -319,9 +308,9 @@ impl GetCodeGraphHandler {
                         None
                     },
                     security: None,
-                    excerpt: if include_excerpts {
+                    excerpt: if options.include_excerpts {
                         engine
-                            .get_excerpt_for_viz(repo, &node.file_path, node.line, 5)
+                            .get_excerpt_for_viz(options.repo, &node.file_path, node.line, 5)
                             .await
                             .ok()
                     } else {
@@ -331,7 +320,7 @@ impl GetCodeGraphHandler {
                 nodes.push(graph_node);
 
                 // Add edges based on direction
-                if matches!(direction, "both" | "callees") {
+                if matches!(options.direction, "both" | "callees") {
                     for call in &node.calls {
                         edges.push(GraphEdge {
                             id: format!("e{}", edge_id),
@@ -345,13 +334,13 @@ impl GetCodeGraphHandler {
                         });
                         edge_id += 1;
 
-                        if current_depth < depth {
+                        if current_depth < options.depth {
                             queue.push((call.target.clone(), current_depth + 1));
                         }
                     }
                 }
 
-                if matches!(direction, "both" | "callers") {
+                if matches!(options.direction, "both" | "callers") {
                     for caller in &node.called_by {
                         edges.push(GraphEdge {
                             id: format!("e{}", edge_id),
@@ -365,7 +354,7 @@ impl GetCodeGraphHandler {
                         });
                         edge_id += 1;
 
-                        if current_depth < depth {
+                        if current_depth < options.depth {
                             queue.push((caller.target.clone(), current_depth + 1));
                         }
                     }
@@ -378,7 +367,7 @@ impl GetCodeGraphHandler {
         edges.retain(|e| seen_edges.insert((e.source.clone(), e.target.clone())));
 
         // Build clusters if requested
-        let clusters = if cluster_by == "file" {
+        let clusters = if options.cluster_by == "file" {
             Some(build_file_clusters(&nodes))
         } else {
             None
@@ -386,7 +375,7 @@ impl GetCodeGraphHandler {
 
         Ok(CodeGraph {
             metadata: GraphMetadata {
-                repo: repo.to_string(),
+                repo: options.repo.to_string(),
                 view: "call".to_string(),
                 generated_at: chrono::Utc::now().to_rfc3339(),
                 node_count: nodes.len(),
@@ -578,38 +567,23 @@ impl GetCodeGraphHandler {
     // Hybrid Graph Builder (Calls + Imports)
     // ========================================================================
 
-    #[allow(clippy::too_many_arguments)]
     async fn build_hybrid_graph(
         &self,
         engine: &CodeIntelEngine,
-        repo: &str,
-        root: Option<&str>,
-        depth: usize,
-        direction: &str,
-        include_metrics: bool,
-        include_excerpts: bool,
-        cluster_by: &str,
-        min_complexity: Option<usize>,
-        file_pattern: Option<&str>,
+        options: &GraphBuildOptions<'_>,
     ) -> Result<CodeGraph> {
         // Build both graphs
-        let call_graph = self
-            .build_call_graph(
-                engine,
-                repo,
-                root,
-                depth,
-                direction,
-                include_metrics,
-                include_excerpts,
-                cluster_by,
-                min_complexity,
-                file_pattern,
-            )
-            .await?;
+        let call_graph = self.build_call_graph(engine, options).await?;
 
         let import_graph = self
-            .build_import_graph(engine, repo, root, depth, direction, cluster_by)
+            .build_import_graph(
+                engine,
+                options.repo,
+                options.root,
+                options.depth,
+                options.direction,
+                options.cluster_by,
+            )
             .await?;
 
         // Merge nodes (dedup by id)
@@ -641,7 +615,7 @@ impl GetCodeGraphHandler {
 
         Ok(CodeGraph {
             metadata: GraphMetadata {
-                repo: repo.to_string(),
+                repo: options.repo.to_string(),
                 view: "hybrid".to_string(),
                 generated_at: chrono::Utc::now().to_rfc3339(),
                 node_count: nodes_map.len(),

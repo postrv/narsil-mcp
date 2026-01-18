@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tracing::{debug, info};
 
-use crate::config::{ClientInfo, ConfigLoader, ToolConfig, ToolFilter};
+use crate::config::schema::ToolConfig;
+use crate::config::{ClientInfo, ConfigLoader, ToolFilter};
 use crate::index::CodeIntelEngine;
 use crate::tool_metadata::TOOL_METADATA;
 

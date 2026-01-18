@@ -2,7 +2,8 @@
 ///
 /// These tests verify that YAML configuration files are parsed correctly
 /// and that the config loader works as expected.
-use narsil_mcp::config::{CategoryConfig, ConfigLoader, ToolConfig, ToolOverride, ToolsConfig};
+use narsil_mcp::config::schema::{CategoryConfig, ToolConfig, ToolOverride, ToolsConfig};
+use narsil_mcp::config::ConfigLoader;
 use std::collections::HashMap;
 
 #[test]

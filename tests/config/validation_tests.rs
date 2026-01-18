@@ -2,7 +2,8 @@
 ///
 /// These tests verify that invalid configurations are caught
 /// and that helpful error messages are provided.
-use narsil_mcp::config::{validate_config, CategoryConfig, ToolConfig, ToolsConfig};
+use narsil_mcp::config::schema::{CategoryConfig, ToolConfig, ToolOverride, ToolsConfig};
+use narsil_mcp::config::validate_config;
 use std::collections::HashMap;
 
 #[test]
@@ -175,7 +176,7 @@ fn test_validate_conflicting_overrides() {
     let mut overrides = HashMap::new();
     overrides.insert(
         "list_repos".to_string(),
-        narsil_mcp::config::ToolOverride {
+        ToolOverride {
             enabled: true, // But specific tool enabled
             reason: None,
             required_flags: vec![],
@@ -211,7 +212,7 @@ fn test_validate_unknown_tool_in_override() {
     let mut overrides = HashMap::new();
     overrides.insert(
         "nonexistent_tool".to_string(),
-        narsil_mcp::config::ToolOverride {
+        ToolOverride {
             enabled: false,
             reason: None,
             required_flags: vec![],

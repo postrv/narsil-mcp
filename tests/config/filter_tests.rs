@@ -6,7 +6,8 @@
 /// 3. Tool overrides
 /// 4. Editor presets (future)
 /// 5. Performance budgets
-use narsil_mcp::config::{CategoryConfig, ConfigLoader, ToolConfig, ToolOverride};
+use narsil_mcp::config::schema::{CategoryConfig, ToolConfig, ToolOverride};
+use narsil_mcp::config::ConfigLoader;
 use narsil_mcp::index::EngineOptions;
 use narsil_mcp::tool_metadata::{FeatureFlag, TOOL_METADATA};
 use std::collections::HashMap;

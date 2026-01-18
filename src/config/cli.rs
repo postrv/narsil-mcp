@@ -1,4 +1,5 @@
-use crate::config::{validate_config, ConfigLoader, ToolConfig};
+use crate::config::schema::ToolConfig;
+use crate::config::{validate_config, ConfigLoader};
 use crate::tool_metadata::TOOL_METADATA;
 use anyhow::{Context, Result};
 use std::io::Write;
