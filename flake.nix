@@ -28,7 +28,7 @@
         packages = {
           default = pkgs.rustPlatform.buildRustPackage {
             pname = "narsil-mcp";
-            version = "1.2.0";
+            version = "1.3.0";
 
             src = pkgs.lib.cleanSource ./.;
 
@@ -49,7 +49,7 @@
 
           with-frontend = pkgs.rustPlatform.buildRustPackage {
             pname = "narsil-mcp";
-            version = "1.2.0";
+            version = "1.3.0";
 
             src = pkgs.lib.cleanSource ./.;
 
