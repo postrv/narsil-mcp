@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 /// Helper to manage MCP server process for testing
@@ -95,6 +96,33 @@ impl TestMcpServer {
 
         let response: Value = serde_json::from_str(&response_line)?;
         Ok(response)
+    }
+
+    /// Wait for a specific repository to be indexed and available.
+    /// Polls list_repos until the repo appears or timeout is reached.
+    /// This is more robust than a fixed sleep, especially on slower CI systems.
+    fn wait_for_repo(&self, repo_name: &str, timeout: Duration) -> Result<()> {
+        let start = Instant::now();
+        let poll_interval = Duration::from_millis(100);
+
+        loop {
+            if start.elapsed() > timeout {
+                anyhow::bail!(
+                    "Timeout waiting for repo '{}' to be indexed after {:?}",
+                    repo_name,
+                    timeout
+                );
+            }
+
+            let response = self.call_tool("list_repos", json!({}))?;
+            if let Some(content) = response["result"]["content"][0]["text"].as_str() {
+                if content.contains(repo_name) {
+                    return Ok(());
+                }
+            }
+
+            std::thread::sleep(poll_interval);
+        }
     }
 }
 
@@ -688,9 +716,12 @@ fn test_reindex() -> Result<()> {
     repo.add_rust_file("src/lib.rs", "pub fn hello() {}")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+
+    // Wait for initial indexing to complete instead of fixed sleep
+    // This is more robust on slower CI systems (especially Windows)
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "reindex",
         json!({
@@ -1255,10 +1286,11 @@ fn test_concurrent_requests() -> Result<()> {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    // Wait longer for deferred initialization to complete
-    std::thread::sleep(std::time::Duration::from_secs(3));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+
+    // Wait for initial indexing to complete instead of fixed sleep
+    // This is more robust on slower CI systems (especially Windows)
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     // Send multiple requests in sequence
     for _ in 0..5 {

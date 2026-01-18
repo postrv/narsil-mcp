@@ -199,6 +199,33 @@ impl TestMcpServer {
             }),
         )
     }
+
+    /// Wait for a specific repository to be indexed and available.
+    /// Polls list_repos until the repo appears or timeout is reached.
+    /// This is more robust than a fixed sleep, especially on slower CI systems.
+    pub fn wait_for_repo(&self, repo_name: &str, timeout: Duration) -> Result<()> {
+        let start = Instant::now();
+        let poll_interval = Duration::from_millis(100);
+
+        loop {
+            if start.elapsed() > timeout {
+                anyhow::bail!(
+                    "Timeout waiting for repo '{}' to be indexed after {:?}",
+                    repo_name,
+                    timeout
+                );
+            }
+
+            let response = self.call_tool("list_repos", json!({}))?;
+            if let Some(content) = response["result"]["content"][0]["text"].as_str() {
+                if content.contains(repo_name) {
+                    return Ok(());
+                }
+            }
+
+            std::thread::sleep(poll_interval);
+        }
+    }
 }
 
 /// Test repository builder
