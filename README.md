@@ -117,6 +117,21 @@ yarn global add narsil-mcp
 pnpm add -g narsil-mcp
 ```
 
+**Nix:**
+```bash
+# Run directly without installing
+nix run github:postrv/narsil-mcp -- --repos ./my-project
+
+# Install to profile
+nix profile install github:postrv/narsil-mcp
+
+# With web visualization frontend
+nix profile install github:postrv/narsil-mcp#with-frontend
+
+# Development shell
+nix develop github:postrv/narsil-mcp
+```
+
 ### One-Click Install Script
 
 **macOS / Linux:**
