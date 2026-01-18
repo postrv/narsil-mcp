@@ -4,10 +4,10 @@
 
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-1615%2B%20passed-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
+[![Tests](https://img.shields.io/badge/tests-1598%2B%20passed-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue.svg)](https://modelcontextprotocol.io)
 
-A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 79 specialized tools.
+A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 90 specialized tools.
 
 ## Why narsil-mcp?
 
@@ -247,7 +247,8 @@ narsil-mcp \
   --remote \        # Enable GitHub remote repo support
   --neural \        # Enable neural semantic embeddings
   --neural-backend api \  # Backend: "api" (Voyage/OpenAI) or "onnx"
-  --neural-model voyage-code-2  # Model to use
+  --neural-model voyage-code-2 \  # Model to use
+  --graph           # Enable SPARQL/RDF knowledge graph and CCG tools
 ```
 
 **Note:** Neural embeddings require an API key (or custom endpoint). The easiest way to set this up is with the interactive wizard:
@@ -561,7 +562,7 @@ For **Claude Code** users, we provide a plugin with slash commands and a skill f
 | `/narsil:analyze-function` | Deep dive on specific functions |
 | `/narsil:find-feature` | Find where features are implemented |
 | `/narsil:supply-chain` | Analyze supply chain security |
-| **Skill** | Guides Claude on using 79 tools effectively |
+| **Skill** | Guides Claude on using 90 tools effectively |
 | **MCP Config** | Auto-starts narsil-mcp with sensible defaults |
 
 See [narsil-plugin/README.md](narsil-plugin/README.md) for full documentation.
@@ -625,7 +626,7 @@ const symbols = client.findSymbols('Handler');
 
 > **Full documentation:** See [docs/wasm.md](docs/wasm.md) for build instructions, React examples, and API reference.
 
-## Available Tools (79)
+## Available Tools (90)
 
 ### Repository & File Management
 
@@ -786,14 +787,52 @@ const symbols = client.findSymbols('Handler');
 |------|-------------|
 | `get_metrics` | Performance stats and timing |
 
+### SPARQL / Knowledge Graph (requires `--graph`)
+
+| Tool | Description |
+|------|-------------|
+| `sparql_query` | Execute SPARQL query against RDF knowledge graph |
+| `list_sparql_templates` | List available SPARQL query templates |
+| `run_sparql_template` | Execute predefined SPARQL template with parameters |
+
+### Code Context Graph (CCG) (requires `--graph`)
+
+CCG provides standardized, AI-consumable representations of codebases in tiered layers.
+
+| Tool | Description |
+|------|-------------|
+| `get_ccg_manifest` | Layer 0 manifest (~1-2KB JSON-LD) - repo identity, counts |
+| `export_ccg_manifest` | Export Layer 0 manifest to file |
+| `export_ccg_architecture` | Layer 1 architecture (~10-50KB JSON-LD) - modules, API |
+| `export_ccg_index` | Layer 2 symbol index (~100-500KB N-Quads gzipped) |
+| `export_ccg_full` | Layer 3 full detail (~1-20MB N-Quads gzipped) |
+| `export_ccg` | Export all CCG layers as a bundle |
+| `query_ccg` | Query CCG using SPARQL |
+| `get_ccg_acl` | Generate WebACL access control for CCG layers |
+| `get_ccg_access_info` | Get CCG access tier information |
+| `import_ccg` | Import CCG layer from URL or file |
+| `import_ccg_from_registry` | Import CCG from codecontextgraph.com registry |
+
 ## Security Rules
 
 narsil-mcp includes built-in security rules in `rules/`:
 
+**Core Rulesets:**
 - **`owasp-top10.yaml`** - OWASP Top 10 2021 vulnerability patterns
 - **`cwe-top25.yaml`** - CWE Top 25 Most Dangerous Weaknesses
 - **`crypto.yaml`** - Cryptographic issues (weak algorithms, hardcoded keys)
 - **`secrets.yaml`** - Secret detection (API keys, passwords, tokens)
+
+**Language-Specific Rules:**
+- **`go.yaml`** - Go security patterns (SQL injection, TLS, command injection)
+- **`java.yaml`** - Java vulnerabilities (XXE, deserialization, LDAP injection)
+- **`csharp.yaml`** - C# security issues (deserialization, XSS, path traversal)
+- **`kotlin.yaml`** - Kotlin/Android patterns (WebView, intents, secrets)
+- **`bash.yaml`** - Shell script vulnerabilities (command injection, eval)
+
+**Infrastructure & Configuration:**
+- **`iac.yaml`** - Infrastructure as Code (Terraform, CloudFormation, Kubernetes)
+- **`config.yaml`** - Configuration file security (hardcoded credentials, insecure settings)
 
 Custom rules can be loaded with `scan_security --ruleset /path/to/rules.yaml`.
 
@@ -875,7 +914,7 @@ Benchmarked on Apple M1 (criterion.rs):
 ## Development
 
 ```bash
-# Run tests (1615+ tests)
+# Run tests (1598+ tests)
 cargo test
 
 # Run benchmarks (criterion.rs)
@@ -971,13 +1010,29 @@ narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
 
 ## What's New
 
-### v1.1.x (Current)
+### v1.3.x (Current)
+
+- **SPARQL / RDF Knowledge Graph** - Query code intelligence data with SPARQL via Oxigraph
+- **Code Context Graph (CCG)** - 12 tools for standardized, AI-consumable codebase representations with tiered layers (L0-L3)
+- **Type-aware security analysis** - Enhanced taint tracking with type inference and trait implementations
+- **Multi-language CFG/DFG** - Control flow and data flow analysis extended to Go, Java, C#, Kotlin
+- **Infrastructure as Code scanning** - New `iac.yaml` rules for Terraform, CloudFormation, Kubernetes
+- **Language-specific security rules** - New rules for Go, Java, C#, Kotlin, Bash
+- **6 new languages** - Erlang, Elm, Fortran, PowerShell, Nix, Groovy
+- **90 tools total** - Up from 79 with new SPARQL, CCG, and analysis capabilities
+
+### v1.2.x
+
+- **`exclude_tests` parameter** - 22 tools support filtering out test files
+- **npm package** - Install via `npm install -g narsil-mcp`
+
+### v1.1.x
 
 - **Multi-platform distribution** - Install via Homebrew, Scoop, npm, Cargo, or direct download
 - **Configurable tool presets** - Minimal, balanced, full, and security-focused presets
 - **Automatic editor detection** - Optimal defaults for Zed, VS Code, Claude Desktop
 - **Interactive setup wizard** - `narsil-mcp config init` for easy configuration
-- **32 language support** - Added Dart, Julia, R, Perl, Zig, Erlang, Elm, Fortran, PowerShell, Nix, Groovy, and more
+- **32 language support** - Added Dart, Julia, R, Perl, Zig, and more
 - **Improved performance** - Faster startup with background indexing
 
 ### v1.0.x

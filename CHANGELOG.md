@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### SPARQL / RDF Knowledge Graph (`--graph` flag)
+
+- **RDF knowledge graph persistence** using Oxigraph for semantic code queries
+- **3 SPARQL tools**:
+  - `sparql_query` - Execute SPARQL SELECT/ASK queries against code graph
+  - `list_sparql_templates` - List available query templates
+  - `run_sparql_template` - Execute predefined templates with parameters
+
+#### Code Context Graph (CCG)
+
+- **12 CCG tools** for standardized, AI-consumable codebase representations:
+  - `get_ccg_manifest` - Layer 0 manifest (~1-2KB JSON-LD)
+  - `export_ccg_manifest` - Export Layer 0 to file
+  - `export_ccg_architecture` - Layer 1 architecture (~10-50KB JSON-LD)
+  - `export_ccg_index` - Layer 2 symbol index (~100-500KB N-Quads gzipped)
+  - `export_ccg_full` - Layer 3 full detail (~1-20MB N-Quads gzipped)
+  - `export_ccg` - Export all layers as bundle
+  - `query_ccg` - Query CCG with SPARQL
+  - `get_ccg_acl` - Generate WebACL access control
+  - `get_ccg_access_info` - Get access tier information
+  - `import_ccg` - Import CCG layer from URL/file
+  - `import_ccg_from_registry` - Import from codecontextgraph.com registry
+- **Triple-Heart Model** for tiered access control (public/authenticated/private)
+- **CCG ontology** (`ontology/narsil.ttl`, `ontology/ccg-acl.ttl`)
+- **CCG schema** (`schema/ccg-v1.json`)
+- **CCG examples** in `examples/ccg/`
+
+#### Type-Aware Security Analysis
+
+- **Enhanced type inference** with trait implementation tracking
+- **Type stubs** for Go, Java, Rust standard libraries
+- **Public parsing APIs** for Go, Java, and Rust types
+- **Type-aware taint flow** combining data flow with type inference
+
+#### Multi-Language Analysis Extensions
+
+- **CFG support** extended to Go, Java, C#, Kotlin
+- **DFG support** extended to Go, Java, C#, Kotlin
+- **Dead code detection** for additional languages
+
+#### Security Rules
+
+- **`iac.yaml`** - Infrastructure as Code rules (Terraform, CloudFormation, Kubernetes, Docker)
+- **`config.yaml`** - Configuration file security rules
+- **Language-specific rules**: `go.yaml`, `java.yaml`, `csharp.yaml`, `kotlin.yaml`
+
+#### New Languages (6)
+
+- **Erlang** (`.erl`, `.hrl`) - functions, modules, records
+- **Elm** (`.elm`) - functions, types
+- **Fortran** (`.f90`, `.f95`, `.f03`, `.f08`) - programs, subroutines, functions, modules
+- **PowerShell** (`.ps1`, `.psm1`, `.psd1`) - functions, classes, enums
+- **Nix** (`.nix`) - bindings
+- **Groovy** (`.groovy`, `.gradle`) - methods, classes, interfaces, enums, functions
+
+#### Other
+
+- **Nix flake** for distribution (`flake.nix`)
+- **Configurable taint patterns** with YAML configuration
+- **Data structure propagation** in taint analysis
+
+### Changed
+
+- **Tool count** increased from 79 to 90
+- **Taint module refactored** from monolithic `taint.rs` to module structure (`taint/analyzer.rs`, `taint/patterns.rs`, `taint/types.rs`)
+- Removed `#[allow]` annotations and cleaned up dead code
+
+### Fixed
+
+- Cache concurrent test threshold for CI stability
+
 ## [1.2.0] - 2025-01-04
 
 ### Added
