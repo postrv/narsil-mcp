@@ -63,6 +63,9 @@ function Show-Banner {
 }
 
 # Detect architecture
+# NOTE: ARM64 Windows is detected but no pre-built binary exists yet.
+# ARM64 users will fall back to source build. To add ARM64 support,
+# add aarch64-pc-windows-msvc target to .github/workflows/build-binaries.yml
 function Get-Architecture {
     $arch = $env:PROCESSOR_ARCHITECTURE
     switch ($arch) {
@@ -87,10 +90,14 @@ function Get-LatestVersion {
     }
 }
 
-# Check if already installed
+# Cargo bin directory for source installs
+$CargoBinDir = "$env:USERPROFILE\.cargo\bin"
+
+# Check if already installed (checks both binary install dir and cargo bin)
 function Test-Installed {
     $binaryPath = Join-Path $InstallDir $BinaryName
-    return Test-Path $binaryPath
+    $cargoBinaryPath = Join-Path $CargoBinDir $BinaryName
+    return (Test-Path $binaryPath) -or (Test-Path $cargoBinaryPath)
 }
 
 # Download and install binary
@@ -100,9 +107,12 @@ function Install-Binary {
         [string]$Architecture
     )
 
-    $artifactName = "narsil-mcp-windows-$Architecture.exe"
+    # Release assets are zip files named: narsil-mcp-v{VERSION}-windows-{ARCH}.zip
+    $versionNumber = $Version.TrimStart('v')
+    $artifactName = "narsil-mcp-v$versionNumber-windows-$Architecture.zip"
     $downloadUrl = "https://github.com/$Repo/releases/download/$Version/$artifactName"
-    $tempFile = Join-Path $env:TEMP $BinaryName
+    $tempZip = Join-Path $env:TEMP $artifactName
+    $tempExtractDir = Join-Path $env:TEMP "narsil-mcp-extract"
 
     Write-Info "Downloading narsil-mcp $Version for Windows $Architecture..."
     Write-Info "URL: $downloadUrl"
@@ -110,7 +120,7 @@ function Install-Binary {
     try {
         # Download with progress
         $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $tempFile -ErrorAction Stop
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $tempZip -ErrorAction Stop
         $ProgressPreference = 'Continue'
     }
     catch {
@@ -124,9 +134,21 @@ function Install-Binary {
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
     }
 
+    # Extract zip file
+    Write-Info "Extracting archive..."
+    if (Test-Path $tempExtractDir) {
+        Remove-Item -Path $tempExtractDir -Recurse -Force
+    }
+    Expand-Archive -Path $tempZip -DestinationPath $tempExtractDir -Force
+
     # Install binary
+    $extractedBinary = Join-Path $tempExtractDir $BinaryName
     $binaryPath = Join-Path $InstallDir $BinaryName
-    Move-Item -Path $tempFile -Destination $binaryPath -Force
+    Move-Item -Path $extractedBinary -Destination $binaryPath -Force
+
+    # Cleanup
+    Remove-Item -Path $tempZip -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
 
     Write-Success "Installed narsil-mcp to $binaryPath"
     return $true
@@ -205,21 +227,27 @@ function Install-FromSource {
 
 # Add to PATH
 function Add-ToPath {
+    param(
+        [switch]$FromSource
+    )
+
+    $targetDir = if ($FromSource) { $CargoBinDir } else { $InstallDir }
+
     # Check if already in PATH
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($userPath -like "*$InstallDir*") {
+    if ($userPath -like "*$targetDir*") {
         Write-Info "Install directory already in PATH"
         return
     }
 
     # Add to user PATH
-    $newPath = "$userPath;$InstallDir"
+    $newPath = "$userPath;$targetDir"
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
 
     # Also update current session
-    $env:PATH = "$env:PATH;$InstallDir"
+    $env:PATH = "$env:PATH;$targetDir"
 
-    Write-Success "Added $InstallDir to PATH"
+    Write-Success "Added $targetDir to PATH"
     Write-Info "Restart your terminal to use 'narsil-mcp' command"
 }
 
@@ -297,7 +325,7 @@ function Main {
 
     # Check if already installed
     if ((Test-Installed) -and (-not $Force)) {
-        Write-Warning "narsil-mcp is already installed at $InstallDir"
+        Write-Warning "narsil-mcp is already installed at $InstallDir or $CargoBinDir"
         Write-Info "Use -Force to reinstall"
         exit 0
     }
@@ -306,9 +334,11 @@ function Main {
     Write-Info "Detected architecture: $arch"
 
     $success = $false
+    $installedFromSource = $false
 
     if ($FromSource) {
         $success = Install-FromSource
+        $installedFromSource = $success
     }
     else {
         $version = Get-LatestVersion
@@ -321,6 +351,7 @@ function Main {
         if (-not $success) {
             Write-Warning "Falling back to source build..."
             $success = Install-FromSource
+            $installedFromSource = $success
         }
     }
 
@@ -329,7 +360,11 @@ function Main {
         exit 1
     }
 
-    Add-ToPath
+    if ($installedFromSource) {
+        Add-ToPath -FromSource
+    } else {
+        Add-ToPath
+    }
 
     Write-Info ""
     Write-Info "Checking for AI coding assistants..."
