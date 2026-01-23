@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2025-01-23
+
+### Fixed
+
+- **Windows installer**: Fixed binary download URL to match release asset naming (`narsil-mcp-v{VERSION}-windows-{ARCH}.zip`) - PR #10 by @Cognitohazard
+- **Windows installer**: Fixed zip extraction to find binary at archive root
+- **Windows installer**: Added proper exit code detection for cargo build failures (was falsely reporting success when MSVC was missing)
+- **Windows installer**: Added rustup exit code detection
+- **Windows installer**: Improved error messages with troubleshooting hints for MSVC/Visual Studio issues
+
 ## [1.3.0] - 2025-01-18
 
 ### Added

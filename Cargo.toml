@@ -1,6 +1,6 @@
 [package]
 name = "narsil-mcp"
-version = "1.3.0"
+version = "1.3.1"
 edition = "2021"
 authors = ["postrv"]
 description = "A blazingly fast MCP server for code intelligence - enumerates repos, data structures, algorithms, and returns relevant code context"
