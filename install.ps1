@@ -195,6 +195,11 @@ function Install-FromSource {
         Write-Info "Running Rust installer..."
         & $rustupPath -y --default-toolchain stable
 
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Rust installation failed with exit code $LASTEXITCODE"
+            return $false
+        }
+
         # Refresh environment
         $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
     }
@@ -209,20 +214,27 @@ function Install-FromSource {
         Write-Warning ""
         Write-Warning "In the installer, select 'Desktop development with C++'."
         Write-Warning "After installation, restart your terminal and run this script again."
-        exit 1
+        return $false
     }
 
     Write-Info "Building narsil-mcp (this may take a few minutes)..."
 
-    try {
-        cargo install --git "https://github.com/$Repo" --locked --force
-        Write-Success "Installed narsil-mcp via cargo"
-        return $true
-    }
-    catch {
-        Write-Error "Failed to build from source: $_"
+    # Run cargo install and capture exit code
+    # Note: PowerShell's try/catch doesn't catch non-zero exit codes from external programs
+    cargo install --git "https://github.com/$Repo" --locked --force
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Cargo build failed with exit code $LASTEXITCODE"
+        Write-Warning ""
+        Write-Warning "Common causes:"
+        Write-Warning "  - Missing Visual Studio Build Tools or Windows SDK"
+        Write-Warning "  - Run from 'Developer Command Prompt for VS 2022' for proper environment"
+        Write-Warning "  - Ensure 'Desktop development with C++' workload is installed"
         return $false
     }
+
+    Write-Success "Installed narsil-mcp via cargo"
+    return $true
 }
 
 # Add to PATH
