@@ -21,14 +21,11 @@
           zstd
         ];
 
-        # Integration tests expect external tools (notably git) and a writable HOME.
-        # In Nix builds, those are not available unless explicitly provided.
-        nativeCheckInputs = with pkgs; [
-          git
-          coreutils
-        ];
+        # Keep checks enabled by default.
+        # Contributors can set NARSIL_SKIP_CHECKS=1 to skip during packaging installs.
+        skipChecks = (builtins.getEnv "NARSIL_SKIP_CHECKS") == "1";
 
-        common = { buildFeatures, meta ? { } }:
+        mkPkg = { buildFeatures, withFrontend ? false, checksEnabled ? true }:
           pkgs.rustPlatform.buildRustPackage {
             pname = "narsil-mcp";
             version = "1.4.0";
@@ -37,36 +34,61 @@
 
             cargoLock.lockFile = ./Cargo.lock;
 
-            inherit nativeBuildInputs buildInputs nativeCheckInputs;
+            inherit nativeBuildInputs buildInputs;
 
-            inherit buildFeatures;
+            buildFeatures = buildFeatures;
 
-            # Many integration tests create temp repos and need a writable HOME.
-            preCheck = ''
+            # If checks are enabled, provide the basic external tools they typically need.
+            nativeCheckInputs = pkgs.lib.optionals checksEnabled (with pkgs; [
+              git
+              coreutils
+            ]);
+
+            preCheck = pkgs.lib.optionalString checksEnabled ''
               export HOME="$(mktemp -d)"
             '';
 
-            meta = (with pkgs.lib; {
-              description = "MCP server for code intelligence";
+            # The actual toggle: skip checkPhase when requested.
+            doCheck = checksEnabled && (!skipChecks);
+
+            meta = with pkgs.lib; {
+              description =
+                if withFrontend
+                then "MCP server for code intelligence (with web frontend)"
+                else "MCP server for code intelligence";
               homepage = "https://github.com/postrv/narsil-mcp";
               license = licenses.mit;
               maintainers = [ ];
               mainProgram = "narsil-mcp";
-              platforms = platforms.all;
-            }) // meta;
-          };
-      in
-      {
-        packages = {
-          default = common {
-            buildFeatures = [ "native" ];
+            };
           };
 
-          with-frontend = common {
+      in {
+        packages = {
+          # Default behaviour unchanged: checks ON.
+          default = mkPkg {
+            buildFeatures = [ "native" ];
+            withFrontend = false;
+            checksEnabled = true;
+          };
+
+          with-frontend = mkPkg {
             buildFeatures = [ "native" "frontend" ];
-            meta = {
-              description = "MCP server for code intelligence (with web frontend)";
-            };
+            withFrontend = true;
+            checksEnabled = true;
+          };
+
+          # Explicit no-check variants (nice for users).
+          no-check = mkPkg {
+            buildFeatures = [ "native" ];
+            withFrontend = false;
+            checksEnabled = false;
+          };
+
+          with-frontend-no-check = mkPkg {
+            buildFeatures = [ "native" "frontend" ];
+            withFrontend = true;
+            checksEnabled = false;
           };
         };
 
