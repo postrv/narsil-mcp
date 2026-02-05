@@ -21,9 +21,15 @@
           zstd
         ];
 
-      in {
-        packages = {
-          default = pkgs.rustPlatform.buildRustPackage {
+        # Integration tests expect external tools (notably git) and a writable HOME.
+        # In Nix builds, those are not available unless explicitly provided.
+        nativeCheckInputs = with pkgs; [
+          git
+          coreutils
+        ];
+
+        common = { buildFeatures, meta ? { } }:
+          pkgs.rustPlatform.buildRustPackage {
             pname = "narsil-mcp";
             version = "1.4.0";
 
@@ -31,36 +37,35 @@
 
             cargoLock.lockFile = ./Cargo.lock;
 
-            inherit nativeBuildInputs buildInputs;
+            inherit nativeBuildInputs buildInputs nativeCheckInputs;
 
-            buildFeatures = [ "native" ];
+            inherit buildFeatures;
 
-            meta = with pkgs.lib; {
+            # Many integration tests create temp repos and need a writable HOME.
+            preCheck = ''
+              export HOME="$(mktemp -d)"
+            '';
+
+            meta = (with pkgs.lib; {
               description = "MCP server for code intelligence";
               homepage = "https://github.com/postrv/narsil-mcp";
               license = licenses.mit;
               maintainers = [ ];
               mainProgram = "narsil-mcp";
-            };
+              platforms = platforms.all;
+            }) // meta;
+          };
+      in
+      {
+        packages = {
+          default = common {
+            buildFeatures = [ "native" ];
           };
 
-          with-frontend = pkgs.rustPlatform.buildRustPackage {
-            pname = "narsil-mcp";
-            version = "1.4.0";
-
-            src = pkgs.lib.cleanSource ./.;
-
-            cargoLock.lockFile = ./Cargo.lock;
-
-            inherit nativeBuildInputs buildInputs;
-
+          with-frontend = common {
             buildFeatures = [ "native" "frontend" ];
-
-            meta = with pkgs.lib; {
+            meta = {
               description = "MCP server for code intelligence (with web frontend)";
-              homepage = "https://github.com/postrv/narsil-mcp";
-              license = licenses.mit;
-              mainProgram = "narsil-mcp";
             };
           };
         };
@@ -78,6 +83,7 @@
             rust-analyzer
             clippy
             rustfmt
+            git
           ];
 
           RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
