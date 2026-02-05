@@ -154,11 +154,14 @@ struct ServerArgs {
     #[arg(long, default_value = "1800")]
     cache_ttl: u64,
 
-    /// Enable RDF knowledge graph storage (requires --features graph)
+    /// Enable RDF knowledge graph storage for SPARQL queries and CCG export.
+    /// NOTE: Binary must be built with --features graph for this to work.
+    /// If unsure, check the startup log for warnings.
     #[arg(long)]
     graph: bool,
 
-    /// Path for knowledge graph storage (default: <index_path>/graph)
+    /// Path for knowledge graph storage (default: <index_path>/graph).
+    /// Only used when --graph is enabled and the graph feature is compiled in.
     #[arg(long)]
     graph_path: Option<PathBuf>,
 }
@@ -212,9 +215,26 @@ async fn main() -> Result<()> {
     }
 
     info!("Repos to index: {:?}", repos);
+
+    // Check if --graph flag is used but feature isn't compiled
+    #[cfg(not(feature = "graph"))]
+    if server_args.graph {
+        warn!(
+            "--graph flag was passed but the binary was built without the 'graph' feature. \
+             SPARQL and CCG tools will not be available. \
+             Rebuild with: cargo build --release --features graph"
+        );
+    }
+
+    // Determine actual graph availability
+    #[cfg(feature = "graph")]
+    let graph_available = server_args.graph;
+    #[cfg(not(feature = "graph"))]
+    let graph_available = false;
+
     info!(
         "Features: call_graph={}, git={}, watch={}, persist={}, lsp={}, streaming={}, remote={}, neural={}, cache={}, graph={}",
-        server_args.call_graph, server_args.git, server_args.watch, server_args.persist, server_args.lsp, server_args.streaming, server_args.remote, server_args.neural, !server_args.no_cache, server_args.graph
+        server_args.call_graph, server_args.git, server_args.watch, server_args.persist, server_args.lsp, server_args.streaming, server_args.remote, server_args.neural, !server_args.no_cache, graph_available
     );
 
     // Build LSP config

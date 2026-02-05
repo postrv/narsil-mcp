@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2025-02-05
+
+### Improved
+
+- **`--graph` flag user experience** - The `--graph` CLI flag now provides clear feedback when used with a binary that wasn't built with `--features graph`:
+  - Displays a warning at startup explaining the issue
+  - Provides the exact rebuild command needed
+  - Logs now accurately report `graph=true` or `graph=false` based on actual feature availability (previously showed `graph=true` even when the feature wasn't compiled)
+
+- **Improved help text** - The `--graph` and `--graph-path` CLI arguments now include notes explaining that the binary must be built with `--features graph` for these flags to have effect
+
+### Documentation
+
+- **README updated** with:
+  - Feature Builds section now includes `graph` feature with size estimate (~35MB)
+  - New troubleshooting section "Graph Feature Not Working" with clear fix instructions
+  - Note in Full Feature Set clarifying `--graph` requires `--features graph` build
+  - What's New section updated for v1.4.x
+
+### Technical Details
+
+This change addresses confusion where users would pass `--graph` and the server would appear to start normally, but SPARQL/CCG tools would return errors. The misleading `graph=true` in logs made debugging difficult. Now:
+- Users get immediate feedback at startup if there's a mismatch
+- The exact fix is provided in the warning message
+- Log output accurately reflects what's actually available
+
 ## [1.3.1] - 2025-01-23
 
 ### Fixed

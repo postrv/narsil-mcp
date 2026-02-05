@@ -176,7 +176,10 @@ narsil-mcp supports different feature sets for different use cases:
 # Default build - native MCP server (~30MB)
 cargo build --release
 
-# With neural vector search (~18MB) - adds TF-IDF similarity
+# With RDF knowledge graph and CCG tools (~35MB) - SPARQL queries, Code Context Graph
+cargo build --release --features graph
+
+# With neural vector search (~32MB) - adds TF-IDF similarity
 cargo build --release --features neural
 
 # With ONNX model support (~50MB) - adds local neural embeddings
@@ -185,6 +188,9 @@ cargo build --release --features neural-onnx
 # With embedded visualization frontend (~31MB)
 cargo build --release --features frontend
 
+# Full-featured build with graph + frontend (~40MB)
+cargo build --release --features graph,frontend
+
 # For browser/WASM usage
 cargo build --release --target wasm32-unknown-unknown --features wasm
 ```
@@ -192,10 +198,13 @@ cargo build --release --target wasm32-unknown-unknown --features wasm
 | Feature | Description | Size |
 |---------|-------------|------|
 | `native` (default) | Full MCP server with all tools | ~30MB |
+| `graph` | + RDF knowledge graph, SPARQL, CCG tools | ~35MB |
 | `frontend` | + Embedded visualization web UI | ~31MB |
 | `neural` | + TF-IDF vector search, API embeddings | ~32MB |
 | `neural-onnx` | + Local ONNX model inference | ~50MB |
 | `wasm` | Browser build (no file system, git) | ~3MB |
+
+> **Important:** The `--graph` CLI flag requires the binary to be built with `--features graph`. If you pass `--graph` to a binary built without this feature, you'll see a warning and SPARQL/CCG tools won't be available. See [Troubleshooting](#graph-feature-not-working) below.
 
 > **For detailed installation instructions, troubleshooting, and platform-specific guides**, see [docs/INSTALL.md](docs/INSTALL.md).
 
@@ -248,8 +257,14 @@ narsil-mcp \
   --neural \        # Enable neural semantic embeddings
   --neural-backend api \  # Backend: "api" (Voyage/OpenAI) or "onnx"
   --neural-model voyage-code-2 \  # Model to use
-  --graph           # Enable SPARQL/RDF knowledge graph and CCG tools
+  --graph           # Enable SPARQL/RDF knowledge graph and CCG tools (requires --features graph build)
 ```
+
+> **Note about `--graph`:** This flag enables SPARQL queries and Code Context Graph (CCG) tools, but **only if the binary was built with `--features graph`**. The default binary does not include this feature. If you need SPARQL/CCG capabilities, build from source with:
+> ```bash
+> cargo build --release --features graph
+> ```
+> If you pass `--graph` to a binary without the feature, you'll see a warning at startup and the server will continue without SPARQL/CCG tools.
 
 **Note:** Neural embeddings require an API key (or custom endpoint). The easiest way to set this up is with the interactive wizard:
 
@@ -981,6 +996,33 @@ RUST_MIN_STACK=8388608 narsil-mcp --repos /path/to/huge-repo
 narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
 ```
 
+### Graph Feature Not Working
+
+If you pass `--graph` and see a warning like:
+```
+WARN: --graph flag was passed but the binary was built without the 'graph' feature.
+SPARQL and CCG tools will not be available.
+```
+
+This means you're using a binary that wasn't compiled with the `graph` feature. To fix:
+
+```bash
+# Build from source with the graph feature
+cargo build --release --features graph
+
+# Or with multiple features
+cargo build --release --features graph,frontend
+
+# Then run with --graph
+./target/release/narsil-mcp --repos ~/project --graph
+```
+
+**Why is this a separate feature?** The `graph` feature adds the Oxigraph RDF database (~5MB additional binary size) which isn't needed for most use cases. It's kept optional to keep the default binary smaller.
+
+**How to check if graph is enabled:** Look at the startup logs:
+- `graph=true` means the feature is compiled in AND enabled
+- `graph=false` means either the feature isn't compiled, OR `--graph` wasn't passed
+
 ## Roadmap
 
 ### Completed
@@ -1010,7 +1052,12 @@ narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
 
 ## What's New
 
-### v1.3.x (Current)
+### v1.4.x (Current)
+
+- **Improved `--graph` flag UX** - Clear warning when `--graph` is passed but the binary wasn't built with `--features graph`
+- **Better startup diagnostics** - Logs now accurately report `graph=true/false` based on actual feature availability
+
+### v1.3.x
 
 - **SPARQL / RDF Knowledge Graph** - Query code intelligence data with SPARQL via Oxigraph
 - **Code Context Graph (CCG)** - 12 tools for standardized, AI-consumable codebase representations with tiered layers (L0-L3)
