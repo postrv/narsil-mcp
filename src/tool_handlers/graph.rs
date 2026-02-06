@@ -130,6 +130,7 @@ pub struct GraphBuildOptions<'a> {
     pub cluster_by: &'a str,
     pub min_complexity: Option<usize>,
     pub file_pattern: Option<&'a str>,
+    pub max_nodes: usize,
 }
 
 impl ViewType {
@@ -188,6 +189,8 @@ impl ToolHandler for GetCodeGraphHandler {
             .and_then(|f| f.get("file_pattern"))
             .and_then(|v| v.as_str());
 
+        let max_nodes = args.get_u64_or("max_nodes", 200) as usize;
+
         let options = GraphBuildOptions {
             repo,
             root,
@@ -198,6 +201,7 @@ impl ToolHandler for GetCodeGraphHandler {
             cluster_by,
             min_complexity,
             file_pattern,
+            max_nodes,
         };
 
         let graph = match view {
@@ -218,11 +222,37 @@ impl ToolHandler for GetCodeGraphHandler {
         };
 
         // Optionally overlay security information
-        let graph = if include_security {
+        let mut graph = if include_security {
             self.add_security_overlay(engine, repo, graph).await?
         } else {
             graph
         };
+
+        // Truncate if exceeding max_nodes
+        let total_nodes = graph.nodes.len();
+        if total_nodes > max_nodes {
+            graph.nodes.truncate(max_nodes);
+
+            // Keep only edges that reference remaining nodes
+            let remaining_ids: HashSet<String> = graph.nodes.iter().map(|n| n.id.clone()).collect();
+            graph
+                .edges
+                .retain(|e| remaining_ids.contains(&e.source) && remaining_ids.contains(&e.target));
+
+            // Update metadata
+            graph.metadata.node_count = graph.nodes.len();
+            graph.metadata.edge_count = graph.edges.len();
+
+            // Serialize with truncation note
+            let mut result = serde_json::to_string_pretty(&graph)
+                .map_err(|e| anyhow!("Failed to serialize graph: {}", e))?;
+            // Append a note about truncation (outside the JSON, as a trailing comment)
+            result.push_str(&format!(
+                "\n\n<!-- Truncated: showing {} of {} nodes. Use max_nodes parameter to adjust. -->",
+                max_nodes, total_nodes
+            ));
+            return Ok(result);
+        }
 
         serde_json::to_string_pretty(&graph)
             .map_err(|e| anyhow!("Failed to serialize graph: {}", e))
@@ -278,6 +308,10 @@ impl GetCodeGraphHandler {
         while let Some((func_name, current_depth)) = queue.pop() {
             if visited.contains(&func_name) || current_depth > options.depth {
                 continue;
+            }
+            // Stop adding nodes if we've hit the max_nodes limit
+            if nodes.len() >= options.max_nodes {
+                break;
             }
             visited.insert(func_name.clone());
 
@@ -409,6 +443,10 @@ impl GetCodeGraphHandler {
         let mut edge_id = 0;
 
         for (file, imports) in &import_data.files {
+            if nodes.len() >= 200 {
+                // Limit import graph nodes
+                break;
+            }
             let file_str = file.to_string();
 
             if !visited.contains(&file_str) {

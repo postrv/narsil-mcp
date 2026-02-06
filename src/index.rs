@@ -2815,7 +2815,9 @@ impl CodeIntelEngine {
             )
         })?;
 
-        let hotspots = call_graph.get_hotspots(min_connections);
+        let default_limit = 50;
+        let hotspots = call_graph.get_hotspots_limited(min_connections, default_limit);
+        let total_count = call_graph.get_hotspots(min_connections).len();
 
         let mut output = String::new();
         output.push_str(&format!(
@@ -2826,10 +2828,18 @@ impl CodeIntelEngine {
         if hotspots.is_empty() {
             output.push_str("*No hotspots found matching the criteria.*\n");
         } else {
-            output.push_str(&format!(
-                "Found {} highly connected functions:\n\n",
-                hotspots.len()
-            ));
+            if total_count > hotspots.len() {
+                output.push_str(&format!(
+                    "Showing top {} of {} highly connected functions (generic trait methods filtered):\n\n",
+                    hotspots.len(),
+                    total_count
+                ));
+            } else {
+                output.push_str(&format!(
+                    "Found {} highly connected functions (generic trait methods filtered):\n\n",
+                    hotspots.len()
+                ));
+            }
             output.push_str("| Function | Incoming | Outgoing | Total |\n");
             output.push_str("|----------|----------|----------|-------|\n");
 
@@ -7505,20 +7515,29 @@ fn parse_imports_from_content(content: &str, file_path: &str) -> Vec<crate::incr
         }
         // Rust use statements
         else if let Some(stripped) = trimmed.strip_prefix("use ") {
-            let import_path = stripped
-                .trim_end_matches(';')
-                .split("::")
-                .take(2)
-                .collect::<Vec<_>>()
-                .join("::");
+            // Extract the full module path, removing the item/group at the end
+            // e.g., "use crate::api::client::Client;" → "crate::api::client"
+            // e.g., "use crate::api::{foo, bar};" → "crate::api"
+            let cleaned = stripped.trim_end_matches(';').trim();
 
-            imports.push(crate::incremental::Import {
-                source_file: std::path::PathBuf::from(file_path),
-                import_path,
-                imported_symbols: vec![],
-                import_type: crate::incremental::ImportType::Rust,
-                line: line_num + 1,
-            });
+            let import_path = if let Some(brace_idx) = cleaned.find('{') {
+                // Group import: take everything before the brace
+                cleaned[..brace_idx].trim_end_matches("::").to_string()
+            } else {
+                // Single import: take all segments (resolver will try
+                // progressively shorter paths)
+                cleaned.to_string()
+            };
+
+            if !import_path.is_empty() {
+                imports.push(crate::incremental::Import {
+                    source_file: std::path::PathBuf::from(file_path),
+                    import_path,
+                    imported_symbols: vec![],
+                    import_type: crate::incremental::ImportType::Rust,
+                    line: line_num + 1,
+                });
+            }
         }
         // C/C++ includes
         else if let Some(stripped) = trimmed.strip_prefix("#include") {

@@ -575,6 +575,11 @@ impl SymbolResolver {
             .iter()
             .find(|r| r.import_type == import.import_type)?;
 
+        // Rust-specific module path resolution
+        if import.import_type == ImportType::Rust {
+            return self.resolve_rust_import(import, base_dir, project_root);
+        }
+
         // Handle relative imports
         if import.import_path.starts_with('.') {
             return self.resolve_relative_import(import, base_dir, rules);
@@ -582,6 +587,108 @@ impl SymbolResolver {
 
         // Handle absolute/package imports
         self.resolve_package_import(import, project_root, rules)
+    }
+
+    /// Resolve a Rust `use` import to a file path.
+    ///
+    /// Handles:
+    /// - `crate::module::item` → `src/module.rs` or `src/module/mod.rs`
+    /// - `super::module` → `../module.rs` or `../module/mod.rs`
+    /// - `self::module` → `./module.rs` or `./module/mod.rs`
+    fn resolve_rust_import(
+        &self,
+        import: &Import,
+        base_dir: &Path,
+        project_root: &Path,
+    ) -> Option<PathBuf> {
+        let path = &import.import_path;
+
+        // Split module path into segments
+        let segments: Vec<&str> = path.split("::").collect();
+        if segments.is_empty() {
+            return None;
+        }
+
+        // Determine the base directory and starting segment index
+        let (resolve_base, start_idx) = match segments[0] {
+            "crate" => {
+                // crate:: → project src/ directory
+                let src_dir = project_root.join("src");
+                if src_dir.exists() {
+                    (src_dir, 1)
+                } else {
+                    (project_root.to_path_buf(), 1)
+                }
+            }
+            "super" => {
+                // super:: → parent directory
+                let parent = base_dir.parent().unwrap_or(base_dir);
+                (parent.to_path_buf(), 1)
+            }
+            "self" => {
+                // self:: → current directory
+                (base_dir.to_path_buf(), 1)
+            }
+            _ => {
+                // External crate or bare path - try as relative to src/
+                let src_dir = project_root.join("src");
+                if src_dir.exists() {
+                    (src_dir, 0)
+                } else {
+                    return None;
+                }
+            }
+        };
+
+        // Build the path from remaining segments (only use module segments, skip the item)
+        // For "crate::api::client", segments are ["crate", "api", "client"]
+        // We try progressively: api/client.rs, api/client/mod.rs, api.rs
+        let module_segments = &segments[start_idx..];
+        if module_segments.is_empty() {
+            return None;
+        }
+
+        // Try the full path first (all segments as directories except last)
+        self.try_rust_module_path(&resolve_base, module_segments)
+    }
+
+    /// Try to resolve a Rust module path to a file.
+    /// For segments ["api", "client"]:
+    ///   1. Try base/api/client.rs
+    ///   2. Try base/api/client/mod.rs
+    ///   3. Try base/api.rs (if "client" is an item, not a module)
+    ///   4. Try base/api/mod.rs
+    fn try_rust_module_path(&self, base: &Path, segments: &[&str]) -> Option<PathBuf> {
+        if segments.is_empty() {
+            return None;
+        }
+
+        // Build full path from all segments
+        let mut full_path = base.to_path_buf();
+        for seg in segments {
+            full_path = full_path.join(seg);
+        }
+
+        // 1. Try as file: base/seg1/seg2.rs
+        let as_file = full_path.with_extension("rs");
+        if as_file.exists() {
+            return Some(as_file);
+        }
+
+        // 2. Try as directory with mod.rs: base/seg1/seg2/mod.rs
+        let as_mod = full_path.join("mod.rs");
+        if as_mod.exists() {
+            return Some(as_mod);
+        }
+
+        // 3. If we have multiple segments, try treating the last as an item name
+        //    and resolve the parent module: base/seg1.rs or base/seg1/mod.rs
+        if segments.len() > 1 {
+            let parent_segments = &segments[..segments.len() - 1];
+            return self.try_rust_module_path(base, parent_segments);
+        }
+
+        None
     }
 
     /// Resolve a relative import (./foo, ../bar)

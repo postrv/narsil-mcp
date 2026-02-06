@@ -105,6 +105,11 @@ impl CallGraph {
         Ok(())
     }
 
+    /// Create a qualified key for the DashMap: "file_path::function_name"
+    fn qualified_key(file_path: &str, name: &str) -> String {
+        format!("{}::{}", file_path, name)
+    }
+
     fn extract_functions(&self, path: &str, content: &str, tree: &Tree) -> Result<()> {
         let source = content.as_bytes();
         let mut cursor = tree.walk();
@@ -113,10 +118,14 @@ impl CallGraph {
         self.walk_for_functions(&mut cursor, source, path, &mut functions);
 
         for func in &functions {
-            self.nodes.insert(func.name.clone(), func.clone());
+            let key = Self::qualified_key(path, &func.name);
+            self.nodes.insert(key, func.clone());
         }
 
-        let names: Vec<_> = functions.into_iter().map(|f| f.name).collect();
+        let names: Vec<_> = functions
+            .into_iter()
+            .map(|f| Self::qualified_key(path, &f.name))
+            .collect();
         self.file_functions.insert(path.to_string(), names);
 
         Ok(())
@@ -204,7 +213,7 @@ impl CallGraph {
             let node = cursor.node();
             let kind = node.kind();
 
-            // Update current function context
+            // Update current function context (use qualified key)
             if matches!(
                 kind,
                 "function_item"
@@ -214,7 +223,7 @@ impl CallGraph {
                     | "method_declaration"
             ) {
                 if let Some(name) = extract_function_name(node, source) {
-                    *current_function = Some(name);
+                    *current_function = Some(Self::qualified_key(path, &name));
                 }
             }
 
@@ -223,23 +232,41 @@ impl CallGraph {
                 kind,
                 "call_expression" | "call" | "method_call_expression" | "invocation_expression"
             ) {
-                if let Some(ref caller) = current_function {
+                if let Some(ref caller_key) = current_function {
                     if let Some(edge) = self.extract_call_edge(node, source, path) {
-                        // Add to caller's outgoing calls
-                        if let Some(mut caller_node) = self.nodes.get_mut(caller) {
-                            caller_node.calls.push(edge.clone());
+                        // Resolve callee: prefer same-file match, then any match
+                        let callee_key = self.resolve_callee(&edge.target, path);
+
+                        // Add to caller's outgoing calls (with resolved key as target)
+                        if let Some(mut caller_node) = self.nodes.get_mut(caller_key.as_str()) {
+                            let mut resolved_edge = edge.clone();
+                            resolved_edge.target = callee_key.clone();
+                            caller_node.calls.push(resolved_edge);
                         }
 
                         // Add to callee's incoming calls
-                        if let Some(mut callee_node) = self.nodes.get_mut(&edge.target) {
+                        if let Some(mut callee_node) = self.nodes.get_mut(callee_key.as_str()) {
                             callee_node.called_by.push(CallEdge {
-                                target: caller.clone(),
+                                target: caller_key.clone(),
                                 file_path: edge.file_path,
                                 line: edge.line,
                                 column: edge.column,
                                 call_type: edge.call_type,
                             });
                         }
+                    }
+                }
+            }
+
+            // Handle macro invocations (opaque token trees in tree-sitter)
+            // Extract call patterns from macro body text
+            if kind == "macro_invocation" {
+                if let Some(ref caller_key) = current_function {
+                    if let Ok(macro_text) = node.utf8_text(source) {
+                        let macro_line = node.start_position().row + 1;
+                        self.extract_calls_from_macro_text(
+                            macro_text, caller_key, path, macro_line,
+                        );
                     }
                 }
             }
@@ -254,6 +281,127 @@ impl CallGraph {
                 break;
             }
         }
+    }
+
+    /// Extract call-like patterns from macro invocation body text.
+    /// Finds patterns like `func_name(`, `obj.method(`, `Type::method(`.
+    fn extract_calls_from_macro_text(
+        &self,
+        text: &str,
+        caller_key: &str,
+        caller_file: &str,
+        line: usize,
+    ) {
+        // Simple tokenizer: find identifiers followed by '('
+        let bytes = text.as_bytes();
+        let len = bytes.len();
+        let mut i = 0;
+
+        while i < len {
+            // Skip non-identifier chars
+            if !bytes[i].is_ascii_alphanumeric() && bytes[i] != b'_' {
+                i += 1;
+                continue;
+            }
+
+            // Collect identifier
+            let start = i;
+            while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+            let ident = &text[start..i];
+
+            // Skip whitespace
+            let mut j = i;
+            while j < len && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+
+            // Check if followed by '(' — this is a call
+            if j < len && bytes[j] == b'(' {
+                // Skip Rust keywords
+                if matches!(
+                    ident,
+                    "if" | "else"
+                        | "match"
+                        | "while"
+                        | "for"
+                        | "loop"
+                        | "let"
+                        | "mut"
+                        | "fn"
+                        | "pub"
+                        | "return"
+                        | "async"
+                        | "await"
+                        | "move"
+                        | "unsafe"
+                        | "Some"
+                        | "None"
+                        | "Ok"
+                        | "Err"
+                ) {
+                    i = j + 1;
+                    continue;
+                }
+
+                let callee_key = self.resolve_callee(ident, caller_file);
+
+                // Add to caller's outgoing calls
+                if let Some(mut caller_node) = self.nodes.get_mut(caller_key) {
+                    // Avoid duplicate edges
+                    if !caller_node.calls.iter().any(|c| c.target == callee_key) {
+                        caller_node.calls.push(CallEdge {
+                            target: callee_key.clone(),
+                            file_path: caller_file.to_string(),
+                            line,
+                            column: 0,
+                            call_type: CallType::Direct,
+                        });
+                    }
+                }
+
+                // Add to callee's incoming calls
+                if let Some(mut callee_node) = self.nodes.get_mut(callee_key.as_str()) {
+                    if !callee_node
+                        .called_by
+                        .iter()
+                        .any(|c| c.target == *caller_key)
+                    {
+                        callee_node.called_by.push(CallEdge {
+                            target: caller_key.to_string(),
+                            file_path: caller_file.to_string(),
+                            line,
+                            column: 0,
+                            call_type: CallType::Direct,
+                        });
+                    }
+                }
+
+                i = j + 1;
+            }
+        }
+    }
+
+    /// Resolve a callee name to a qualified key.
+    /// Prefers same-file match, then falls back to any match.
+    fn resolve_callee(&self, bare_name: &str, caller_file: &str) -> String {
+        // Try same-file first
+        let same_file_key = Self::qualified_key(caller_file, bare_name);
+        if self.nodes.contains_key(&same_file_key) {
+            return same_file_key;
+        }
+
+        // Try to find any node with this bare name (suffix match)
+        let suffix = format!("::{}", bare_name);
+        for entry in self.nodes.iter() {
+            if entry.key().ends_with(&suffix) {
+                return entry.key().clone();
+            }
+        }
+
+        // Return bare name as fallback (unresolved external call)
+        bare_name.to_string()
     }
 
     fn extract_call_edge(&self, node: Node, source: &[u8], path: &str) -> Option<CallEdge> {
@@ -390,7 +538,14 @@ impl CallGraph {
             // Cognitive complexity (adds for nesting)
             if matches!(
                 kind,
-                "if_statement" | "for_statement" | "while_statement" | "match_expression"
+                "if_statement"
+                    | "if_expression"
+                    | "for_statement"
+                    | "for_expression"
+                    | "while_statement"
+                    | "while_expression"
+                    | "loop_expression"
+                    | "match_expression"
             ) {
                 metrics.cognitive += 1 + depth;
             }
@@ -399,8 +554,12 @@ impl CallGraph {
             let new_depth = if matches!(
                 kind,
                 "if_statement"
+                    | "if_expression"
                     | "for_statement"
+                    | "for_expression"
                     | "while_statement"
+                    | "while_expression"
+                    | "loop_expression"
                     | "match_expression"
                     | "try_statement"
                     | "block"
@@ -428,11 +587,19 @@ impl CallGraph {
 
     // === Query Methods ===
 
-    /// Find a function by name with fuzzy matching
-    /// Tries: exact match -> case-insensitive -> suffix match -> contains match
-    /// Returns the actual function name in the graph, or None if not found
+    /// Find a function by name with fuzzy matching.
+    ///
+    /// Tries (in order):
+    /// 1. Exact match on qualified key (e.g., "src/app/mod.rs::run")
+    /// 2. Case-insensitive exact match on qualified key
+    /// 3. Suffix match with :: separator (e.g., "app::run" matches "src/app/mod.rs::run")
+    /// 4. Bare name suffix match (e.g., "run" matches "src/app/mod.rs::run")
+    /// 5. Case-insensitive suffix match
+    /// 6. Contains match
+    ///
+    /// Returns the actual qualified key in the graph, or None if not found.
     pub fn find_function(&self, query: &str) -> Option<String> {
-        // 1. Exact match
+        // 1. Exact match on qualified key
         if self.nodes.contains_key(query) {
             return Some(query.to_string());
         }
@@ -441,42 +608,74 @@ impl CallGraph {
 
         // 2. Case-insensitive exact match
         for entry in self.nodes.iter() {
-            let name = entry.key();
-            if name.to_lowercase() == query_lower {
-                return Some(name.clone());
+            let key = entry.key();
+            if key.to_lowercase() == query_lower {
+                return Some(key.clone());
             }
         }
 
-        // 3. Suffix match (e.g., "foo" matches "module::foo" or "Class::foo")
+        // 3. Suffix match with :: separator (e.g., "app::run" or "mod.rs::run")
+        let suffix_pattern = format!("::{}", query);
         for entry in self.nodes.iter() {
-            let name = entry.key();
-            if name.ends_with(query) {
-                return Some(name.clone());
-            }
-            // Also check with :: separator
-            if name.ends_with(&format!("::{}", query)) {
-                return Some(name.clone());
+            let key = entry.key();
+            if key.ends_with(&suffix_pattern) {
+                return Some(key.clone());
             }
         }
 
-        // 4. Case-insensitive suffix match
-        for entry in self.nodes.iter() {
-            let name = entry.key();
-            let name_lower = name.to_lowercase();
-            if name_lower.ends_with(&query_lower) {
-                return Some(name.clone());
+        // 3b. Path component match (e.g., "app/mod.rs::run" matches "src/app/mod.rs::run")
+        if query.contains("::") {
+            for entry in self.nodes.iter() {
+                let key = entry.key();
+                if key.ends_with(query) {
+                    return Some(key.clone());
+                }
             }
         }
 
-        // 5. Contains match
+        // 4. Bare name match: query is just a function name like "run"
+        // Match against the function name part of qualified keys
+        if !query.contains("::") && !query.contains('/') {
+            let bare_suffix = format!("::{}", query);
+            for entry in self.nodes.iter() {
+                let key = entry.key();
+                if key.ends_with(&bare_suffix) {
+                    return Some(key.clone());
+                }
+            }
+        }
+
+        // 5. Case-insensitive suffix match
         for entry in self.nodes.iter() {
-            let name = entry.key();
-            if name.to_lowercase().contains(&query_lower) {
-                return Some(name.clone());
+            let key = entry.key();
+            if key.to_lowercase().ends_with(&query_lower) {
+                return Some(key.clone());
+            }
+        }
+
+        // 6. Contains match
+        for entry in self.nodes.iter() {
+            let key = entry.key();
+            if key.to_lowercase().contains(&query_lower) {
+                return Some(key.clone());
             }
         }
 
         None
+    }
+
+    /// Find all functions matching a query (returns multiple matches for disambiguation).
+    pub fn find_all_functions(&self, query: &str) -> Vec<String> {
+        let mut matches = Vec::new();
+        let suffix = format!("::{}", query);
+        for entry in self.nodes.iter() {
+            let key = entry.key();
+            if key.ends_with(&suffix) || key == query {
+                matches.push(key.clone());
+            }
+        }
+        matches.sort();
+        matches
     }
 
     /// Get similar function names for suggestions when a function is not found
@@ -640,21 +839,80 @@ impl CallGraph {
         None
     }
 
-    /// Get highly connected functions (potential refactoring targets)
+    /// Generic trait method names to filter from hotspots (these are noise)
+    const TRAIT_METHOD_NAMES: &'static [&'static str] = &[
+        "new",
+        "default",
+        "from",
+        "into",
+        "clone",
+        "fmt",
+        "drop",
+        "deref",
+        "deref_mut",
+        "as_ref",
+        "as_mut",
+        "borrow",
+        "borrow_mut",
+        "try_from",
+        "try_into",
+        "eq",
+        "ne",
+        "partial_cmp",
+        "cmp",
+        "hash",
+        "serialize",
+        "deserialize",
+        "to_string",
+        "to_owned",
+        "build",
+        "index",
+        "index_mut",
+    ];
+
+    /// Check if a function name is a generic trait method that should be filtered
+    fn is_trait_method(qualified_key: &str) -> bool {
+        if let Some(bare_name) = qualified_key.rsplit("::").next() {
+            Self::TRAIT_METHOD_NAMES.contains(&bare_name)
+        } else {
+            false
+        }
+    }
+
+    /// Get highly connected functions (potential refactoring targets).
+    /// Filters out generic trait methods and limits output.
     pub fn get_hotspots(&self, min_connections: usize) -> Vec<(String, usize, usize)> {
         let mut hotspots = Vec::new();
 
         for entry in self.nodes.iter() {
+            let key = entry.key();
+
+            // Skip generic trait method implementations
+            if Self::is_trait_method(key) {
+                continue;
+            }
+
             let incoming = entry.called_by.len();
             let outgoing = entry.calls.len();
             let total = incoming + outgoing;
 
             if total >= min_connections {
-                hotspots.push((entry.key().clone(), incoming, outgoing));
+                hotspots.push((key.clone(), incoming, outgoing));
             }
         }
 
         hotspots.sort_by(|a, b| (b.1 + b.2).cmp(&(a.1 + a.2)));
+        hotspots
+    }
+
+    /// Get highly connected functions with a limit on results.
+    pub fn get_hotspots_limited(
+        &self,
+        min_connections: usize,
+        limit: usize,
+    ) -> Vec<(String, usize, usize)> {
+        let mut hotspots = self.get_hotspots(min_connections);
+        hotspots.truncate(limit);
         hotspots
     }
 
@@ -671,6 +929,7 @@ impl CallGraph {
         dot.push_str("  node [shape=box];\n\n");
 
         for entry in self.nodes.iter() {
+            let key = entry.key();
             let node = entry.value();
 
             if let Some(file) = filter_file {
@@ -690,11 +949,11 @@ impl CallGraph {
 
             dot.push_str(&format!(
                 "  \"{}\" [label=\"{}\\nCC:{} LOC:{}\", color={}];\n",
-                node.name, node.name, node.metrics.cyclomatic, node.metrics.loc, color
+                key, node.name, node.metrics.cyclomatic, node.metrics.loc, color
             ));
 
             for call in &node.calls {
-                dot.push_str(&format!("  \"{}\" -> \"{}\";\n", node.name, call.target));
+                dot.push_str(&format!("  \"{}\" -> \"{}\";\n", key, call.target));
             }
         }
 

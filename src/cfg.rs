@@ -752,6 +752,39 @@ impl CfgBuilder {
             }
             // Regular statements (Rust)
             "let_declaration" | "let_statement" => {
+                // Check if RHS contains control flow (e.g., let x = if cond { a } else { b })
+                let has_cf_rhs = node.named_children(&mut node.walk()).any(|child| {
+                    matches!(
+                        child.kind(),
+                        "if_expression" | "match_expression" | "loop_expression"
+                    )
+                });
+                if has_cf_rhs {
+                    // Add the assignment as a statement, then process the control flow child
+                    let var_name = extract_variable_name(node, source).unwrap_or_default();
+                    self.add_statement(
+                        current,
+                        Statement {
+                            line,
+                            kind: StatementKind::Assignment { variable: var_name },
+                            text: text.clone(),
+                        },
+                    );
+                    // Process the control flow RHS
+                    let mut result = current;
+                    for child in node.named_children(&mut node.walk()) {
+                        match child.kind() {
+                            "if_expression" => {
+                                result = self.process_if(result, child, source)?;
+                            }
+                            "match_expression" => {
+                                result = self.process_match(result, child, source)?;
+                            }
+                            _ => {}
+                        }
+                    }
+                    return Ok(result);
+                }
                 let stmt_kind = StatementKind::Assignment {
                     variable: extract_variable_name(node, source).unwrap_or_default(),
                 };
@@ -844,8 +877,44 @@ impl CfgBuilder {
                 );
                 Ok(current)
             }
-            // Assignment and expression statements (all languages)
-            "assignment_expression" | "expression_statement" => {
+            // Expression statements may wrap control flow nodes (especially in Rust)
+            "expression_statement" => {
+                // Check if the first child is a control flow node and delegate
+                if let Some(child) = node.named_child(0) {
+                    match child.kind() {
+                        "if_expression" | "if_statement" => {
+                            return self.process_if(current, child, source);
+                        }
+                        "match_expression" => {
+                            return self.process_match(current, child, source);
+                        }
+                        "while_expression" | "while_statement" => {
+                            return self.process_while(current, child, source);
+                        }
+                        "for_expression" | "for_statement" => {
+                            return self.process_for(current, child, source);
+                        }
+                        "loop_expression" => {
+                            return self.process_loop(current, child, source);
+                        }
+                        "return_expression" | "return_statement" => {
+                            self.add_statement(
+                                current,
+                                Statement {
+                                    line,
+                                    kind: StatementKind::Return,
+                                    text,
+                                },
+                            );
+                            self.set_terminator(current, Terminator::Return);
+                            self.set_exit(current);
+                            let next = self.create_block("after_return");
+                            return Ok(next);
+                        }
+                        _ => {}
+                    }
+                }
+                // Fall through: treat as generic expression statement
                 let stmt_kind = if text.contains('=') {
                     StatementKind::Assignment {
                         variable: text.split('=').next().unwrap_or("").trim().to_string(),
@@ -853,6 +922,26 @@ impl CfgBuilder {
                 } else if text.contains('(') {
                     StatementKind::Call {
                         function: text.split('(').next().unwrap_or("").trim().to_string(),
+                    }
+                } else {
+                    StatementKind::Expression
+                };
+
+                self.add_statement(
+                    current,
+                    Statement {
+                        line,
+                        kind: stmt_kind,
+                        text,
+                    },
+                );
+                Ok(current)
+            }
+            // Assignment expressions (all languages)
+            "assignment_expression" => {
+                let stmt_kind = if text.contains('=') {
+                    StatementKind::Assignment {
+                        variable: text.split('=').next().unwrap_or("").trim().to_string(),
                     }
                 } else {
                     StatementKind::Expression

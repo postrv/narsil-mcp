@@ -33,18 +33,30 @@ fn worker() {
 
     call_graph.build_from_files(&files).unwrap();
 
-    // Verify call graph structure
+    // Verify call graph structure (targets are now qualified keys: "file::name")
     let main_callees = call_graph.get_callees("main");
     assert_eq!(main_callees.len(), 1);
-    assert_eq!(main_callees[0].target, "helper");
+    assert!(
+        main_callees[0].target.ends_with("::helper"),
+        "expected target ending with ::helper, got: {}",
+        main_callees[0].target
+    );
 
     let helper_callees = call_graph.get_callees("helper");
     assert_eq!(helper_callees.len(), 1);
-    assert_eq!(helper_callees[0].target, "worker");
+    assert!(
+        helper_callees[0].target.ends_with("::worker"),
+        "expected target ending with ::worker, got: {}",
+        helper_callees[0].target
+    );
 
     let worker_callers = call_graph.get_callers("worker");
     assert_eq!(worker_callers.len(), 1);
-    assert_eq!(worker_callers[0].target, "helper");
+    assert!(
+        worker_callers[0].target.ends_with("::helper"),
+        "expected target ending with ::helper, got: {}",
+        worker_callers[0].target
+    );
 }
 
 #[test]
@@ -78,8 +90,12 @@ def worker():
         !main_callees.is_empty(),
         "main should have at least one callee"
     );
-    let calls_helper = main_callees.iter().any(|e| e.target == "helper");
-    assert!(calls_helper, "main should call helper");
+    let calls_helper = main_callees.iter().any(|e| e.target.ends_with("::helper"));
+    assert!(
+        calls_helper,
+        "main should call helper, got: {:?}",
+        main_callees.iter().map(|e| &e.target).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -114,8 +130,12 @@ function worker() {
         !main_callees.is_empty(),
         "main should have at least one callee"
     );
-    let calls_helper = main_callees.iter().any(|e| e.target == "helper");
-    assert!(calls_helper, "main should call helper");
+    let calls_helper = main_callees.iter().any(|e| e.target.ends_with("::helper"));
+    assert!(
+        calls_helper,
+        "main should call helper, got: {:?}",
+        main_callees.iter().map(|e| &e.target).collect::<Vec<_>>()
+    );
 
     // Test transitive callees
     let transitive = call_graph.get_transitive_callees("main", 10);
