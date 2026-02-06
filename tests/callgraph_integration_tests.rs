@@ -181,3 +181,179 @@ fn internal_worker() {
     let helper_callers = call_graph.get_callers("helper");
     assert!(!helper_callers.is_empty());
 }
+
+#[test]
+fn test_cross_file_scoped_call_resolution() {
+    let parser = LanguageParser::new().unwrap();
+    let call_graph = CallGraph::new();
+
+    // File 1: main.rs - calls App::run()
+    let main_code = r#"
+fn main() {
+    App::run();
+}
+"#;
+
+    // File 2: src/app/mod.rs - defines run()
+    let app_code = r#"
+pub fn run() {
+    println!("app running");
+}
+"#;
+
+    // File 3: src/agents/mod.rs - also defines run()
+    let agents_code = r#"
+pub fn run() {
+    println!("agents running");
+}
+"#;
+
+    let tree1 = parser
+        .parse_to_tree(Path::new("main.rs"), main_code)
+        .unwrap();
+    let tree2 = parser
+        .parse_to_tree(Path::new("src/app/mod.rs"), app_code)
+        .unwrap();
+    let tree3 = parser
+        .parse_to_tree(Path::new("src/agents/mod.rs"), agents_code)
+        .unwrap();
+
+    let files = vec![
+        ("main.rs".to_string(), main_code.to_string(), tree1),
+        ("src/app/mod.rs".to_string(), app_code.to_string(), tree2),
+        (
+            "src/agents/mod.rs".to_string(),
+            agents_code.to_string(),
+            tree3,
+        ),
+    ];
+
+    call_graph.build_from_files(&files).unwrap();
+
+    // App::run() in main should resolve to src/app/mod.rs::run, not agents
+    let main_callees = call_graph.get_callees("main");
+    assert!(
+        !main_callees.is_empty(),
+        "main should have at least one callee"
+    );
+
+    let run_call = main_callees.iter().find(|e| e.target.ends_with("::run"));
+    assert!(run_call.is_some(), "main should call some ::run function");
+    assert_eq!(
+        run_call.unwrap().target,
+        "src/app/mod.rs::run",
+        "App::run() should resolve to src/app/mod.rs::run via scope hint"
+    );
+}
+
+#[test]
+fn test_extract_scope_from_scoped_call() {
+    let parser = LanguageParser::new().unwrap();
+    let call_graph = CallGraph::new();
+
+    // Code with a scoped call
+    let code = r#"
+fn caller() {
+    utils::helper();
+}
+
+fn helper() {
+    println!("local helper");
+}
+"#;
+
+    let tree = parser.parse_to_tree(Path::new("test.rs"), code).unwrap();
+    let files = vec![("test.rs".to_string(), code.to_string(), tree)];
+
+    call_graph.build_from_files(&files).unwrap();
+
+    // The call to utils::helper() should have scope_hint populated
+    let caller_callees = call_graph.get_callees("caller");
+    assert!(
+        !caller_callees.is_empty(),
+        "caller should have at least one callee"
+    );
+
+    // Find the edge targeting helper
+    let helper_edge = caller_callees
+        .iter()
+        .find(|e| e.target.ends_with("::helper") || e.target == "helper");
+    assert!(
+        helper_edge.is_some(),
+        "caller should call helper, got: {:?}",
+        caller_callees.iter().map(|e| &e.target).collect::<Vec<_>>()
+    );
+
+    let edge = helper_edge.unwrap();
+    assert_eq!(
+        edge.scope_hint,
+        Some("utils".to_string()),
+        "scope_hint should capture 'utils' from utils::helper()"
+    );
+}
+
+#[test]
+fn test_find_call_path_deterministic_with_ambiguous_names() {
+    let parser = LanguageParser::new().unwrap();
+    let call_graph = CallGraph::new();
+
+    // main calls App::start(), two modules define start()
+    let main_code = r#"
+fn main() {
+    App::start();
+}
+"#;
+
+    let app_code = r#"
+pub fn start() {
+    work();
+}
+
+fn work() {
+    println!("working");
+}
+"#;
+
+    let other_code = r#"
+pub fn start() {
+    println!("other start");
+}
+"#;
+
+    let tree1 = parser
+        .parse_to_tree(Path::new("main.rs"), main_code)
+        .unwrap();
+    let tree2 = parser
+        .parse_to_tree(Path::new("src/app/mod.rs"), app_code)
+        .unwrap();
+    let tree3 = parser
+        .parse_to_tree(Path::new("src/other/mod.rs"), other_code)
+        .unwrap();
+
+    let files = vec![
+        ("main.rs".to_string(), main_code.to_string(), tree1),
+        ("src/app/mod.rs".to_string(), app_code.to_string(), tree2),
+        (
+            "src/other/mod.rs".to_string(),
+            other_code.to_string(),
+            tree3,
+        ),
+    ];
+
+    call_graph.build_from_files(&files).unwrap();
+
+    // find_call_path should give consistent results
+    let path1 = call_graph.find_call_path("main", "work");
+    let path2 = call_graph.find_call_path("main", "work");
+    assert_eq!(path1, path2, "find_call_path must be deterministic");
+
+    // Should find the path: main -> src/app/mod.rs::start -> src/app/mod.rs::work
+    assert!(path1.is_some(), "Should find a path from main to work");
+    let path = path1.unwrap();
+    assert!(
+        path.iter()
+            .any(|p| p.contains("app") && p.contains("start")),
+        "Path should go through app::start, got: {:?}",
+        path
+    );
+}

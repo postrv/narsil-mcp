@@ -38,6 +38,9 @@ pub struct CallEdge {
     pub column: usize,
     /// Is this a direct call or through a reference/closure?
     pub call_type: CallType,
+    /// Scope qualifier from the call site (e.g. "App" from `App::run()`)
+    #[serde(default)]
+    pub scope_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -234,8 +237,9 @@ impl CallGraph {
             ) {
                 if let Some(ref caller_key) = current_function {
                     if let Some(edge) = self.extract_call_edge(node, source, path) {
-                        // Resolve callee: prefer same-file match, then any match
-                        let callee_key = self.resolve_callee(&edge.target, path);
+                        // Resolve callee with scope hint for disambiguation
+                        let callee_key =
+                            self.resolve_callee(&edge.target, path, edge.scope_hint.as_deref());
 
                         // Add to caller's outgoing calls (with resolved key as target)
                         if let Some(mut caller_node) = self.nodes.get_mut(caller_key.as_str()) {
@@ -252,6 +256,7 @@ impl CallGraph {
                                 line: edge.line,
                                 column: edge.column,
                                 call_type: edge.call_type,
+                                scope_hint: None,
                             });
                         }
                     }
@@ -345,7 +350,7 @@ impl CallGraph {
                     continue;
                 }
 
-                let callee_key = self.resolve_callee(ident, caller_file);
+                let callee_key = self.resolve_callee(ident, caller_file, None);
 
                 // Add to caller's outgoing calls
                 if let Some(mut caller_node) = self.nodes.get_mut(caller_key) {
@@ -357,6 +362,7 @@ impl CallGraph {
                             line,
                             column: 0,
                             call_type: CallType::Direct,
+                            scope_hint: None,
                         });
                     }
                 }
@@ -374,6 +380,7 @@ impl CallGraph {
                             line,
                             column: 0,
                             call_type: CallType::Direct,
+                            scope_hint: None,
                         });
                     }
                 }
@@ -384,24 +391,91 @@ impl CallGraph {
     }
 
     /// Resolve a callee name to a qualified key.
-    /// Prefers same-file match, then falls back to any match.
-    fn resolve_callee(&self, bare_name: &str, caller_file: &str) -> String {
-        // Try same-file first
+    /// Prefers same-file match, then scope-hint match, then deterministic alphabetical fallback.
+    fn resolve_callee(
+        &self,
+        bare_name: &str,
+        caller_file: &str,
+        scope_hint: Option<&str>,
+    ) -> String {
+        // 1. Try same-file first
         let same_file_key = Self::qualified_key(caller_file, bare_name);
         if self.nodes.contains_key(&same_file_key) {
             return same_file_key;
         }
 
-        // Try to find any node with this bare name (suffix match)
+        // 2. Collect ALL candidates matching ::bare_name
         let suffix = format!("::{}", bare_name);
-        for entry in self.nodes.iter() {
-            if entry.key().ends_with(&suffix) {
-                return entry.key().clone();
+        let mut candidates: Vec<String> = self
+            .nodes
+            .iter()
+            .filter(|entry| entry.key().ends_with(&suffix))
+            .map(|entry| entry.key().clone())
+            .collect();
+
+        match candidates.len() {
+            0 => bare_name.to_string(),
+            1 => candidates.remove(0),
+            _ => {
+                // 3. If scope_hint present, try to narrow down
+                if let Some(scope) = scope_hint {
+                    // Extract the file_path part from qualified keys (everything before ::)
+                    let scope_matches: Vec<&String> = candidates
+                        .iter()
+                        .filter(|key| {
+                            if let Some(file_part) = key.rsplit_once("::").map(|(f, _)| f) {
+                                Self::scope_matches_file_path(scope, file_part)
+                            } else {
+                                false
+                            }
+                        })
+                        .collect();
+
+                    if scope_matches.len() == 1 {
+                        return scope_matches[0].clone();
+                    }
+                }
+
+                // 4. Deterministic fallback: sort alphabetically, pick first
+                candidates.sort();
+                candidates.remove(0)
             }
         }
+    }
 
-        // Return bare name as fallback (unresolved external call)
-        bare_name.to_string()
+    /// Extract the scope qualifier from a scoped call expression.
+    /// For `App::run()`, the full text is `"App::run"` and this returns `Some("App")`.
+    /// For `crate::utils::helper()`, returns `Some("crate::utils")`.
+    fn extract_scope_qualifier(node: Node, source: &[u8]) -> Option<String> {
+        let text = node.utf8_text(source).ok()?;
+        // Find the last "::" to split scope from bare name
+        let pos = text.rfind("::")?;
+        let scope = &text[..pos];
+        if scope.is_empty() {
+            None
+        } else {
+            Some(scope.to_string())
+        }
+    }
+
+    /// Check if a scope qualifier plausibly matches a file path.
+    /// Lowercases scope, strips `crate::`/`self::`/`super::` prefix,
+    /// converts `::` to `/`, and checks if `file_path` contains `/{scope}/` or `/{scope}.`.
+    fn scope_matches_file_path(scope: &str, file_path: &str) -> bool {
+        let scope_lower = scope.to_lowercase();
+        // Strip common Rust path prefixes
+        let stripped = scope_lower
+            .strip_prefix("crate::")
+            .or_else(|| scope_lower.strip_prefix("self::"))
+            .or_else(|| scope_lower.strip_prefix("super::"))
+            .unwrap_or(&scope_lower);
+        // Convert :: to / for path matching
+        let as_path = stripped.replace("::", "/");
+        let path_lower = file_path.to_lowercase();
+        // Check if file_path contains /{scope}/ or /{scope}.
+        let with_slash = format!("/{}/", as_path);
+        let with_dot = format!("/{}.", as_path);
+        path_lower.contains(&with_slash) || path_lower.contains(&with_dot)
     }
 
     fn extract_call_edge(&self, node: Node, source: &[u8], path: &str) -> Option<CallEdge> {
@@ -410,6 +484,7 @@ impl CallGraph {
 
         let mut target = None;
         let mut call_type = CallType::Direct;
+        let mut scope_hint = None;
 
         loop {
             let child = cursor.node();
@@ -427,7 +502,8 @@ impl CallGraph {
                     }
                 }
                 "scoped_identifier" | "qualified_identifier" => {
-                    // Static method call: Type::method
+                    // Static method call: Type::method - extract scope qualifier
+                    scope_hint = Self::extract_scope_qualifier(child, source);
                     if let Some(method) = self.get_last_identifier(child, source) {
                         target = Some(method);
                         call_type = CallType::StaticMethod;
@@ -447,6 +523,7 @@ impl CallGraph {
             line: node.start_position().row + 1,
             column: node.start_position().column + 1,
             call_type,
+            scope_hint,
         })
     }
 
@@ -606,30 +683,42 @@ impl CallGraph {
 
         let query_lower = query.to_lowercase();
 
-        // 2. Case-insensitive exact match
-        for entry in self.nodes.iter() {
-            let key = entry.key();
-            if key.to_lowercase() == query_lower {
-                return Some(key.clone());
-            }
+        // 2. Case-insensitive exact match (deterministic: collect, sort, pick first)
+        let mut matches: Vec<String> = self
+            .nodes
+            .iter()
+            .filter(|entry| entry.key().to_lowercase() == query_lower)
+            .map(|entry| entry.key().clone())
+            .collect();
+        if !matches.is_empty() {
+            matches.sort();
+            return Some(matches.remove(0));
         }
 
         // 3. Suffix match with :: separator (e.g., "app::run" or "mod.rs::run")
         let suffix_pattern = format!("::{}", query);
-        for entry in self.nodes.iter() {
-            let key = entry.key();
-            if key.ends_with(&suffix_pattern) {
-                return Some(key.clone());
-            }
+        let mut matches: Vec<String> = self
+            .nodes
+            .iter()
+            .filter(|entry| entry.key().ends_with(&suffix_pattern))
+            .map(|entry| entry.key().clone())
+            .collect();
+        if !matches.is_empty() {
+            matches.sort();
+            return Some(matches.remove(0));
         }
 
         // 3b. Path component match (e.g., "app/mod.rs::run" matches "src/app/mod.rs::run")
         if query.contains("::") {
-            for entry in self.nodes.iter() {
-                let key = entry.key();
-                if key.ends_with(query) {
-                    return Some(key.clone());
-                }
+            let mut matches: Vec<String> = self
+                .nodes
+                .iter()
+                .filter(|entry| entry.key().ends_with(query))
+                .map(|entry| entry.key().clone())
+                .collect();
+            if !matches.is_empty() {
+                matches.sort();
+                return Some(matches.remove(0));
             }
         }
 
@@ -637,28 +726,40 @@ impl CallGraph {
         // Match against the function name part of qualified keys
         if !query.contains("::") && !query.contains('/') {
             let bare_suffix = format!("::{}", query);
-            for entry in self.nodes.iter() {
-                let key = entry.key();
-                if key.ends_with(&bare_suffix) {
-                    return Some(key.clone());
-                }
+            let mut matches: Vec<String> = self
+                .nodes
+                .iter()
+                .filter(|entry| entry.key().ends_with(&bare_suffix))
+                .map(|entry| entry.key().clone())
+                .collect();
+            if !matches.is_empty() {
+                matches.sort();
+                return Some(matches.remove(0));
             }
         }
 
-        // 5. Case-insensitive suffix match
-        for entry in self.nodes.iter() {
-            let key = entry.key();
-            if key.to_lowercase().ends_with(&query_lower) {
-                return Some(key.clone());
-            }
+        // 5. Case-insensitive suffix match (deterministic)
+        let mut matches: Vec<String> = self
+            .nodes
+            .iter()
+            .filter(|entry| entry.key().to_lowercase().ends_with(&query_lower))
+            .map(|entry| entry.key().clone())
+            .collect();
+        if !matches.is_empty() {
+            matches.sort();
+            return Some(matches.remove(0));
         }
 
-        // 6. Contains match
-        for entry in self.nodes.iter() {
-            let key = entry.key();
-            if key.to_lowercase().contains(&query_lower) {
-                return Some(key.clone());
-            }
+        // 6. Contains match (deterministic)
+        let mut matches: Vec<String> = self
+            .nodes
+            .iter()
+            .filter(|entry| entry.key().to_lowercase().contains(&query_lower))
+            .map(|entry| entry.key().clone())
+            .collect();
+        if !matches.is_empty() {
+            matches.sort();
+            return Some(matches.remove(0));
         }
 
         None
@@ -1214,6 +1315,7 @@ mod tests {
             line: 12,
             column: 5,
             call_type: CallType::Direct,
+            scope_hint: None,
         };
 
         graph
@@ -1229,6 +1331,7 @@ mod tests {
             line: edge.line,
             column: edge.column,
             call_type: edge.call_type.clone(),
+            scope_hint: None,
         };
 
         graph
@@ -1265,6 +1368,7 @@ mod tests {
                     line: 10,
                     column: 5,
                     call_type: CallType::Direct,
+                    scope_hint: None,
                 },
                 CallEdge {
                     target: "caller2".to_string(),
@@ -1272,6 +1376,7 @@ mod tests {
                     line: 20,
                     column: 8,
                     call_type: CallType::Method,
+                    scope_hint: None,
                 },
             ],
             metrics: FunctionMetrics::default(),
@@ -1330,6 +1435,7 @@ mod tests {
                     line: 12,
                     column: 5,
                     call_type: CallType::Direct,
+                    scope_hint: None,
                 },
                 CallEdge {
                     target: "callee2".to_string(),
@@ -1337,6 +1443,7 @@ mod tests {
                     line: 15,
                     column: 10,
                     call_type: CallType::StaticMethod,
+                    scope_hint: None,
                 },
             ],
             called_by: Vec::new(),
@@ -1438,6 +1545,7 @@ mod tests {
                 line: 2,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: Vec::new(),
             metrics: FunctionMetrics::default(),
@@ -1453,6 +1561,7 @@ mod tests {
                 line: 12,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: vec![CallEdge {
                 target: "a".to_string(),
@@ -1460,6 +1569,7 @@ mod tests {
                 line: 2,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             metrics: FunctionMetrics::default(),
         };
@@ -1474,6 +1584,7 @@ mod tests {
                 line: 22,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: vec![CallEdge {
                 target: "b".to_string(),
@@ -1481,6 +1592,7 @@ mod tests {
                 line: 12,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             metrics: FunctionMetrics::default(),
         };
@@ -1496,6 +1608,7 @@ mod tests {
                 line: 22,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             metrics: FunctionMetrics::default(),
         };
@@ -1535,6 +1648,7 @@ mod tests {
                 line: 12,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: vec![CallEdge {
                 target: "a".to_string(),
@@ -1542,6 +1656,7 @@ mod tests {
                 line: 2,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             metrics: FunctionMetrics::default(),
         };
@@ -1557,6 +1672,7 @@ mod tests {
                 line: 12,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             metrics: FunctionMetrics::default(),
         };
@@ -1588,6 +1704,7 @@ mod tests {
                 line: 2,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: Vec::new(),
             metrics: FunctionMetrics::default(),
@@ -1603,6 +1720,7 @@ mod tests {
                 line: 12,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: vec![CallEdge {
                 target: "a".to_string(),
@@ -1610,6 +1728,7 @@ mod tests {
                 line: 2,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             metrics: FunctionMetrics::default(),
         };
@@ -1624,6 +1743,7 @@ mod tests {
                 line: 22,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: vec![CallEdge {
                 target: "b".to_string(),
@@ -1631,6 +1751,7 @@ mod tests {
                 line: 12,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             metrics: FunctionMetrics::default(),
         };
@@ -1646,6 +1767,7 @@ mod tests {
                 line: 22,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             metrics: FunctionMetrics::default(),
         };
@@ -1685,6 +1807,7 @@ mod tests {
                 line: 2,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: Vec::new(),
             metrics: FunctionMetrics::default(),
@@ -1700,6 +1823,7 @@ mod tests {
                 line: 12,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: Vec::new(),
             metrics: FunctionMetrics::default(),
@@ -1770,6 +1894,7 @@ mod tests {
                     line: 11,
                     column: 1,
                     call_type: CallType::Direct,
+                    scope_hint: None,
                 },
                 CallEdge {
                     target: "f2".to_string(),
@@ -1777,6 +1902,7 @@ mod tests {
                     line: 12,
                     column: 1,
                     call_type: CallType::Direct,
+                    scope_hint: None,
                 },
             ],
             called_by: vec![
@@ -1786,6 +1912,7 @@ mod tests {
                     line: 20,
                     column: 1,
                     call_type: CallType::Direct,
+                    scope_hint: None,
                 },
                 CallEdge {
                     target: "caller2".to_string(),
@@ -1793,6 +1920,7 @@ mod tests {
                     line: 30,
                     column: 1,
                     call_type: CallType::Direct,
+                    scope_hint: None,
                 },
                 CallEdge {
                     target: "caller3".to_string(),
@@ -1800,6 +1928,7 @@ mod tests {
                     line: 40,
                     column: 1,
                     call_type: CallType::Direct,
+                    scope_hint: None,
                 },
             ],
             metrics: FunctionMetrics::default(),
@@ -1816,6 +1945,7 @@ mod tests {
                 line: 51,
                 column: 1,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: Vec::new(),
             metrics: FunctionMetrics::default(),
@@ -1874,6 +2004,7 @@ mod tests {
                 line: 45,
                 column: 5,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: vec![CallEdge {
                 target: "main".to_string(),
@@ -1881,6 +2012,7 @@ mod tests {
                 line: 10,
                 column: 3,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             metrics: FunctionMetrics {
                 loc: 10,
@@ -1957,6 +2089,7 @@ mod tests {
                 line: 12,
                 column: 5,
                 call_type: CallType::Direct,
+                scope_hint: None,
             }],
             called_by: Vec::new(),
             metrics: FunctionMetrics {
@@ -1988,6 +2121,7 @@ mod tests {
             line: 42,
             column: 10,
             call_type: CallType::Method,
+            scope_hint: None,
         };
 
         assert_eq!(edge.target, "target_func");
@@ -2049,5 +2183,183 @@ mod tests {
         for name in &functions {
             assert!(graph.nodes.contains_key(*name));
         }
+    }
+
+    #[test]
+    fn test_scope_matches_file_path() {
+        // "App" should match src/app/mod.rs
+        assert!(CallGraph::scope_matches_file_path("App", "src/app/mod.rs"));
+        // "App" should not match src/application.rs (no /app/ or /app.)
+        assert!(!CallGraph::scope_matches_file_path(
+            "App",
+            "src/application.rs"
+        ));
+        // "crate::utils" -> strips crate::, becomes "utils", matches src/utils/mod.rs
+        assert!(CallGraph::scope_matches_file_path(
+            "crate::utils",
+            "src/utils/mod.rs"
+        ));
+        // "crate::utils" -> "utils" matches src/utils.rs
+        assert!(CallGraph::scope_matches_file_path(
+            "crate::utils",
+            "src/utils.rs"
+        ));
+        // "self::foo" -> "foo" matches src/foo/bar.rs
+        assert!(CallGraph::scope_matches_file_path(
+            "self::foo",
+            "src/foo/bar.rs"
+        ));
+        // "super::bar" -> "bar" matches src/bar.rs
+        assert!(CallGraph::scope_matches_file_path(
+            "super::bar",
+            "src/bar.rs"
+        ));
+        // Case insensitive: "App" matches "src/App/mod.rs" and "src/app/mod.rs"
+        assert!(CallGraph::scope_matches_file_path("App", "src/App/mod.rs"));
+        // Nested scope: "api::client" -> "api/client" matches "src/api/client.rs"
+        assert!(CallGraph::scope_matches_file_path(
+            "api::client",
+            "src/api/client.rs"
+        ));
+    }
+
+    #[test]
+    fn test_resolve_callee_deterministic() {
+        let graph = CallGraph::new();
+
+        // Two different files each have a "run" function
+        let node_a = CallNode {
+            name: "run".to_string(),
+            file_path: "src/agents/mod.rs".to_string(),
+            line: 10,
+            calls: Vec::new(),
+            called_by: Vec::new(),
+            metrics: FunctionMetrics::default(),
+        };
+        let node_b = CallNode {
+            name: "run".to_string(),
+            file_path: "src/app/mod.rs".to_string(),
+            line: 20,
+            calls: Vec::new(),
+            called_by: Vec::new(),
+            metrics: FunctionMetrics::default(),
+        };
+
+        graph
+            .nodes
+            .insert(CallGraph::qualified_key("src/agents/mod.rs", "run"), node_a);
+        graph
+            .nodes
+            .insert(CallGraph::qualified_key("src/app/mod.rs", "run"), node_b);
+
+        // Without scope hint, from a third file, should get deterministic result
+        // (alphabetically first: "src/agents/mod.rs::run" < "src/app/mod.rs::run")
+        let result1 = graph.resolve_callee("run", "src/main.rs", None);
+        let result2 = graph.resolve_callee("run", "src/main.rs", None);
+        assert_eq!(result1, result2, "resolve_callee must be deterministic");
+        assert_eq!(result1, "src/agents/mod.rs::run");
+    }
+
+    #[test]
+    fn test_resolve_callee_with_scope_hint() {
+        let graph = CallGraph::new();
+
+        // Two different files each have a "run" function
+        let node_a = CallNode {
+            name: "run".to_string(),
+            file_path: "src/agents/mod.rs".to_string(),
+            line: 10,
+            calls: Vec::new(),
+            called_by: Vec::new(),
+            metrics: FunctionMetrics::default(),
+        };
+        let node_b = CallNode {
+            name: "run".to_string(),
+            file_path: "src/app/mod.rs".to_string(),
+            line: 20,
+            calls: Vec::new(),
+            called_by: Vec::new(),
+            metrics: FunctionMetrics::default(),
+        };
+
+        graph
+            .nodes
+            .insert(CallGraph::qualified_key("src/agents/mod.rs", "run"), node_a);
+        graph
+            .nodes
+            .insert(CallGraph::qualified_key("src/app/mod.rs", "run"), node_b);
+
+        // With scope hint "App", should pick app/mod.rs::run
+        let result = graph.resolve_callee("run", "src/main.rs", Some("App"));
+        assert_eq!(
+            result, "src/app/mod.rs::run",
+            "scope hint 'App' should resolve to app module"
+        );
+
+        // With scope hint "agents", should pick agents/mod.rs::run
+        let result = graph.resolve_callee("run", "src/main.rs", Some("agents"));
+        assert_eq!(
+            result, "src/agents/mod.rs::run",
+            "scope hint 'agents' should resolve to agents module"
+        );
+    }
+
+    #[test]
+    fn test_resolve_callee_same_file_preferred() {
+        let graph = CallGraph::new();
+
+        let node_a = CallNode {
+            name: "helper".to_string(),
+            file_path: "src/main.rs".to_string(),
+            line: 5,
+            calls: Vec::new(),
+            called_by: Vec::new(),
+            metrics: FunctionMetrics::default(),
+        };
+        let node_b = CallNode {
+            name: "helper".to_string(),
+            file_path: "src/utils.rs".to_string(),
+            line: 10,
+            calls: Vec::new(),
+            called_by: Vec::new(),
+            metrics: FunctionMetrics::default(),
+        };
+
+        graph
+            .nodes
+            .insert(CallGraph::qualified_key("src/main.rs", "helper"), node_a);
+        graph
+            .nodes
+            .insert(CallGraph::qualified_key("src/utils.rs", "helper"), node_b);
+
+        // Same-file match should always win, even with a scope hint pointing elsewhere
+        let result = graph.resolve_callee("helper", "src/main.rs", Some("utils"));
+        assert_eq!(result, "src/main.rs::helper");
+    }
+
+    #[test]
+    fn test_find_function_deterministic() {
+        let graph = CallGraph::new();
+
+        // Multiple functions named "run" in different files
+        for file in &["src/agents/mod.rs", "src/app/mod.rs", "src/cli/mod.rs"] {
+            let node = CallNode {
+                name: "run".to_string(),
+                file_path: file.to_string(),
+                line: 1,
+                calls: Vec::new(),
+                called_by: Vec::new(),
+                metrics: FunctionMetrics::default(),
+            };
+            graph
+                .nodes
+                .insert(CallGraph::qualified_key(file, "run"), node);
+        }
+
+        // find_function("run") should return the same result every time (alphabetically first)
+        let result1 = graph.find_function("run");
+        let result2 = graph.find_function("run");
+        assert_eq!(result1, result2, "find_function must be deterministic");
+        assert_eq!(result1, Some("src/agents/mod.rs::run".to_string()));
     }
 }
