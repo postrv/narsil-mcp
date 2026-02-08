@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Rust `use` import parsing now extracts full module paths instead of truncating at 2 segments
 
 - **Dependency security** - Updated `bytes` crate from 1.11.0 to 1.11.1 to fix RUSTSEC-2026-0007
+- **Dependency security** - Updated `time` crate from 0.3.44 to 0.3.47 to fix RUSTSEC-2026-0009 (DoS via stack exhaustion)
 
 ### Changed
 
