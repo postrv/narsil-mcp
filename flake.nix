@@ -1,5 +1,5 @@
 {
-  description = "MCP server for code intelligence with 79 tools across 32 languages";
+  description = "MCP server for code intelligence with 90 tools across 32 languages";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -19,16 +19,12 @@
         buildInputs = with pkgs; [
           openssl
           zstd
-        ] ++ lib.optionals stdenv.isDarwin [
-          darwin.apple_sdk.frameworks.Security
-          darwin.apple_sdk.frameworks.SystemConfiguration
         ];
 
-      in {
-        packages = {
-          default = pkgs.rustPlatform.buildRustPackage {
+        mkPkg = { buildFeatures, withFrontend ? false, checksEnabled ? true }:
+          pkgs.rustPlatform.buildRustPackage {
             pname = "narsil-mcp";
-            version = "1.4.0";
+            version = "1.5.0";
 
             src = pkgs.lib.cleanSource ./.;
 
@@ -36,7 +32,11 @@
 
             inherit nativeBuildInputs buildInputs;
 
-            buildFeatures = [ "native" ];
+            buildFeatures = buildFeatures
+              ++ pkgs.lib.optionals withFrontend [ "frontend" ];
+
+            doCheck = checksEnabled;
+            cargoTestFlags = pkgs.lib.optionals checksEnabled [ "--lib" ];
 
             meta = with pkgs.lib; {
               description = "MCP server for code intelligence";
@@ -47,24 +47,26 @@
             };
           };
 
-          with-frontend = pkgs.rustPlatform.buildRustPackage {
-            pname = "narsil-mcp";
-            version = "1.4.0";
+      in {
+        packages = {
+          default = mkPkg {
+            buildFeatures = [ "native" ];
+          };
 
-            src = pkgs.lib.cleanSource ./.;
+          with-frontend = mkPkg {
+            buildFeatures = [ "native" ];
+            withFrontend = true;
+          };
 
-            cargoLock.lockFile = ./Cargo.lock;
+          no-check = mkPkg {
+            buildFeatures = [ "native" ];
+            checksEnabled = false;
+          };
 
-            inherit nativeBuildInputs buildInputs;
-
-            buildFeatures = [ "native" "frontend" ];
-
-            meta = with pkgs.lib; {
-              description = "MCP server for code intelligence (with web frontend)";
-              homepage = "https://github.com/postrv/narsil-mcp";
-              license = licenses.mit;
-              mainProgram = "narsil-mcp";
-            };
+          with-frontend-no-check = mkPkg {
+            buildFeatures = [ "native" ];
+            withFrontend = true;
+            checksEnabled = false;
           };
         };
 
@@ -81,6 +83,7 @@
             rust-analyzer
             clippy
             rustfmt
+            git
           ];
 
           RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";

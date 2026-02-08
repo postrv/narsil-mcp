@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-02-08
+
+### Added
+
+- **Scope-hint propagation for call graph resolution** - Scoped calls like `App::run()` now extract the scope qualifier (`App`) and use it to disambiguate callees across files. When multiple files define a function with the same name, the scope hint narrows candidates by matching against file paths (e.g., `App` matches `src/app/mod.rs`). Falls back to deterministic alphabetical ordering when ambiguous.
+
+- **Deterministic call graph resolution** - All `find_function()` and `resolve_callee()` methods now collect candidates, sort alphabetically, and pick the first match. Previously, iteration order over `DashMap` was non-deterministic, causing `find_call_path`, `get_callers`, and `get_callees` to return different results across runs.
+
+- **Macro body call extraction** - The call graph builder now extracts function call patterns from inside Rust macro invocations (e.g., `assert!`, `println!`, custom macros), which were previously opaque to analysis.
+
+- **Rust-specific import resolution** - The import graph now correctly resolves `crate::`, `super::`, and `self::` import paths to their corresponding `.rs` or `mod.rs` files, instead of treating them as opaque strings.
+
+### Fixed
+
+- **8 graph analysis bugs** found via real-world testing against the Patina codebase:
+  - Call graph nodes now use qualified keys (`file_path::function_name`) instead of bare names, preventing cross-file name collisions
+  - `find_function()` returns deterministic results when multiple matches exist
+  - `get_hotspots()` filters out generic trait method implementations (`new`, `default`, `from`, `clone`, `fmt`, etc.) that added noise
+  - `get_hotspots()` output is capped at 50 results by default to prevent oversized responses
+  - `get_code_graph` handler now supports `max_nodes` parameter (default: 200) and truncates with a note when exceeded
+  - Import graph node count is capped at 200 to prevent oversized responses
+  - CFG builder now correctly handles Rust `expression_statement` nodes wrapping control flow (`if`, `match`, `while`, `for`, `loop`, `return`)
+  - CFG builder handles `let` declarations with control-flow RHS (e.g., `let x = if cond { a } else { b }`)
+  - Complexity metrics now recognize Rust expression variants (`if_expression`, `for_expression`, `while_expression`, `loop_expression`)
+  - Rust `use` import parsing now extracts full module paths instead of truncating at 2 segments
+
+- **Dependency security** - Updated `bytes` crate from 1.11.0 to 1.11.1 to fix RUSTSEC-2026-0007
+
+### Changed
+
+- **Nix flake improvements** (based on PR #12 by @balaclava-guy):
+  - Removed unnecessary macOS framework `buildInputs` (`Security`, `SystemConfiguration`) - stdenv provides these
+  - Extracted `mkPkg` helper function to DRY up package definitions
+  - Added `cargoTestFlags = ["--lib"]` for nix builds (integration tests require the binary at a fixed path, incompatible with nix sandbox)
+  - Added `no-check` and `with-frontend-no-check` package variants
+  - Added `git` to devShell packages
+  - Updated description to "90 tools across 32 languages"
+
+- **Test count** increased from 1,598 to 1,611
+
 ## [1.4.0] - 2025-02-05
 
 ### Improved

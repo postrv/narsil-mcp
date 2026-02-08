@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-1598%2B%20passed-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
+[![Tests](https://img.shields.io/badge/tests-1611%2B%20passed-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue.svg)](https://modelcontextprotocol.io)
 
 A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 90 specialized tools.
@@ -929,7 +929,7 @@ Benchmarked on Apple M1 (criterion.rs):
 ## Development
 
 ```bash
-# Run tests (1598+ tests)
+# Run tests (1611+ tests)
 cargo test
 
 # Run benchmarks (criterion.rs)
@@ -1052,12 +1052,13 @@ cargo build --release --features graph,frontend
 
 ## What's New
 
-### v1.4.x (Current)
+### v1.5.x (Current)
 
-- **Improved `--graph` flag UX** - Clear warning when `--graph` is passed but the binary wasn't built with `--features graph`
-- **Better startup diagnostics** - Logs now accurately report `graph=true/false` based on actual feature availability
+- **Deterministic call graph resolution** - Scope-hint propagation disambiguates callee resolution (e.g., `App::run()` correctly resolves to `src/app/mod.rs::run`)
+- **8 graph analysis fixes** - Qualified node keys, hotspot filtering, CFG expression handling, import path parsing
+- **Nix flake improvements** - DRY `mkPkg` helper, removed unnecessary macOS frameworks, `--lib` test strategy for sandbox builds
 
-### v1.3.x
+### v1.4.x
 
 - **SPARQL / RDF Knowledge Graph** - Query code intelligence data with SPARQL via Oxigraph
 - **Code Context Graph (CCG)** - 12 tools for standardized, AI-consumable codebase representations with tiered layers (L0-L3)
