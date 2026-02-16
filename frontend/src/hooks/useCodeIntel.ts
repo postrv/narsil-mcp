@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { codeIntelClient, CodeIntelClient } from '../api/client';
 import type { GraphRequest, ViewType } from '../types/graph';
@@ -147,6 +148,3 @@ export function useGraphVisualization(initialRepo: string = '') {
     refetch,
   };
 }
-
-// Import useState for the custom hook
-import { useState } from 'react';

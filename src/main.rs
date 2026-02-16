@@ -133,6 +133,10 @@ struct ServerArgs {
     #[arg(long)]
     neural_model: Option<String>,
 
+    /// Neural embedding dimension (auto-detected from model if not specified)
+    #[arg(long)]
+    neural_dimension: Option<usize>,
+
     /// Enable HTTP server for visualization frontend
     #[arg(long)]
     http: bool,
@@ -273,16 +277,20 @@ async fn main() -> Result<()> {
     }
 
     // Build neural config
+    let neural_dimension = server_args.neural_dimension.unwrap_or_else(|| {
+        neural::default_dimension_for_model(server_args.neural_model.as_deref())
+    });
     let neural_config = neural::NeuralConfig {
         enabled: server_args.neural,
         backend: server_args.neural_backend.clone(),
         model_name: server_args.neural_model.clone(),
+        dimension: neural_dimension,
         ..Default::default()
     };
     if server_args.neural {
         info!(
-            "Neural embeddings requested (backend={}, model={:?})",
-            server_args.neural_backend, server_args.neural_model
+            "Neural embeddings requested (backend={}, model={:?}, dimension={})",
+            server_args.neural_backend, server_args.neural_model, neural_dimension
         );
     }
 

@@ -369,7 +369,6 @@ export function GraphCanvas({
   useEffect(() => {
     if (!containerRef.current || cyRef.current) return;
 
-    console.log('Initializing Cytoscape');
     cyRef.current = cytoscape({
       container: containerRef.current,
       style: cytoscapeStyles,
@@ -380,7 +379,6 @@ export function GraphCanvas({
     setIsReady(true);
 
     return () => {
-      console.log('Destroying Cytoscape');
       cyRef.current?.destroy();
       cyRef.current = null;
       setIsReady(false);
@@ -401,12 +399,6 @@ export function GraphCanvas({
 
     // Convert graph to Cytoscape elements
     const elements = graphToCytoscape(graph);
-
-    console.log('Graph data:', {
-      nodes: graph.nodes.length,
-      edges: graph.edges.length,
-      cytoscapeElements: elements.length,
-    });
 
     // Clear existing elements
     cy.elements().remove();
@@ -435,25 +427,17 @@ export function GraphCanvas({
 
     // Determine the best layout based on graph size
     const nodeCount = elements.filter(e => e.group === 'nodes').length;
-    const edgeCount = elements.filter(e => e.group === 'edges').length;
-
-    console.log(`Applying layout '${layout}' to graph with ${nodeCount} nodes, ${edgeCount} edges`);
 
     // For very large graphs (>300 nodes), use force-directed cose-bilkent
     // For medium graphs (50-300), allow hierarchical layouts
     // For small graphs (<50), any layout works well
     const layoutToUse = nodeCount > 300 && layout === 'dagre' ? 'cose-bilkent' : layout;
 
-    if (layoutToUse !== layout) {
-      console.log(`Switching from '${layout}' to '${layoutToUse}' for large graph`);
-    }
-
     // Build layout options with size-appropriate settings
     const layoutOptions = getLayoutOptions(layoutToUse, graph, nodeCount);
 
     if (!applyLayout(layoutToUse, layoutOptions)) {
       // Fallback chain: cose-bilkent -> breadthfirst -> grid
-      console.log('Primary layout failed, trying fallbacks...');
       if (!applyLayout('cose-bilkent', getLayoutOptions('cose-bilkent', graph, nodeCount))) {
         if (!applyLayout('breadthfirst', { name: 'breadthfirst', directed: true, spacingFactor: 1.25, animate: false })) {
           applyLayout('grid', { name: 'grid', animate: false });

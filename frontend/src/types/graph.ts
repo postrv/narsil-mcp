@@ -76,6 +76,7 @@ export interface GraphRequest {
   include_security?: boolean;
   include_excerpts?: boolean;
   cluster_by?: 'none' | 'file' | 'module';
+  max_nodes?: number;
   filter?: {
     min_complexity?: number;
     file_pattern?: string;

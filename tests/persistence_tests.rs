@@ -471,17 +471,17 @@ async fn test_async_watcher_file_change_detection() -> Result<()> {
     // Create async watcher
     let (_watcher, mut rx) = engine.create_async_file_watcher().unwrap();
 
-    // Wait a bit for watcher to initialize
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Wait for watcher to initialize (generous for slow CI)
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Modify the file
     repo.add_rust_file("src/lib.rs", "pub fn modified() {}")?;
 
-    // Wait for debounce timer and file system events
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Wait for debounce timer and file system events (generous for slow CI)
+    tokio::time::sleep(Duration::from_millis(1000)).await;
 
     // Check if we received change events
-    let timeout = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await;
+    let timeout = tokio::time::timeout(Duration::from_secs(5), rx.recv()).await;
     assert!(timeout.is_ok(), "Should receive file change event");
 
     if let Ok(Some(changes)) = timeout {
@@ -521,8 +521,8 @@ async fn test_async_watcher_debouncing() -> Result<()> {
 
     let (_watcher, mut rx) = engine.create_async_file_watcher().unwrap();
 
-    // Wait for watcher to initialize
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Wait for watcher to initialize (generous for slow CI)
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Make multiple rapid changes to the same file
     for i in 0..5 {
@@ -530,12 +530,12 @@ async fn test_async_watcher_debouncing() -> Result<()> {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
-    // Wait for debounce window
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Wait for debounce window (generous for slow CI)
+    tokio::time::sleep(Duration::from_millis(1000)).await;
 
     // Should receive batched changes (possibly just one batch due to debouncing)
     let mut batch_count = 0;
-    while let Ok(Some(_changes)) = tokio::time::timeout(Duration::from_millis(100), rx.recv()).await
+    while let Ok(Some(_changes)) = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await
     {
         batch_count += 1;
         // Don't wait forever - debouncing should limit the number of batches
@@ -544,11 +544,13 @@ async fn test_async_watcher_debouncing() -> Result<()> {
         }
     }
 
-    // Due to debouncing, should receive fewer batches than the number of changes
+    // Due to debouncing, should receive fewer batches than the number of changes.
+    // The exact count depends on OS filesystem event timing, so we just verify
+    // that debouncing reduced the count below the total number of writes (5).
     assert!(batch_count > 0, "Should receive at least one batch");
     assert!(
         batch_count < 5,
-        "Debouncing should reduce the number of batches"
+        "Debouncing should reduce the number of batches, got {batch_count}"
     );
 
     Ok(())
@@ -584,8 +586,8 @@ async fn test_async_watcher_filters_non_source_files() -> Result<()> {
 
     let (_watcher, mut rx) = engine.create_async_file_watcher().unwrap();
 
-    // Wait for watcher to initialize
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Wait for watcher to initialize (generous for slow CI)
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Add a non-source file (should be filtered out)
     let readme_path = repo.path().join("README.md");
@@ -594,11 +596,11 @@ async fn test_async_watcher_filters_non_source_files() -> Result<()> {
     // Add a source file (should be detected)
     repo.add_rust_file("src/main.rs", "fn main() {}")?;
 
-    // Wait for debounce
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Wait for debounce (generous for slow CI)
+    tokio::time::sleep(Duration::from_millis(1000)).await;
 
     // Should receive changes only for source file
-    let timeout = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await;
+    let timeout = tokio::time::timeout(Duration::from_secs(5), rx.recv()).await;
     if let Ok(Some(changes)) = timeout {
         // Verify all changes are for source files (not README.md)
         for change in &changes {

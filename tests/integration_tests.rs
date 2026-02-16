@@ -254,9 +254,8 @@ fn test_list_repos() -> Result<()> {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-
-    // Wait for indexing to complete (simple sleep)
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     let response = server.call_tool("list_repos", json!({}))?;
 
@@ -279,9 +278,9 @@ fn test_get_project_structure() -> Result<()> {
     repo.add_rust_file("src/utils/mod.rs", "pub mod helpers;")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "get_project_structure",
         json!({
@@ -344,9 +343,8 @@ fn test_find_symbols_rust() -> Result<()> {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     // Find all symbols
     let response = server.call_tool(
@@ -404,9 +402,9 @@ def multiply(x, y):
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "find_symbols",
         json!({
@@ -453,9 +451,9 @@ class UserService {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "find_symbols",
         json!({
@@ -497,9 +495,9 @@ fn test_get_symbol_definition() -> Result<()> {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "get_symbol_definition",
         json!({
@@ -539,7 +537,8 @@ fn test_search_code() -> Result<()> {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     let response = server.call_tool(
         "search_code",
@@ -570,9 +569,8 @@ fn test_get_file() -> Result<()> {
     repo.add_rust_file("src/main.rs", file_content)?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
     let response = server.call_tool(
         "get_file",
         json!({
@@ -603,9 +601,9 @@ fn fourth() {}
     repo.add_rust_file("src/functions.rs", file_content)?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "get_file",
         json!({
@@ -650,9 +648,9 @@ fn test_find_references() -> Result<()> {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "find_references",
         json!({
@@ -687,9 +685,9 @@ fn test_get_dependencies() -> Result<()> {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "get_dependencies",
         json!({
@@ -781,7 +779,8 @@ fn test_error_missing_required_param() -> Result<()> {
     repo.add_rust_file("src/main.rs", "fn main() {}")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     // Call get_file without required 'path' parameter
     let response = server.call_tool(
@@ -803,7 +802,8 @@ fn test_error_nonexistent_repo() -> Result<()> {
     repo.add_rust_file("src/main.rs", "fn main() {}")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     let response = server.call_tool(
         "find_symbols",
@@ -825,9 +825,8 @@ fn test_error_nonexistent_file() -> Result<()> {
     repo.add_rust_file("src/main.rs", "fn main() {}")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
     let response = server.call_tool(
         "get_file",
         json!({
@@ -847,7 +846,8 @@ fn test_empty_repository() -> Result<()> {
     // Don't add any files - empty repo
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     let response = server.call_tool("list_repos", json!({}))?;
 
@@ -874,9 +874,9 @@ fn test_large_file() -> Result<()> {
     repo.add_rust_file("src/large.rs", &content)?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(3));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "find_symbols",
         json!({
@@ -914,10 +914,8 @@ fn test_file_with_syntax_errors() -> Result<()> {
     repo.add_rust_file("src/valid.rs", "pub fn valid() {}")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
-    // Server should still work with the valid file
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
     let response = server.call_tool(
         "find_symbols",
         json!({
@@ -953,9 +951,9 @@ fn test_gitignore_respected() -> Result<()> {
     repo.add_rust_file("src/main.rs", "pub fn main() {}")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "search_code",
         json!({
@@ -1009,7 +1007,8 @@ interface TypeScriptInterface {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     let response = server.call_tool("list_repos", json!({}))?;
 
@@ -1040,9 +1039,8 @@ fn test_symbol_filtering_by_pattern() -> Result<()> {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     // Find symbols matching pattern "create"
     let response = server.call_tool(
@@ -1075,9 +1073,8 @@ fn test_symbol_filtering_by_file_pattern() -> Result<()> {
     repo.add_rust_file("src/handlers/api.rs", "pub fn handle() {}")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     // Find symbols only in models directory
     let response = server.call_tool(
@@ -1319,7 +1316,8 @@ fn test_search_with_file_pattern() -> Result<()> {
     repo.add_rust_file("tests/test.rs", "// search target in test")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     let response = server.call_tool(
         "search_code",
@@ -1368,7 +1366,8 @@ fn test_discover_repos() -> Result<()> {
     let test_repo = TestRepo::new()?;
     test_repo.add_rust_file("src/main.rs", "fn main() {}")?;
     let server = TestMcpServer::start_with_repo(test_repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    let test_repo_name = test_repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(test_repo_name, Duration::from_secs(30))?;
 
     // Test discover_repos
     let response = server.call_tool(
@@ -1397,7 +1396,8 @@ fn test_validate_repo() -> Result<()> {
     repo.add_rust_file("src/main.rs", "fn main() {}")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     // Test validate_repo with the test repo path
     let response = server.call_tool(
@@ -1436,9 +1436,9 @@ pub fn example_function() {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
     let response = server.call_tool(
         "get_excerpt",
         json!({
@@ -1482,9 +1482,8 @@ pub fn validate_user(user: &User) -> bool {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     // Request line 7 which is inside create_user function
     let response = server.call_tool(
@@ -1529,9 +1528,8 @@ pub fn function_three() {
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     // Request multiple lines across different functions
     let response = server.call_tool(
@@ -1567,9 +1565,8 @@ fn test_get_excerpt_with_max_lines() -> Result<()> {
     repo.add_rust_file("src/large.rs", &content)?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     // Request excerpt around line 50 with max_lines constraint
     let response = server.call_tool(
@@ -1615,9 +1612,8 @@ def standalone_function():
     )?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     // Request line inside add method
     let response = server.call_tool(
@@ -1647,9 +1643,8 @@ fn test_get_excerpt_error_invalid_path() -> Result<()> {
     repo.add_rust_file("src/lib.rs", "fn main() {}")?;
 
     let server = TestMcpServer::start_with_repo(repo.path())?;
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
     let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
     let response = server.call_tool(
         "get_excerpt",
@@ -1680,9 +1675,8 @@ mod security_tests {
         std::fs::write(&outside_file, "SECRET CONTENT")?;
 
         let server = TestMcpServer::start_with_repo(repo.path())?;
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
         let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+        server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
         // Try various path traversal attacks
         let traversal_attempts = vec![
@@ -1729,9 +1723,8 @@ mod security_tests {
         repo.add_rust_file("src/main.rs", "fn main() {}")?;
 
         let server = TestMcpServer::start_with_repo(repo.path())?;
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
         let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+        server.wait_for_repo(repo_name, Duration::from_secs(30))?;
 
         // Try to access absolute path
         let response = server.call_tool(

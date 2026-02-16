@@ -231,6 +231,8 @@ pub struct GraphQuery {
     /// Cluster nodes by file
     #[serde(default = "default_cluster")]
     cluster_by: String,
+    /// Maximum number of nodes to return (default 200)
+    max_nodes: Option<usize>,
 }
 
 fn default_view() -> String {
@@ -316,7 +318,7 @@ async fn get_graph(
     State(state): State<AppState>,
     Query(query): Query<GraphQuery>,
 ) -> impl IntoResponse {
-    let args = json!({
+    let mut args = json!({
         "repo": query.repo,
         "view": query.view,
         "root": query.root,
@@ -327,6 +329,9 @@ async fn get_graph(
         "include_excerpts": query.include_excerpts,
         "cluster_by": query.cluster_by,
     });
+    if let Some(max_nodes) = query.max_nodes {
+        args["max_nodes"] = json!(max_nodes);
+    }
 
     let result = state
         .tool_registry
@@ -461,5 +466,14 @@ mod tests {
         assert!(query.include_metrics);
         assert!(!query.include_security);
         assert!(!query.include_excerpts);
+        assert_eq!(query.max_nodes, None);
+    }
+
+    /// Test graph query with explicit max_nodes
+    #[test]
+    fn test_graph_query_with_max_nodes() {
+        let query: GraphQuery =
+            serde_json::from_str(r#"{"repo": "test", "max_nodes": 50}"#).unwrap();
+        assert_eq!(query.max_nodes, Some(50));
     }
 }

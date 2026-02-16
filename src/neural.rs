@@ -62,10 +62,38 @@ impl Default for NeuralConfig {
             tokenizer_path: None,
             model_name: Some("voyage-code-2".to_string()),
             api_endpoint: None,
-            dimension: 1536,
+            dimension: default_dimension_for_model(Some("voyage-code-2")),
             max_seq_length: 512,
             batch_size: 32,
         }
+    }
+}
+
+/// Returns the native embedding dimension for known models.
+///
+/// This avoids hardcoding a single dimension and ensures that when users
+/// specify a model like `text-embedding-3-large` (3072-dim), the config
+/// automatically picks the right dimension without requiring `--neural-dimension`.
+///
+/// # Examples
+///
+/// ```
+/// use narsil_mcp::neural::default_dimension_for_model;
+/// assert_eq!(default_dimension_for_model(Some("text-embedding-3-large")), 3072);
+/// assert_eq!(default_dimension_for_model(Some("voyage-code-2")), 1024);
+/// assert_eq!(default_dimension_for_model(None), 1536);
+/// ```
+#[must_use]
+pub fn default_dimension_for_model(model: Option<&str>) -> usize {
+    match model {
+        Some("text-embedding-3-large") => 3072,
+        Some("text-embedding-3-small") => 1536,
+        Some("text-embedding-ada-002") => 1536,
+        Some(m) if m.starts_with("voyage-code-3") => 1024,
+        Some(m) if m.starts_with("voyage-code-2") => 1024,
+        Some(m) if m.starts_with("voyage-3") => 1024,
+        Some(m) if m.starts_with("voyage-") => 1024,
+        _ => 1536,
     }
 }
 
@@ -386,7 +414,7 @@ impl ApiEmbedder {
             endpoint: "https://api.voyageai.com/v1/embeddings".to_string(),
             model: "voyage-code-2".to_string(),
             api_key: Some(api_key.to_string()),
-            dimension: 1536,
+            dimension: default_dimension_for_model(Some("voyage-code-2")),
         }
     }
 
@@ -397,7 +425,7 @@ impl ApiEmbedder {
             endpoint: "https://api.voyageai.com/v1/embeddings".to_string(),
             model: model.to_string(),
             api_key: Some(api_key.to_string()),
-            dimension: 1536,
+            dimension: default_dimension_for_model(Some(model)),
         }
     }
 
@@ -408,7 +436,7 @@ impl ApiEmbedder {
             endpoint: "https://api.openai.com/v1/embeddings".to_string(),
             model: "text-embedding-3-small".to_string(),
             api_key: Some(api_key.to_string()),
-            dimension: 1536,
+            dimension: default_dimension_for_model(Some("text-embedding-3-small")),
         }
     }
 
@@ -470,6 +498,8 @@ impl EmbeddingBackend for ApiEmbedder {
         struct Request<'a> {
             model: &'a str,
             input: &'a [String],
+            #[serde(skip_serializing_if = "Option::is_none")]
+            dimensions: Option<usize>,
         }
 
         #[derive(Deserialize)]
@@ -482,6 +512,15 @@ impl EmbeddingBackend for ApiEmbedder {
             embedding: Vec<f32>,
         }
 
+        // Only send `dimensions` for OpenAI models that support truncation
+        // (text-embedding-3-small and text-embedding-3-large).
+        // Voyage and other providers don't accept this field.
+        let dimensions = if self.model.starts_with("text-embedding-3-") {
+            Some(self.dimension)
+        } else {
+            None
+        };
+
         let mut request = self
             .client
             .post(&self.endpoint)
@@ -489,6 +528,7 @@ impl EmbeddingBackend for ApiEmbedder {
             .json(&Request {
                 model: &self.model,
                 input: texts,
+                dimensions,
             });
 
         if let Some(key) = &self.api_key {
@@ -890,7 +930,12 @@ impl NeuralEngine {
 
             let model_name = config.model_name.as_deref().unwrap_or("voyage-code-2");
             backend = if model_name.contains("voyage") {
-                Arc::new(ApiEmbedder::voyage_with_model(&api_key, model_name))
+                Arc::new(ApiEmbedder::custom(
+                    "https://api.voyageai.com/v1/embeddings",
+                    model_name,
+                    Some(&api_key),
+                    config.dimension,
+                ))
             } else {
                 Arc::new(ApiEmbedder::openai_with_model(
                     &api_key,
@@ -1089,14 +1134,99 @@ mod tests {
         let config = NeuralConfig::default();
         assert!(!config.enabled);
         assert_eq!(config.backend, "api");
-        assert_eq!(config.dimension, 1536);
+        // Default model is voyage-code-2 which has 1024 dimensions
+        assert_eq!(config.dimension, 1024);
+    }
+
+    #[test]
+    fn test_default_dimension_for_model() {
+        // OpenAI models
+        assert_eq!(
+            default_dimension_for_model(Some("text-embedding-3-large")),
+            3072
+        );
+        assert_eq!(
+            default_dimension_for_model(Some("text-embedding-3-small")),
+            1536
+        );
+        assert_eq!(
+            default_dimension_for_model(Some("text-embedding-ada-002")),
+            1536
+        );
+
+        // Voyage models
+        assert_eq!(default_dimension_for_model(Some("voyage-code-2")), 1024);
+        assert_eq!(default_dimension_for_model(Some("voyage-code-3")), 1024);
+        assert_eq!(
+            default_dimension_for_model(Some("voyage-code-3-lite")),
+            1024
+        );
+        assert_eq!(default_dimension_for_model(Some("voyage-3")), 1024);
+        assert_eq!(default_dimension_for_model(Some("voyage-3-lite")), 1024);
+
+        // Unknown models fall back to 1536
+        assert_eq!(default_dimension_for_model(Some("unknown-model")), 1536);
+        assert_eq!(default_dimension_for_model(None), 1536);
+    }
+
+    #[test]
+    fn test_request_serialization_with_dimensions() {
+        // OpenAI text-embedding-3-large should include dimensions field
+        #[derive(serde::Serialize)]
+        struct Request<'a> {
+            model: &'a str,
+            input: &'a [String],
+            #[serde(skip_serializing_if = "Option::is_none")]
+            dimensions: Option<usize>,
+        }
+
+        let texts = vec!["hello".to_string()];
+
+        // With dimensions (OpenAI text-embedding-3-*)
+        let req = Request {
+            model: "text-embedding-3-large",
+            input: &texts,
+            dimensions: Some(3072),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(
+            json.contains("\"dimensions\":3072"),
+            "Should include dimensions field"
+        );
+
+        // Without dimensions (Voyage)
+        let req = Request {
+            model: "voyage-code-2",
+            input: &texts,
+            dimensions: None,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(
+            !json.contains("dimensions"),
+            "Should not include dimensions field for Voyage"
+        );
     }
 
     #[test]
     fn test_api_embedder_creation() {
-        // Test that embedders can be created (won't actually call APIs)
-        let _voyage = ApiEmbedder::voyage("test-key");
-        let _openai = ApiEmbedder::openai("test-key");
+        // Test that embedders can be created with correct dimensions
+        let voyage = ApiEmbedder::voyage("test-key");
+        assert_eq!(voyage.dimension, 1024);
+
+        let openai = ApiEmbedder::openai("test-key");
+        assert_eq!(openai.dimension, 1536);
+    }
+
+    #[test]
+    fn test_api_embedder_voyage_with_model_dimension() {
+        let embedder = ApiEmbedder::voyage_with_model("test-key", "voyage-code-3");
+        assert_eq!(embedder.dimension, 1024);
+    }
+
+    #[test]
+    fn test_api_embedder_openai_with_model_dimension() {
+        let embedder = ApiEmbedder::openai_with_model("test-key", "text-embedding-3-large", 3072);
+        assert_eq!(embedder.dimension, 3072);
     }
 
     #[test]
@@ -1639,5 +1769,158 @@ mod tests {
             // In real usage, timeout would be tested by connecting to a slow server
             assert!(embedder.api_key.is_some());
         }
+    }
+
+    #[test]
+    fn test_dimension_override_takes_precedence() {
+        // When a user specifies --neural-dimension, it should override auto-detection
+        let config = NeuralConfig {
+            enabled: true,
+            backend: "api".to_string(),
+            model_name: Some("text-embedding-3-large".to_string()),
+            dimension: 256, // User override: use reduced dimensions
+            ..Default::default()
+        };
+        // The config should store the override, not the model's native 3072
+        assert_eq!(config.dimension, 256);
+    }
+
+    #[test]
+    fn test_default_dimension_for_model_edge_cases() {
+        // Empty string model name
+        assert_eq!(default_dimension_for_model(Some("")), 1536);
+
+        // Model names with mixed case (should not match, falls to default)
+        assert_eq!(
+            default_dimension_for_model(Some("Text-Embedding-3-Large")),
+            1536
+        );
+
+        // Voyage model prefix variations
+        assert_eq!(
+            default_dimension_for_model(Some("voyage-code-2-lite")),
+            1024
+        );
+        assert_eq!(default_dimension_for_model(Some("voyage-finance-2")), 1024);
+        assert_eq!(default_dimension_for_model(Some("voyage-law-2")), 1024);
+
+        // Non-matching prefixes
+        assert_eq!(default_dimension_for_model(Some("my-voyage-model")), 1536);
+    }
+
+    #[test]
+    fn test_dimensions_field_in_embed_batch_request() {
+        // Verify that only OpenAI text-embedding-3-* models get the dimensions field
+        let openai_3_large = ApiEmbedder::openai_with_model("key", "text-embedding-3-large", 3072);
+        assert!(openai_3_large.model.starts_with("text-embedding-3-"));
+
+        let openai_3_small = ApiEmbedder::openai_with_model("key", "text-embedding-3-small", 1536);
+        assert!(openai_3_small.model.starts_with("text-embedding-3-"));
+
+        // Ada-002 should NOT get dimensions field
+        let ada = ApiEmbedder::custom(
+            "https://api.openai.com/v1/embeddings",
+            "text-embedding-ada-002",
+            Some("key"),
+            1536,
+        );
+        assert!(!ada.model.starts_with("text-embedding-3-"));
+
+        // Voyage should NOT get dimensions field
+        let voyage = ApiEmbedder::voyage("key");
+        assert!(!voyage.model.starts_with("text-embedding-3-"));
+    }
+
+    #[test]
+    fn test_vector_store_dimension_consistency() {
+        // Verify that the vector store dimension matches the embedder dimension
+        let store_128 = SimpleVectorStore::new(128);
+        let vec_128: Vec<f32> = (0..128).map(|i| i as f32).collect();
+        store_128.add("test", &vec_128);
+        let results = store_128.search(&vec_128, 1);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "test");
+
+        // Verify different dimension stores are independent
+        let store_3072 = SimpleVectorStore::new(3072);
+        let vec_3072: Vec<f32> = (0..3072).map(|i| i as f32 / 3072.0).collect();
+        store_3072.add("large_doc", &vec_3072);
+        let results = store_3072.search(&vec_3072, 1);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "large_doc");
+    }
+
+    #[test]
+    fn test_neural_config_with_explicit_dimension() {
+        // Simulates: --neural --neural-model text-embedding-3-large --neural-dimension 1536
+        // User wants to use reduced dimensions to save memory
+        let model_name = "text-embedding-3-large";
+        let user_dimension = 1536_usize; // Explicit override
+
+        let config = NeuralConfig {
+            enabled: true,
+            backend: "api".to_string(),
+            model_name: Some(model_name.to_string()),
+            dimension: user_dimension,
+            ..Default::default()
+        };
+
+        assert_eq!(config.dimension, 1536);
+        assert_ne!(
+            config.dimension,
+            default_dimension_for_model(Some(model_name))
+        );
+    }
+
+    #[test]
+    fn test_neural_config_without_dimension_override() {
+        // Simulates: --neural --neural-model text-embedding-3-large
+        // No --neural-dimension, so auto-detect from model
+        let model_name: Option<&str> = Some("text-embedding-3-large");
+        let auto_dimension = default_dimension_for_model(model_name);
+
+        let config = NeuralConfig {
+            enabled: true,
+            backend: "api".to_string(),
+            model_name: model_name.map(|s| s.to_string()),
+            dimension: auto_dimension,
+            ..Default::default()
+        };
+
+        assert_eq!(config.dimension, 3072);
+    }
+
+    #[test]
+    fn test_openai_embedder_with_reduced_dimensions() {
+        // text-embedding-3-large supports Matryoshka representation learning
+        // so dimensions can be reduced from 3072 to e.g. 256, 512, 1024
+        let embedder = ApiEmbedder::openai_with_model("key", "text-embedding-3-large", 256);
+        assert_eq!(embedder.dimension, 256);
+        assert_eq!(embedder.model, "text-embedding-3-large");
+        // This embedder would send dimensions: 256 in the API request
+        assert!(embedder.model.starts_with("text-embedding-3-"));
+    }
+
+    #[test]
+    fn test_custom_embedder_dimension_passthrough() {
+        // Custom endpoints should pass through whatever dimension the user configures
+        for dim in [128, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096] {
+            let embedder =
+                ApiEmbedder::custom("http://localhost:8080/embed", "local-model", None, dim);
+            assert_eq!(
+                embedder.dimension, dim,
+                "Dimension {dim} should be preserved"
+            );
+        }
+    }
+
+    #[test]
+    fn test_default_dimension_matches_default_model() {
+        // NeuralConfig's default model_name is None, but the engine defaults to voyage-code-2
+        // Verify the dimensions are consistent
+        let config = NeuralConfig::default();
+        // Default model is voyage-code-2 (hardcoded in NeuralConfig::default)
+        let expected_dim = default_dimension_for_model(config.model_name.as_deref());
+        assert_eq!(config.dimension, expected_dim);
     }
 }

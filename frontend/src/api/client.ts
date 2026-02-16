@@ -81,6 +81,8 @@ export class CodeIntelClient {
     if (request.include_excerpts !== undefined)
       params.set('include_excerpts', request.include_excerpts.toString());
     if (request.cluster_by) params.set('cluster_by', request.cluster_by);
+    if (request.max_nodes !== undefined)
+      params.set('max_nodes', request.max_nodes.toString());
 
     const response = await fetch(`${this.baseUrl}/graph?${params.toString()}`);
 
@@ -108,6 +110,7 @@ export class CodeIntelClient {
         include_security: request.include_security ?? false,
         include_excerpts: request.include_excerpts ?? false,
         cluster_by: request.cluster_by ?? 'none',
+        max_nodes: request.max_nodes,
         filter: request.filter,
       },
     });

@@ -21,6 +21,22 @@
           zstd
         ];
 
+        # Build the React frontend as a separate derivation.
+        # Only evaluated when withFrontend = true.
+        frontendDist = pkgs.buildNpmPackage {
+          pname = "narsil-mcp-frontend";
+          version = "1.5.0";
+          src = ./frontend;
+          npmDepsHash = pkgs.lib.fakeHash;
+          # The build script is "tsc -b && vite build"
+          buildPhase = ''
+            npm run build
+          '';
+          installPhase = ''
+            cp -r dist $out
+          '';
+        };
+
         mkPkg = { buildFeatures, withFrontend ? false, checksEnabled ? true }:
           pkgs.rustPlatform.buildRustPackage {
             pname = "narsil-mcp";
@@ -31,6 +47,14 @@
             cargoLock.lockFile = ./Cargo.lock;
 
             inherit nativeBuildInputs buildInputs;
+
+            # When building with frontend, copy the pre-built dist into the source
+            # tree before Cargo runs, so rust_embed's #[folder = "frontend/dist"]
+            # can find it.
+            preBuild = pkgs.lib.optionalString withFrontend ''
+              mkdir -p frontend/dist
+              cp -r ${frontendDist}/* frontend/dist/
+            '';
 
             buildFeatures = buildFeatures
               ++ pkgs.lib.optionals withFrontend [ "frontend" ];
@@ -84,6 +108,7 @@
             clippy
             rustfmt
             git
+            nodejs  # For frontend development
           ];
 
           RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";

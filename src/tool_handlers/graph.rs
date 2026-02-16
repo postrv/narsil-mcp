@@ -244,7 +244,7 @@ impl ToolHandler for GetCodeGraphHandler {
             graph.metadata.edge_count = graph.edges.len();
 
             // Serialize with truncation note
-            let mut result = serde_json::to_string_pretty(&graph)
+            let mut result = serde_json::to_string(&graph)
                 .map_err(|e| anyhow!("Failed to serialize graph: {}", e))?;
             // Append a note about truncation (outside the JSON, as a trailing comment)
             result.push_str(&format!(
@@ -254,8 +254,7 @@ impl ToolHandler for GetCodeGraphHandler {
             return Ok(result);
         }
 
-        serde_json::to_string_pretty(&graph)
-            .map_err(|e| anyhow!("Failed to serialize graph: {}", e))
+        serde_json::to_string(&graph).map_err(|e| anyhow!("Failed to serialize graph: {}", e))
     }
 }
 
