@@ -1,0 +1,475 @@
+# Rust Language-Specific Security Rules
+# These rules focus on Rust-specific vulnerabilities beyond the basic unsafe/unwrap/pointer rules in cwe-top25.yaml
+# Existing rules: RUST-001 (unsafe blocks), RUST-002 (unchecked unwrap), RUST-003 (raw pointers) in cwe-top25.yaml
+
+name: Rust Security Rules
+version: "1.0.0"
+description: Rust-specific security rules for FFI, command injection, crypto misuse, concurrency issues, and unsafe patterns
+
+rules:
+  # RUST-004: Command Injection via std::process::Command
+  - id: RUST-004
+    name: Rust Command Injection
+    severity: Critical
+    cwe: ["CWE-78"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Command::new\s*\(\s*&?\w+\s*\)'
+        - 'Command::new\s*\(\s*format!\s*\('
+        - '\.arg\s*\(\s*format!\s*\('
+        - '\.arg\s*\(\s*&?\w+\s*\)'
+        - '\.args\s*\(\s*&?\w+\s*\)'
+      safe_patterns:
+        - 'Command::new\s*\(\s*"[^"]*"\s*\)'
+        - '\.arg\s*\(\s*"[^"]*"\s*\)'
+        - '\.arg\s*\(\s*&\s*\d+'
+        - '\.arg\s*\(\s*\d+'
+    languages: ["rust"]
+    message: Potential command injection - variable input passed to Command::new or .arg() without validation
+    remediation: Use hardcoded command names with Command::new("literal"). Validate and sanitize all arguments. Avoid constructing commands from user input
+    enabled: true
+    tags: ["injection", "command", "rce"]
+
+  # RUST-005: SQL Injection via string formatting
+  - id: RUST-005
+    name: Rust SQL Injection
+    severity: Critical
+    cwe: ["CWE-89"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'format!\s*\(\s*"[^"]*SELECT\b'
+        - 'format!\s*\(\s*"[^"]*INSERT\b'
+        - 'format!\s*\(\s*"[^"]*UPDATE\b'
+        - 'format!\s*\(\s*"[^"]*DELETE\b'
+        - 'format!\s*\(\s*"[^"]*DROP\b'
+        - '&format!\s*\(\s*"[^"]*(?:WHERE|AND|OR)\b'
+        - 'query\s*\(\s*&format!'
+        - 'execute\s*\(\s*&format!'
+        - 'sql!\s*\(\s*&format!'
+      safe_patterns:
+        - 'sqlx::query!'
+        - 'sqlx::query_as!'
+        - 'diesel::'
+        - '\.bind\s*\('
+        - 'prepare\s*\('
+    languages: ["rust"]
+    message: Potential SQL injection via format! macro with SQL keywords - use parameterized queries
+    remediation: Use parameterized queries (sqlx::query!() with bind parameters, diesel query builder). Never format SQL strings with user input
+    enabled: true
+    tags: ["injection", "sql"]
+
+  # RUST-006: Transmute Usage
+  - id: RUST-006
+    name: Rust Unsafe Transmute
+    severity: High
+    cwe: ["CWE-704", "CWE-119"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'std::mem::transmute\b'
+        - 'mem::transmute\b'
+        - 'transmute_copy\b'
+      safe_patterns:
+        - '// SAFETY:'
+        - 'SAFETY:'
+    languages: ["rust"]
+    message: Use of transmute for unsafe type conversion - may cause undefined behavior if types are not compatible
+    remediation: Use safe conversion methods (From/Into traits, as casts for numeric types, TryFrom). If transmute is necessary, document SAFETY invariants
+    enabled: true
+    tags: ["memory", "unsafe", "type-safety"]
+
+  # RUST-007: Use-After-Free via ManuallyDrop or forget
+  - id: RUST-007
+    name: Rust Manual Memory Management
+    severity: High
+    cwe: ["CWE-416", "CWE-401"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'ManuallyDrop::new\b'
+        - 'ManuallyDrop::drop\b'
+        - 'ManuallyDrop::take\b'
+        - 'std::mem::forget\b'
+        - 'mem::forget\b'
+        - 'Box::from_raw\b'
+        - 'Box::into_raw\b'
+      safe_patterns:
+        - '// SAFETY:'
+        - 'SAFETY:'
+    languages: ["rust"]
+    message: Manual memory management bypasses Rust's ownership system and may cause use-after-free or memory leaks
+    remediation: Prefer RAII patterns and standard Drop implementations. If manual management is required, document SAFETY invariants carefully
+    enabled: true
+    tags: ["memory", "unsafe", "use-after-free"]
+
+  # RUST-008: Unchecked Arithmetic (integer overflow)
+  - id: RUST-008
+    name: Rust Unchecked Arithmetic
+    severity: Medium
+    cwe: ["CWE-190", "CWE-191"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'unchecked_add\b'
+        - 'unchecked_sub\b'
+        - 'unchecked_mul\b'
+        - 'unchecked_shl\b'
+        - 'unchecked_shr\b'
+        - 'wrapping_add\b'
+        - 'wrapping_sub\b'
+        - 'wrapping_mul\b'
+      safe_patterns:
+        - 'checked_add'
+        - 'checked_sub'
+        - 'checked_mul'
+        - 'saturating_add'
+        - 'saturating_sub'
+    languages: ["rust"]
+    message: Unchecked or wrapping arithmetic may cause integer overflow in release builds
+    remediation: Use checked_* or saturating_* methods for arithmetic that could overflow. In release mode, Rust wraps on overflow by default
+    enabled: true
+    tags: ["integer-overflow", "arithmetic"]
+
+  # RUST-009: Hardcoded Cryptographic Keys/Secrets
+  - id: RUST-009
+    name: Rust Hardcoded Crypto Key
+    severity: High
+    cwe: ["CWE-798", "CWE-321"]
+    owasp: ["A07:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'b"[A-Za-z0-9+/=]{16,}"'
+        - 'static\s+.*(?:KEY|SECRET|PASSWORD|TOKEN)\s*:\s*&?\[?(?:u8|str)\]?\s*='
+        - 'const\s+.*(?:KEY|SECRET|PASSWORD|TOKEN)\s*:\s*&?\[?(?:u8|str)\]?\s*='
+        - 'let\s+(?:mut\s+)?(?:api_key|secret_key|password|auth_token)\s*=\s*"'
+      safe_patterns:
+        - 'env::var'
+        - 'std::env'
+        - 'dotenv'
+        - 'config::'
+        - '_EXAMPLE'
+        - '_PLACEHOLDER'
+        - 'test'
+        - 'dummy'
+    languages: ["rust"]
+    message: Hardcoded cryptographic key or secret detected - credentials should not be in source code
+    remediation: Load secrets from environment variables (std::env::var), config files, or a secrets manager. Never commit credentials to source control
+    enabled: true
+    tags: ["secrets", "crypto", "credentials"]
+
+  # RUST-010: Weak Hashing (MD5/SHA1)
+  - id: RUST-010
+    name: Rust Weak Hash Algorithm
+    severity: Medium
+    cwe: ["CWE-327", "CWE-328"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'md5::compute\b'
+        - 'md5::Md5::new\b'
+        - 'Md5::new\b'
+        - 'md5::Context'
+        - 'use\s+md5\b'
+        - 'sha1::Sha1'
+        - 'Sha1::new\b'
+        - 'sha1::compute\b'
+      safe_patterns:
+        - 'sha2::'
+        - 'sha256'
+        - 'sha512'
+        - 'blake2'
+        - 'blake3'
+        - 'Sha256'
+        - 'Sha512'
+    languages: ["rust"]
+    message: Use of weak hash algorithm (MD5/SHA1) - not suitable for security purposes
+    remediation: Use SHA-256, SHA-512, BLAKE2, or BLAKE3 for cryptographic hashing. For password hashing, use argon2, bcrypt, or scrypt
+    enabled: true
+    tags: ["crypto", "hashing"]
+
+  # RUST-011: Insecure Random Number Generation
+  - id: RUST-011
+    name: Rust Insecure Random
+    severity: Medium
+    cwe: ["CWE-330", "CWE-338"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'rand::thread_rng\b'
+        - 'rand::random\b'
+        - 'SmallRng::from_entropy\b'
+        - 'StdRng::seed_from_u64\b'
+        - 'rand::rngs::SmallRng'
+      safe_patterns:
+        - 'OsRng'
+        - 'rand::rngs::OsRng'
+        - 'getrandom'
+        - 'ring::rand'
+    languages: ["rust"]
+    message: Use of non-cryptographic random number generator - may be predictable
+    remediation: For security-sensitive operations (tokens, keys, nonces), use OsRng or the getrandom crate. rand::thread_rng() uses ChaCha but is not guaranteed CSPRNG across all platforms
+    enabled: true
+    tags: ["crypto", "random"]
+
+  # RUST-012: Unsafe FFI without validation
+  - id: RUST-012
+    name: Rust Unsafe FFI Call
+    severity: High
+    cwe: ["CWE-119", "CWE-20"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'extern\s+"C"\s*\{'
+        - 'extern\s+"C"\s+fn\b'
+        - '#\[link\('
+        - 'CString::new\b'
+        - 'CStr::from_ptr\b'
+        - 'std::ffi::c_void'
+      safe_patterns:
+        - '// SAFETY:'
+        - 'SAFETY:'
+        - 'assert!'
+        - 'is_null'
+        - 'NonNull'
+    languages: ["rust"]
+    message: FFI boundary requires careful validation - data crossing language boundaries may violate safety invariants
+    remediation: Validate all data at FFI boundaries. Check for null pointers, validate string encoding, ensure proper lifetime management. Document SAFETY invariants
+    enabled: true
+    tags: ["ffi", "unsafe", "memory"]
+
+  # RUST-013: Path Traversal
+  - id: RUST-013
+    name: Rust Path Traversal
+    severity: High
+    cwe: ["CWE-22"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Path::new\s*\(\s*&?\w+\s*\)'
+        - 'PathBuf::from\s*\(\s*&?\w+\s*\)'
+        - 'fs::read_to_string\s*\(\s*&?\w+\s*\)'
+        - 'fs::read\s*\(\s*&?\w+\s*\)'
+        - 'fs::write\s*\(\s*&?\w+\s*,'
+        - 'File::open\s*\(\s*&?\w+\s*\)'
+        - 'File::create\s*\(\s*&?\w+\s*\)'
+      safe_patterns:
+        - 'canonicalize'
+        - 'starts_with'
+        - 'strip_prefix'
+        - 'Path::new\s*\(\s*"[^"]*"\s*\)'
+        - 'File::open\s*\(\s*"[^"]*"\s*\)'
+    languages: ["rust"]
+    message: File path constructed from variable input - may allow directory traversal
+    remediation: Validate file paths with canonicalize() and starts_with() to ensure they stay within intended directories. Never construct paths directly from user input
+    enabled: true
+    tags: ["path-traversal", "filesystem"]
+
+  # RUST-014: TOCTOU (Time-of-check Time-of-use) Race Condition
+  - id: RUST-014
+    name: Rust TOCTOU Race Condition
+    severity: Medium
+    cwe: ["CWE-362", "CWE-367"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - '\.exists\(\).*\n.*(?:File::open|File::create|fs::read|fs::write|fs::remove)'
+        - '\.is_file\(\).*\n.*(?:File::open|fs::read)'
+        - '\.is_dir\(\).*\n.*(?:fs::create_dir|fs::remove_dir)'
+        - 'metadata\(\).*\n.*(?:File::open|File::create)'
+      safe_patterns:
+        - 'fs::create_dir_all'
+        - 'OpenOptions::new'
+    languages: ["rust"]
+    message: Potential TOCTOU race condition - checking file state before accessing it allows a window for exploitation
+    remediation: Use atomic operations (OpenOptions with create_new), or handle errors from the operation directly instead of checking first
+    enabled: true
+    tags: ["race-condition", "filesystem", "toctou"]
+
+  # RUST-015: Panic in Library Code
+  - id: RUST-015
+    name: Rust Panic in Library Code
+    severity: Medium
+    cwe: ["CWE-248"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'panic!\s*\('
+        - 'unreachable!\s*\('
+        - '\[\s*\w+\s*\]'
+      safe_patterns:
+        - '#\[cfg\(test\)\]'
+        - '#\[test\]'
+        - 'debug_assert'
+        - 'assert_eq!'
+        - 'assert_ne!'
+        - 'assert!'
+    languages: ["rust"]
+    message: Explicit panic or unchecked indexing in library code may cause denial of service
+    remediation: Return Result/Option instead of panicking. Use .get() for safe indexing. Reserve panics for truly unrecoverable states
+    enabled: true
+    tags: ["panic", "dos", "error-handling"]
+
+  # RUST-016: Unvalidated Deserialization
+  - id: RUST-016
+    name: Rust Unvalidated Deserialization
+    severity: High
+    cwe: ["CWE-502"]
+    owasp: ["A08:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'serde_json::from_str\b'
+        - 'serde_json::from_slice\b'
+        - 'serde_json::from_reader\b'
+        - 'serde_yaml::from_str\b'
+        - 'serde_yaml::from_reader\b'
+        - 'bincode::deserialize\b'
+        - 'rmp_serde::from_slice\b'
+        - 'toml::from_str\b'
+        - 'ciborium::from_reader\b'
+      safe_patterns:
+        - 'serde_json::from_value'
+        - 'validate'
+        - 'Validate'
+        - '#\[validate'
+    languages: ["rust"]
+    message: Deserialization of untrusted data without validation may allow injection of malicious payloads
+    remediation: Validate deserialized data before use. Use the validator crate for struct validation. Consider size limits for untrusted input
+    enabled: true
+    tags: ["deserialization", "injection"]
+
+  # RUST-017: TLS/SSL Configuration Issues
+  - id: RUST-017
+    name: Rust Insecure TLS Configuration
+    severity: High
+    cwe: ["CWE-295", "CWE-319"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'danger_accept_invalid_certs\s*\(\s*true\s*\)'
+        - 'danger_accept_invalid_hostnames\s*\(\s*true\s*\)'
+        - 'set_verify\s*\(\s*SslVerifyMode::NONE'
+        - 'verify_peer\s*\(\s*false\s*\)'
+        - 'VERIFY_NONE'
+        - 'tls_insecure_skip_verify'
+        - 'danger_no_verify'
+      safe_patterns:
+        - '#\[cfg\(test\)\]'
+        - '#\[test\]'
+    languages: ["rust"]
+    message: TLS certificate verification disabled - allows man-in-the-middle attacks
+    remediation: Always verify TLS certificates in production. Only disable verification in test environments
+    enabled: true
+    tags: ["tls", "crypto", "mitm"]
+
+  # RUST-018: Regex Denial of Service (ReDoS)
+  - id: RUST-018
+    name: Rust ReDoS via User-Controlled Regex
+    severity: Medium
+    cwe: ["CWE-1333", "CWE-400"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Regex::new\s*\(\s*&?\w+\s*\)'
+        - 'Regex::new\s*\(\s*&format!'
+        - 'RegexSet::new\s*\(\s*&?\w+\s*\)'
+      safe_patterns:
+        - 'Regex::new\s*\(\s*"'
+        - 'Regex::new\s*\(\s*r"'
+        - 'Regex::new\s*\(\s*r#"'
+        - 'regex::Regex'
+    languages: ["rust"]
+    message: Regex compiled from variable input may be vulnerable to ReDoS (catastrophic backtracking)
+    remediation: Use regex crate (which guarantees linear time). If accepting user-provided patterns, set size limits and use regex::RegexBuilder with size_limit
+    enabled: true
+    tags: ["dos", "regex"]
+
+  # RUST-019: Shared Mutable State Without Synchronization
+  - id: RUST-019
+    name: Rust Shared Mutable State
+    severity: Medium
+    cwe: ["CWE-362", "CWE-366"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'static\s+mut\s+'
+        - 'lazy_static!\s*\{[^}]*Mutex'
+      safe_patterns:
+        - 'AtomicBool'
+        - 'AtomicUsize'
+        - 'AtomicI32'
+        - 'AtomicU64'
+        - 'OnceLock'
+        - 'OnceCell'
+        - 'LazyLock'
+    languages: ["rust"]
+    message: Mutable static variable requires unsafe to access and risks data races
+    remediation: Use thread-safe wrappers (Mutex, RwLock, Atomic types) or OnceLock/LazyLock for lazy initialization
+    enabled: true
+    tags: ["concurrency", "race-condition"]
+
+  # RUST-020: SSRF via Unvalidated URL
+  - id: RUST-020
+    name: Rust Server-Side Request Forgery
+    severity: High
+    cwe: ["CWE-918"]
+    owasp: ["A10:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'reqwest::get\s*\(\s*&?\w+\s*\)'
+        - 'Client::new\(\).*\.get\s*\(\s*&?\w+\s*\)'
+        - 'hyper::Uri::try_from\s*\(\s*&?\w+\s*\)'
+        - 'Url::parse\s*\(\s*&?\w+\s*\)'
+      safe_patterns:
+        - 'reqwest::get\s*\(\s*"'
+        - '\.get\s*\(\s*"'
+        - 'Url::parse\s*\(\s*"'
+        - 'starts_with\s*\(\s*"http'
+    languages: ["rust"]
+    message: HTTP request with user-controlled URL may allow SSRF to access internal services
+    remediation: Validate URLs against an allowlist. Block requests to private IP ranges (10.x, 172.16-31.x, 192.168.x, 127.x, ::1). Use URL parsing to verify the host
+    enabled: true
+    tags: ["ssrf", "network"]
+
+  # RUST-021: Unsafe Slice/Buffer Operations
+  - id: RUST-021
+    name: Rust Unsafe Slice Operations
+    severity: High
+    cwe: ["CWE-119", "CWE-125", "CWE-787"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'get_unchecked\b'
+        - 'get_unchecked_mut\b'
+        - 'slice::from_raw_parts\b'
+        - 'from_raw_parts\b'
+        - 'from_raw_parts_mut\b'
+        - 'set_len\b'
+        - 'from_utf8_unchecked\b'
+      safe_patterns:
+        - '// SAFETY:'
+        - 'SAFETY:'
+    languages: ["rust"]
+    message: Unsafe buffer/slice operation bypasses bounds checking - may cause buffer overflow or read out-of-bounds
+    remediation: Use safe alternatives (.get(), .get_mut()) with bounds checking. If unsafe is required, document SAFETY invariants and ensure bounds are verified
+    enabled: true
+    tags: ["memory", "buffer-overflow", "unsafe"]

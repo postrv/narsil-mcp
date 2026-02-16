@@ -75,7 +75,7 @@ impl ConfigLoader {
     /// Create a new config loader with default settings
     pub fn new() -> Self {
         let default_config =
-            serde_yaml::from_str(DEFAULT_CONFIG).expect("Default config should always be valid");
+            serde_saphyr::from_str(DEFAULT_CONFIG).expect("Default config should always be valid");
 
         Self {
             default_config,
@@ -147,7 +147,7 @@ impl ConfigLoader {
         let contents = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
-        let config: ToolConfig = serde_yaml::from_str(&contents)
+        let config: ToolConfig = serde_saphyr::from_str(&contents)
             .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
 
         Ok(config)
@@ -193,7 +193,7 @@ impl ConfigLoader {
         let contents = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
-        let config: ToolConfig = serde_yaml::from_str(&contents)
+        let config: ToolConfig = serde_saphyr::from_str(&contents)
             .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
 
         Ok(Some(config))
@@ -315,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_default_config_parses() {
-        let config: ToolConfig = serde_yaml::from_str(DEFAULT_CONFIG).unwrap();
+        let config: ToolConfig = serde_saphyr::from_str(DEFAULT_CONFIG).unwrap();
         assert_eq!(config.version, "1.0");
         assert!(config.tools.categories.contains_key("Repository"));
         assert!(config.tools.categories.contains_key("Symbols"));

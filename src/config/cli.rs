@@ -143,7 +143,7 @@ fn cmd_show(format: OutputFormat, _repo: Option<PathBuf>) -> Result<()> {
 
     match format {
         OutputFormat::Yaml => {
-            let yaml = serde_yaml::to_string(&config)?;
+            let yaml = serde_saphyr::to_string(&config)?;
             println!("{}", yaml);
         }
         OutputFormat::Json => {
@@ -204,7 +204,7 @@ fn cmd_validate(path: PathBuf, verbose: bool) -> Result<()> {
         .with_context(|| format!("Failed to read config file: {:?}", path))?;
 
     let config: ToolConfig =
-        serde_yaml::from_str(&content).context("Failed to parse YAML config")?;
+        serde_saphyr::from_str(&content).context("Failed to parse YAML config")?;
 
     // Validate the config
     match validate_config(&config) {
@@ -406,7 +406,7 @@ fn cmd_export(resolved: bool, format: OutputFormat) -> Result<()> {
 
     match format {
         OutputFormat::Yaml => {
-            let yaml = serde_yaml::to_string(&config)?;
+            let yaml = serde_saphyr::to_string(&config)?;
             println!("{}", yaml);
         }
         OutputFormat::Json => {
@@ -453,7 +453,7 @@ fn cmd_tools_list(category: Option<String>, format: OutputFormat) -> Result<()> 
                     })
                 })
                 .collect();
-            let yaml = serde_yaml::to_string(&tools_data)?;
+            let yaml = serde_saphyr::to_string(&tools_data)?;
             println!("{}", yaml);
         }
         OutputFormat::Json => {
@@ -522,7 +522,7 @@ fn cmd_tools_search(query: String, format: OutputFormat) -> Result<()> {
                 .collect();
 
             if format == OutputFormat::Yaml {
-                let yaml = serde_yaml::to_string(&tools_data)?;
+                let yaml = serde_saphyr::to_string(&tools_data)?;
                 println!("{}", yaml);
             } else {
                 let json = serde_json::to_string_pretty(&tools_data)?;
@@ -551,7 +551,7 @@ fn cmd_tools_show(tool: String, format: OutputFormat) -> Result<()> {
                 "required_flags": meta.required_flags.iter().map(|f| format!("{:?}", f)).collect::<Vec<_>>(),
                 "input_schema": meta.input_schema,
             });
-            let yaml = serde_yaml::to_string(&data)?;
+            let yaml = serde_saphyr::to_string(&data)?;
             println!("{}", yaml);
         }
         OutputFormat::Json => {

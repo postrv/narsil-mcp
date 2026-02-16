@@ -217,7 +217,7 @@ mod tests {
 version: "1.0"
 preset: "full"
 "#;
-        let config: ToolConfig = serde_yaml::from_str(yaml).unwrap();
+        let config: ToolConfig = serde_saphyr::from_str(yaml).unwrap();
         assert_eq!(config.version, "1.0");
         assert_eq!(config.preset, Some("full".to_string()));
         assert!(config.tools.categories.is_empty());
@@ -228,7 +228,7 @@ preset: "full"
     fn test_minimal_preset_config() {
         // Even more minimal - just preset
         let yaml = r#"preset: "minimal""#;
-        let config: ToolConfig = serde_yaml::from_str(yaml).unwrap();
+        let config: ToolConfig = serde_saphyr::from_str(yaml).unwrap();
         assert_eq!(config.preset, Some("minimal".to_string()));
         assert_eq!(config.version, "1.0"); // Should use default
     }

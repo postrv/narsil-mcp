@@ -119,7 +119,7 @@ pub enum ViewType {
 }
 
 /// Options for building graphs, consolidating multiple parameters
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct GraphBuildOptions<'a> {
     pub repo: &'a str,
     pub root: Option<&'a str>,
@@ -206,19 +206,10 @@ impl ToolHandler for GetCodeGraphHandler {
 
         let graph = match view {
             ViewType::Call => self.build_call_graph(engine, &options).await?,
-            ViewType::Import => {
-                self.build_import_graph(engine, repo, root, depth, direction, cluster_by)
-                    .await?
-            }
-            ViewType::Symbol => {
-                self.build_symbol_graph(engine, repo, root, depth, cluster_by)
-                    .await?
-            }
+            ViewType::Import => self.build_import_graph(engine, &options).await?,
+            ViewType::Symbol => self.build_symbol_graph(engine, &options).await?,
             ViewType::Hybrid => self.build_hybrid_graph(engine, &options).await?,
-            ViewType::Flow => {
-                self.build_flow_graph(engine, repo, root, cluster_by)
-                    .await?
-            }
+            ViewType::Flow => self.build_flow_graph(engine, &options).await?,
         };
 
         // Optionally overlay security information
@@ -427,14 +418,12 @@ impl GetCodeGraphHandler {
     async fn build_import_graph(
         &self,
         engine: &CodeIntelEngine,
-        repo: &str,
-        _root: Option<&str>,
-        _depth: usize,
-        _direction: &str,
-        cluster_by: &str,
+        options: &GraphBuildOptions<'_>,
     ) -> Result<CodeGraph> {
         // Get import graph data through engine
-        let import_data = engine.get_import_graph_for_viz(repo).await?;
+        let import_data = engine
+            .get_import_graph_for_viz(options.repo, options.max_nodes)
+            .await?;
 
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
@@ -442,8 +431,7 @@ impl GetCodeGraphHandler {
         let mut edge_id = 0;
 
         for (file, imports) in &import_data.files {
-            if nodes.len() >= 200 {
-                // Limit import graph nodes
+            if nodes.len() >= options.max_nodes {
                 break;
             }
             let file_str = file.to_string();
@@ -499,7 +487,7 @@ impl GetCodeGraphHandler {
         }
 
         // Build clusters if requested
-        let clusters = if cluster_by == "file" {
+        let clusters = if options.cluster_by == "file" {
             // For import graphs, cluster by directory instead of file
             Some(build_directory_clusters(&nodes))
         } else {
@@ -508,7 +496,7 @@ impl GetCodeGraphHandler {
 
         Ok(CodeGraph {
             metadata: GraphMetadata {
-                repo: repo.to_string(),
+                repo: options.repo.to_string(),
                 view: "import".to_string(),
                 generated_at: chrono::Utc::now().to_rfc3339(),
                 node_count: nodes.len(),
@@ -527,16 +515,16 @@ impl GetCodeGraphHandler {
     async fn build_symbol_graph(
         &self,
         engine: &CodeIntelEngine,
-        repo: &str,
-        root: Option<&str>,
-        _depth: usize,
-        cluster_by: &str,
+        options: &GraphBuildOptions<'_>,
     ) -> Result<CodeGraph> {
-        let symbol_name =
-            root.ok_or_else(|| anyhow!("Symbol graph requires 'root' parameter (symbol name)"))?;
+        let symbol_name = options
+            .root
+            .ok_or_else(|| anyhow!("Symbol graph requires 'root' parameter (symbol name)"))?;
 
         // Get symbol data through engine
-        let symbol_data = engine.get_symbol_graph_for_viz(repo, symbol_name).await?;
+        let symbol_data = engine
+            .get_symbol_graph_for_viz(options.repo, symbol_name, options.max_nodes)
+            .await?;
 
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
@@ -580,7 +568,7 @@ impl GetCodeGraphHandler {
         }
 
         // Build clusters if requested
-        let clusters = if cluster_by == "file" {
+        let clusters = if options.cluster_by == "file" {
             Some(build_file_clusters(&nodes))
         } else {
             None
@@ -588,7 +576,7 @@ impl GetCodeGraphHandler {
 
         Ok(CodeGraph {
             metadata: GraphMetadata {
-                repo: repo.to_string(),
+                repo: options.repo.to_string(),
                 view: "symbol".to_string(),
                 generated_at: chrono::Utc::now().to_rfc3339(),
                 node_count: nodes.len(),
@@ -609,19 +597,21 @@ impl GetCodeGraphHandler {
         engine: &CodeIntelEngine,
         options: &GraphBuildOptions<'_>,
     ) -> Result<CodeGraph> {
-        // Build both graphs
-        let call_graph = self.build_call_graph(engine, options).await?;
+        // Split max_nodes budget: 60% call graph, 40% import graph
+        let call_budget = (options.max_nodes * 3) / 5;
+        let import_budget = options.max_nodes - call_budget;
 
-        let import_graph = self
-            .build_import_graph(
-                engine,
-                options.repo,
-                options.root,
-                options.depth,
-                options.direction,
-                options.cluster_by,
-            )
-            .await?;
+        let call_options = GraphBuildOptions {
+            max_nodes: call_budget,
+            ..*options
+        };
+        let import_options = GraphBuildOptions {
+            max_nodes: import_budget,
+            ..*options
+        };
+
+        let call_graph = self.build_call_graph(engine, &call_options).await?;
+        let import_graph = self.build_import_graph(engine, &import_options).await?;
 
         // Merge nodes (dedup by id)
         let mut nodes_map: HashMap<String, GraphNode> = HashMap::new();
@@ -671,15 +661,14 @@ impl GetCodeGraphHandler {
     async fn build_flow_graph(
         &self,
         engine: &CodeIntelEngine,
-        repo: &str,
-        root: Option<&str>,
-        _cluster_by: &str,
+        options: &GraphBuildOptions<'_>,
     ) -> Result<CodeGraph> {
-        let function =
-            root.ok_or_else(|| anyhow!("Flow graph requires 'root' parameter (function name)"))?;
+        let function = options
+            .root
+            .ok_or_else(|| anyhow!("Flow graph requires 'root' parameter (function name)"))?;
 
         // Get control flow graph through engine
-        let cfg_data = engine.get_cfg_for_viz(repo, function).await?;
+        let cfg_data = engine.get_cfg_for_viz(options.repo, function).await?;
 
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
@@ -716,7 +705,7 @@ impl GetCodeGraphHandler {
 
         Ok(CodeGraph {
             metadata: GraphMetadata {
-                repo: repo.to_string(),
+                repo: options.repo.to_string(),
                 view: "flow".to_string(),
                 generated_at: chrono::Utc::now().to_rfc3339(),
                 node_count: nodes.len(),

@@ -1315,7 +1315,11 @@ impl CodeIntelEngine {
         }
 
         // Sort by relevance and take top results
-        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap());
+        results.sort_by(|a, b| {
+            b.relevance_score
+                .partial_cmp(&a.relevance_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(max_results);
 
         // Collect dependent files for smart invalidation
@@ -3683,8 +3687,16 @@ impl CodeIntelEngine {
                 let content = file_entry.value();
                 let file_path_str = file_path.to_string_lossy().to_string();
 
-                // Chunk the file
-                let chunks = chunker.chunk_file(content, &file_path_str);
+                // Chunk the file (catch panics from malformed UTF-8 boundaries)
+                let chunks = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    chunker.chunk_file(content, &file_path_str)
+                })) {
+                    Ok(chunks) => chunks,
+                    Err(_) => {
+                        tracing::warn!("Skipping file due to chunking error: {}", file_path_str);
+                        continue;
+                    }
+                };
 
                 // Index each chunk
                 for chunk in chunks {
@@ -3799,7 +3811,15 @@ impl CodeIntelEngine {
                 let content = file_entry.value();
                 let file_path_str = file_path.to_string_lossy().to_string();
 
-                let chunks = chunker.chunk_file(content, &file_path_str);
+                let chunks = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    chunker.chunk_file(content, &file_path_str)
+                })) {
+                    Ok(chunks) => chunks,
+                    Err(_) => {
+                        tracing::warn!("Skipping file due to chunking error: {}", file_path_str);
+                        continue;
+                    }
+                };
 
                 for chunk in chunks {
                     // Filter by type if specified
@@ -3982,7 +4002,15 @@ impl CodeIntelEngine {
             let content = file_entry.value();
             let file_path_str = file_path.to_string_lossy().to_string();
 
-            let chunks = chunker.chunk_file(content, &file_path_str);
+            let chunks = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                chunker.chunk_file(content, &file_path_str)
+            })) {
+                Ok(chunks) => chunks,
+                Err(_) => {
+                    tracing::warn!("Skipping file due to chunking error: {}", file_path_str);
+                    continue;
+                }
+            };
             all_chunks.extend(chunks);
         }
 
@@ -6684,56 +6712,83 @@ impl CodeIntelEngine {
     }
 
     /// Get import graph data for visualization
+    ///
+    /// Uses the cached symbol and file data instead of re-walking the filesystem.
+    ///
+    /// # Arguments
+    /// * `repo` - Repository name
+    /// * `max_nodes` - Maximum number of file nodes to include (early exit)
+    ///
+    /// # Errors
+    /// Returns an error if the repository is not indexed
     pub async fn get_import_graph_for_viz(
         &self,
         repo: &str,
+        max_nodes: usize,
     ) -> Result<crate::tool_handlers::graph::ImportGraphData> {
         use std::collections::HashMap;
 
         let repo_path = self.get_repo_path(repo)?;
 
-        // Build import graph by parsing files directly
-        let mut files: HashMap<String, Vec<String>> = HashMap::new();
+        // Use cached symbols to get unique file paths (same approach as get_import_graph)
+        let symbols = self
+            .symbols
+            .get(repo)
+            .map(|s| s.clone())
+            .unwrap_or_default();
 
-        // Walk all files in the repo
-        for entry in walkdir::WalkDir::new(&repo_path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
+        let unique_files: std::collections::HashSet<_> =
+            symbols.iter().map(|s| s.file_path.clone()).collect();
+
+        let mut files: HashMap<String, Vec<String>> = HashMap::new();
+        let mut node_count = 0;
+
+        for rel_path in unique_files {
+            if node_count >= max_nodes {
+                break;
             }
 
-            let path_str = path.to_string_lossy().to_string();
-            let relative_path = path
-                .strip_prefix(&repo_path)
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or(path_str.clone());
+            // Try the file_cache first, fall back to disk read
+            let abs_path = repo_path.join(&rel_path);
+            let content = if let Some(cached) = self.file_cache.get(&abs_path) {
+                cached.clone()
+            } else if let Ok(content) = std::fs::read_to_string(&abs_path) {
+                std::sync::Arc::new(content)
+            } else {
+                continue;
+            };
 
-            if let Ok(content) = std::fs::read_to_string(path) {
-                let imports = parse_imports_from_content(&content, &relative_path);
-                let import_paths: Vec<String> =
-                    imports.iter().map(|i| i.import_path.clone()).collect();
+            let imports = parse_imports_from_content(&content, &rel_path);
+            let import_paths: Vec<String> = imports.iter().map(|i| i.import_path.clone()).collect();
 
-                if !import_paths.is_empty() {
-                    files.insert(relative_path, import_paths);
-                }
+            if !import_paths.is_empty() {
+                node_count += 1 + import_paths.len(); // source file + targets
+                files.insert(rel_path, import_paths);
             }
         }
 
-        // For now, skip complex cycle detection
         let cycles: Vec<Vec<String>> = Vec::new();
 
         Ok(crate::tool_handlers::graph::ImportGraphData { files, cycles })
     }
 
     /// Get symbol graph data for visualization
+    ///
+    /// Iterates the file cache directly to find references instead of round-tripping
+    /// through the markdown-formatted `find_references` output.
+    ///
+    /// # Arguments
+    /// * `repo` - Repository name
+    /// * `symbol_name` - Symbol to find references for
+    /// * `max_nodes` - Maximum number of reference nodes to include
+    ///
+    /// # Errors
+    /// Returns an error if the repository is not indexed or the symbol is not found
     pub async fn get_symbol_graph_for_viz(
         &self,
         repo: &str,
         symbol_name: &str,
+        max_nodes: usize,
     ) -> Result<crate::tool_handlers::graph::SymbolGraphData> {
         // Find the symbol definition
         let symbols = self
@@ -6746,39 +6801,67 @@ impl CodeIntelEngine {
             .find(|s| s.name == symbol_name || s.name.ends_with(&format!("::{}", symbol_name)))
             .ok_or_else(|| anyhow!("Symbol not found: {}", symbol_name))?;
 
-        // Get references
-        let refs_output = self.find_references(repo, symbol_name, false, None).await?;
+        let definition = crate::tool_handlers::graph::SymbolDefinition {
+            id: target_symbol.name.clone(),
+            kind: format!("{:?}", target_symbol.kind).to_lowercase(),
+            file_path: target_symbol.file_path.clone(),
+            line: target_symbol.start_line,
+        };
 
-        // Parse references from markdown output (simplified)
+        // Iterate file_cache directly to find references (same logic as text_search_references)
+        let repo_path = self.get_repo_path(repo)?;
         let mut references = Vec::new();
-        for line in refs_output.lines() {
-            if line.contains("- `") && line.contains(":`") {
-                // Parse format: - `path/file.rs:123`: context
-                if let Some(path_part) = line.split('`').nth(1) {
-                    if let Some((file, line_str)) = path_part.rsplit_once(':') {
-                        if let Ok(line_num) = line_str.parse::<usize>() {
-                            references.push(crate::tool_handlers::graph::SymbolReference {
-                                file_path: file.to_string(),
-                                line: line_num,
-                            });
-                        }
-                    }
+
+        // Reserve one node for the definition itself
+        let max_refs = max_nodes.saturating_sub(1);
+
+        for entry in self.file_cache.iter() {
+            if references.len() >= max_refs {
+                break;
+            }
+
+            let file_path = entry.key();
+            if !file_path.starts_with(&repo_path) {
+                continue;
+            }
+
+            let rel_path = file_path
+                .strip_prefix(&repo_path)
+                .unwrap_or(file_path)
+                .to_string_lossy()
+                .to_string();
+
+            let content = entry.value();
+            for (line_num, line) in content.lines().enumerate() {
+                if references.len() >= max_refs {
+                    break;
+                }
+                if line.contains(symbol_name) {
+                    references.push(crate::tool_handlers::graph::SymbolReference {
+                        file_path: rel_path.clone(),
+                        line: line_num + 1,
+                    });
                 }
             }
         }
 
         Ok(crate::tool_handlers::graph::SymbolGraphData {
-            definition: crate::tool_handlers::graph::SymbolDefinition {
-                id: target_symbol.name.clone(),
-                kind: format!("{:?}", target_symbol.kind).to_lowercase(),
-                file_path: target_symbol.file_path.clone(),
-                line: target_symbol.start_line,
-            },
+            definition,
             references,
         })
     }
 
     /// Get control flow graph data for visualization
+    ///
+    /// Uses the real `cfg::analyze_function` builder to produce actual basic blocks
+    /// and control flow edges instead of a single-block stub.
+    ///
+    /// # Arguments
+    /// * `repo` - Repository name
+    /// * `function` - Function name to analyze
+    ///
+    /// # Errors
+    /// Returns an error if the repository, function, or file is not found, or if parsing fails
     pub async fn get_cfg_for_viz(
         &self,
         repo: &str,
@@ -6803,24 +6886,100 @@ impl CodeIntelEngine {
         let full_path = validate_path(&repo_meta.path, &func_symbol.file_path)?;
         let content = std::fs::read_to_string(&full_path)?;
 
-        // Extract function body for the CFG visualization
-        let lines: Vec<&str> = content.lines().collect();
-        let start = func_symbol.start_line.saturating_sub(1);
-        let end = func_symbol.end_line.min(lines.len());
-        let function_code = lines[start..end].join("\n");
+        // Parse the file with tree-sitter (same approach as get_control_flow)
+        let parsed = self.parser.parse_file(&full_path, &content)?;
+        let tree = parsed
+            .tree
+            .as_ref()
+            .ok_or_else(|| anyhow!("Failed to parse file"))?;
 
-        // Create a simplified CFG representation
-        // For V1, we'll just show the function as a single block
-        let blocks = vec![crate::tool_handlers::graph::CfgBlock {
-            id: "block_0".to_string(),
-            label: format!("{} (entry)", function),
-            block_type: "entry".to_string(),
-            start_line: func_symbol.start_line,
-            code: function_code,
-        }];
+        // Build CFGs for all functions in the file
+        let cfgs = cfg::analyze_function(tree, &content, &func_symbol.file_path)?;
 
-        // No edges for single-block simplified CFG
-        let edges = Vec::new();
+        // Find the requested function's CFG
+        let cfg_result = cfgs
+            .iter()
+            .find(|c| c.function_name == function || c.function_name == func_symbol.name);
+
+        let cfg_result = match cfg_result {
+            Some(c) => c,
+            None => {
+                // Fallback: try partial match
+                cfgs.iter()
+                    .find(|c| {
+                        c.function_name.ends_with(&format!("::{}", function))
+                            || function.ends_with(&format!("::{}", c.function_name))
+                            || c.function_name.contains(function)
+                    })
+                    .ok_or_else(|| {
+                        let available: Vec<_> =
+                            cfgs.iter().map(|c| c.function_name.as_str()).collect();
+                        anyhow!(
+                            "Function '{}' not found in CFG analysis. Available: {:?}",
+                            function,
+                            available
+                        )
+                    })?
+            }
+        };
+
+        // Convert cfg::BasicBlock → graph::CfgBlock
+        let source_lines: Vec<&str> = content.lines().collect();
+        let mut blocks = Vec::new();
+        for (id, block) in &cfg_result.blocks {
+            let block_type = if block.is_entry {
+                "entry"
+            } else if block.is_exit {
+                "exit"
+            } else {
+                match &block.terminator {
+                    cfg::Terminator::Branch { .. } => "branch",
+                    cfg::Terminator::Loop => "loop",
+                    cfg::Terminator::Return => "return",
+                    cfg::Terminator::Unreachable => "unreachable",
+                    _ => "basic",
+                }
+            };
+
+            // Extract code from source lines
+            let start_idx = block.start_line.saturating_sub(1);
+            let end_idx = block.end_line.min(source_lines.len());
+            let code = if start_idx < end_idx {
+                source_lines[start_idx..end_idx].join("\n")
+            } else {
+                block.label.clone()
+            };
+
+            blocks.push(crate::tool_handlers::graph::CfgBlock {
+                id: format!("block_{}", id),
+                label: block.label.clone(),
+                block_type: block_type.to_string(),
+                start_line: block.start_line,
+                code,
+            });
+        }
+
+        // Convert cfg::CfgEdge → graph::CfgEdge
+        let mut edges = Vec::new();
+        for edge in &cfg_result.edges {
+            let (edge_type, condition, is_back_edge) = match &edge.kind {
+                cfg::EdgeKind::TrueBranch => ("branch", Some("true".to_string()), None),
+                cfg::EdgeKind::FalseBranch => ("branch", Some("false".to_string()), None),
+                cfg::EdgeKind::LoopBack => ("loop_back", None, Some(true)),
+                cfg::EdgeKind::LoopExit => ("loop_exit", None, None),
+                cfg::EdgeKind::FallThrough => ("fallthrough", None, None),
+                cfg::EdgeKind::Jump => ("jump", None, None),
+                cfg::EdgeKind::Exception => ("exception", None, None),
+            };
+
+            edges.push(crate::tool_handlers::graph::CfgEdge {
+                from: format!("block_{}", edge.from),
+                to: format!("block_{}", edge.to),
+                edge_type: edge_type.to_string(),
+                condition,
+                is_back_edge,
+            });
+        }
 
         Ok(crate::tool_handlers::graph::CfgData {
             file_path: func_symbol.file_path.clone(),

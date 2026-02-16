@@ -45,7 +45,11 @@ export function GraphPage() {
     }, { replace: true });
   }, [setSearchParams]);
 
-  // Graph query
+  // Views that require a root parameter to function
+  const needsRoot = view === 'symbol' || view === 'flow';
+  const missingRoot = needsRoot && !root;
+
+  // Graph query — skip if root is required but missing
   const {
     data: graphResponse,
     isLoading: graphLoading,
@@ -63,7 +67,7 @@ export function GraphPage() {
       cluster_by: clustered ? 'file' : 'none',
       max_nodes: maxNodes,
     },
-    !!selectedRepo
+    !!selectedRepo && !missingRoot
   );
 
   // Backend now limits to maxNodes — just extract the graph
@@ -112,7 +116,29 @@ export function GraphPage() {
         <div className="flex-1 flex overflow-hidden">
           {/* Graph canvas */}
           <div className="flex-1 relative">
-            {graphLoading ? (
+            {missingRoot ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center px-6 max-w-sm">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {view === 'symbol' ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      )}
+                    </svg>
+                  </div>
+                  <p className="text-slate-900 dark:text-white font-medium text-sm mb-1">
+                    {view === 'symbol' ? 'Enter a symbol name' : 'Enter a function name'}
+                  </p>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs">
+                    {view === 'symbol'
+                      ? 'Type a symbol name in the Root field above to see all its references across the codebase.'
+                      : 'Type a function name in the Root field above to see its control flow graph with branches and loops.'}
+                  </p>
+                </div>
+              </div>
+            ) : graphLoading ? (
               <div className="h-full flex items-center justify-center">
                 <div className="relative w-8 h-8">
                   <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-slate-800" />

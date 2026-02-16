@@ -1,0 +1,442 @@
+# Elixir Language-Specific Security Rules
+# Based on Sobelow categories, ERLEF Security WG recommendations, and BEAM-specific vulnerabilities
+
+name: Elixir Security Rules
+version: "1.0.0"
+description: Elixir-specific security rules for atom exhaustion, unsafe deserialization, code injection, BEAM-specific patterns, and Phoenix web vulnerabilities
+
+rules:
+  # EX-001: Atom Exhaustion via String.to_atom
+  - id: EX-001
+    name: Elixir Atom Exhaustion (String.to_atom)
+    severity: High
+    cwe: ["CWE-400", "CWE-770"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'String\.to_atom\b'
+        - ':erlang\.binary_to_atom\b'
+        - 'binary_to_atom\b'
+        - 'List\.to_atom\b'
+        - ':erlang\.list_to_atom\b'
+        - 'list_to_atom\b'
+      safe_patterns:
+        - 'String\.to_existing_atom'
+        - 'binary_to_existing_atom'
+        - 'list_to_existing_atom'
+        - 'Module\.safe_concat'
+    languages: ["elixir"]
+    message: "Atom creation from dynamic input may cause atom table exhaustion (atoms are never garbage collected, max 1,048,576)"
+    remediation: Use String.to_existing_atom/1, :erlang.binary_to_existing_atom/2, or Module.safe_concat/1 to only reference atoms that already exist
+    enabled: true
+    tags: ["dos", "atom-exhaustion", "beam"]
+
+  # EX-002: Unsafe Deserialization via binary_to_term
+  - id: EX-002
+    name: Elixir Unsafe Deserialization
+    severity: Critical
+    cwe: ["CWE-502"]
+    owasp: ["A08:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - ':erlang\.binary_to_term\b'
+        - 'binary_to_term\b'
+        - ':erlang\.term_to_binary\b.*binary_to_term'
+      safe_patterns:
+        - 'Plug\.Crypto\.non_executable_binary_to_term'
+        - ':safe\]'
+        - '\\[:safe\\]'
+    languages: ["elixir"]
+    message: "Unsafe deserialization via binary_to_term - even with :safe option, functions can be deserialized and executed (RCE)"
+    remediation: "Use Plug.Crypto.non_executable_binary_to_term/2 which prevents deserialization of functions. Never deserialize untrusted external term format data. Consider JSON for untrusted input"
+    enabled: true
+    tags: ["deserialization", "rce", "beam"]
+
+  # EX-003: Remote Code Execution via Code.eval
+  - id: EX-003
+    name: Elixir Code Injection (Code.eval)
+    severity: Critical
+    cwe: ["CWE-94", "CWE-95"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Code\.eval_string\b'
+        - 'Code\.eval_quoted\b'
+        - 'Code\.eval_file\b'
+        - 'Code\.compile_string\b'
+        - 'Code\.compile_quoted\b'
+        - ':erl_eval\.'
+        - ':merl\.'
+      safe_patterns:
+        - '#.*Code\.eval'
+        - '@doc'
+        - 'defmacro'
+    languages: ["elixir"]
+    message: Dynamic code evaluation may allow arbitrary code execution if input is user-controlled
+    remediation: Never pass user input to Code.eval_string/eval_quoted. Use pattern matching, function dispatch, or a safe DSL instead. If code evaluation is necessary, run in a sandboxed environment
+    enabled: true
+    tags: ["injection", "rce", "code-execution"]
+
+  # EX-004: Command Injection via System.cmd
+  - id: EX-004
+    name: Elixir Command Injection
+    severity: Critical
+    cwe: ["CWE-78"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'System\.cmd\b'
+        - ':os\.cmd\b'
+        - 'Port\.open\s*\(\s*\{:spawn\b'
+        - ':erlang\.open_port\b'
+      safe_patterns:
+        - 'System\.cmd\s*\(\s*"[^"]*"\s*,\s*\[\s*\]'
+        - 'System\.cmd\s*\(\s*"[^"]*"\s*,\s*\["[^"]*"\]'
+    languages: ["elixir"]
+    message: System command execution may allow command injection if arguments are user-controlled
+    remediation: Always pass command arguments as a list (not a single string). Validate and sanitize all arguments. Avoid :os.cmd which uses a shell
+    enabled: true
+    tags: ["injection", "command", "rce"]
+
+  # EX-005: SQL Injection via Ecto raw queries
+  - id: EX-005
+    name: Elixir SQL Injection
+    severity: Critical
+    cwe: ["CWE-89"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Ecto\.Adapters\.SQL\.query\b'
+        - 'Repo\.query\b'
+        - 'fragment\s*\(\s*"[^"]*#\{'
+        - 'Ecto\.Adapters\.SQL\.query!\b'
+        - 'Repo\.query!\b'
+        - '"SELECT\b.*#\{'
+        - '"INSERT\b.*#\{'
+        - '"UPDATE\b.*#\{'
+        - '"DELETE\b.*#\{'
+      safe_patterns:
+        - 'Ecto\.Query'
+        - 'from\s+\w+\s+in\b'
+        - 'Repo\.all\b'
+        - 'Repo\.get\b'
+        - 'Repo\.one\b'
+        - 'fragment\s*\(\s*"[^"]*\\?\s*"'
+    languages: ["elixir"]
+    message: SQL query with string interpolation may allow SQL injection
+    remediation: Use Ecto query DSL (from/where/select) or parameterized queries with ? placeholders in fragment(). Never interpolate user input into SQL strings
+    enabled: true
+    tags: ["injection", "sql"]
+
+  # EX-006: Cross-Site Scripting (XSS) via raw HTML
+  - id: EX-006
+    name: Elixir XSS via Raw HTML
+    severity: High
+    cwe: ["CWE-79"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'raw\s*\('
+        - 'Phoenix\.HTML\.raw\b'
+        - '\{:safe\s*,'
+        - 'Plug\.Conn\.send_resp\s*\([^)]*\w+\s*\)'
+      safe_patterns:
+        - 'html_escape'
+        - 'Phoenix\.HTML\.html_escape'
+        - 'send_resp\s*\([^,]*,\s*\d+\s*,\s*"'
+    languages: ["elixir"]
+    message: Rendering raw/unescaped HTML may allow cross-site scripting if content includes user input
+    remediation: Use Phoenix's built-in HTML escaping (default in EEx templates). Only use raw() for trusted, pre-sanitized content. Use HtmlSanitizeEx for user-generated HTML
+    enabled: true
+    tags: ["xss", "injection"]
+
+  # EX-007: Path Traversal via File operations
+  - id: EX-007
+    name: Elixir Path Traversal
+    severity: High
+    cwe: ["CWE-22"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'File\.read\s*\(\s*\w+'
+        - 'File\.read!\s*\(\s*\w+'
+        - 'File\.write\s*\(\s*\w+'
+        - 'File\.write!\s*\(\s*\w+'
+        - 'File\.stream!\s*\(\s*\w+'
+        - 'send_download\s*\(\s*\w+\s*,\s*filename:\s*\w+'
+        - 'send_file\s*\(\s*\w+\s*,\s*\w+'
+        - 'Plug\.Conn\.send_file\b'
+      safe_patterns:
+        - 'Path\.expand\b'
+        - 'Path\.relative_to\b'
+        - 'File\.read\s*\(\s*"'
+        - 'File\.read!\s*\(\s*"'
+        - 'send_file\s*\(\s*\w+\s*,\s*"'
+    languages: ["elixir"]
+    message: File operation with variable path may allow directory traversal
+    remediation: Validate paths with Path.expand/2 and Path.relative_to/2. Ensure paths are within allowed directories. Never construct file paths from user input without validation
+    enabled: true
+    tags: ["path-traversal", "filesystem"]
+
+  # EX-008: Hardcoded Secrets in Config
+  - id: EX-008
+    name: Elixir Hardcoded Secrets
+    severity: High
+    cwe: ["CWE-798"]
+    owasp: ["A07:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'secret_key_base:\s*"[A-Za-z0-9+/=]{16,}"'
+        - 'signing_salt:\s*"[A-Za-z0-9]{8,}"'
+        - 'password:\s*"[^"]{8,}"'
+        - 'api_key:\s*"[^"]{8,}"'
+        - 'config\s+:.*,\s*secret:\s*"'
+      safe_patterns:
+        - 'System\.get_env'
+        - 'System\.fetch_env'
+        - 'runtime\.exs'
+        - 'PLACEHOLDER'
+        - 'CHANGE_ME'
+        - 'test'
+    languages: ["elixir"]
+    message: Hardcoded secret found in configuration - credentials should not be in source code
+    remediation: Move secrets to environment variables using System.get_env/1 in runtime.exs. Never commit secrets to source control
+    enabled: true
+    tags: ["secrets", "credentials", "config"]
+
+  # EX-009: Missing CSRF Protection
+  - id: EX-009
+    name: Elixir Missing CSRF Protection
+    severity: High
+    cwe: ["CWE-352"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'plug\s+:protect_from_forgery.*when\s+action\s+not\s+in'
+        - 'delete_csrf_token\b'
+        - 'csrf_token_value.*nil'
+      safe_patterns:
+        - 'plug :protect_from_forgery'
+        - 'csrf_meta_tag'
+    languages: ["elixir"]
+    message: CSRF protection may be disabled or bypassed for certain actions
+    remediation: Ensure :protect_from_forgery plug is applied to all state-changing endpoints. Use csrf_meta_tag() in HTML layouts
+    enabled: true
+    tags: ["csrf", "web"]
+
+  # EX-010: Unsafe Process Operations
+  - id: EX-010
+    name: Elixir Unsafe Process Operations
+    severity: Medium
+    cwe: ["CWE-94"]
+    owasp: []
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Process\.send_after\s*\(\s*\w+\s*,'
+        - ':erlang\.spawn\b'
+        - 'Node\.spawn\b'
+        - ':rpc\.call\b'
+        - ':rpc\.cast\b'
+        - ':slave\.start\b'
+      safe_patterns:
+        - 'GenServer'
+        - 'Supervisor'
+        - 'Task\.async'
+        - 'Task\.start'
+    languages: ["elixir"]
+    message: Direct process spawning or RPC calls may allow code execution on remote nodes
+    remediation: Use supervised processes (GenServer, Task.Supervisor) instead of raw spawn. Restrict :rpc calls to trusted nodes. Never pass user input to Node.spawn or :rpc.call
+    enabled: true
+    tags: ["process", "rce", "beam"]
+
+  # EX-011: Missing Secure Headers
+  - id: EX-011
+    name: Elixir Missing Security Headers
+    severity: Medium
+    cwe: ["CWE-693"]
+    owasp: ["A05:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'plug\s+Plug\.SSL.*force_ssl:\s*false'
+        - 'config\s+:.*,\s*force_ssl:\s*false'
+        - 'Plug\.Conn\.put_resp_header.*access-control-allow-origin.*\*'
+      safe_patterns:
+        - 'force_ssl: true'
+        - 'Plug\.SSL'
+        - 'put_secure_browser_headers'
+    languages: ["elixir"]
+    message: Security headers may be misconfigured - missing SSL enforcement or overly permissive CORS
+    remediation: Enable force_ssl in production. Use put_secure_browser_headers plug. Restrict CORS origins to specific domains
+    enabled: true
+    tags: ["headers", "web", "config"]
+
+  # EX-012: Unsafe EEx Template Evaluation
+  - id: EX-012
+    name: Elixir Unsafe EEx Evaluation
+    severity: Critical
+    cwe: ["CWE-94"]
+    owasp: ["A03:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'EEx\.eval_string\b'
+        - 'EEx\.eval_file\b'
+        - 'EEx\.compile_string\b'
+      safe_patterns:
+        - 'EEx\.function_from_string'
+        - 'EEx\.function_from_file'
+        - '@doc'
+    languages: ["elixir"]
+    message: Dynamic EEx template evaluation may allow code injection if template content is user-controlled
+    remediation: Use precompiled templates (EEx.function_from_string at compile time). Never pass user input as EEx template content
+    enabled: true
+    tags: ["injection", "template", "rce"]
+
+  # EX-013: Insecure Cookie Configuration
+  - id: EX-013
+    name: Elixir Insecure Cookie Settings
+    severity: Medium
+    cwe: ["CWE-614", "CWE-1004"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'secure:\s*false'
+        - 'http_only:\s*false'
+        - 'same_site:\s*"None"'
+        - 'same_site:\s*"Lax"'
+      safe_patterns:
+        - 'secure: true'
+        - 'http_only: true'
+        - 'same_site: "Strict"'
+    languages: ["elixir"]
+    message: Insecure cookie configuration - missing secure, httpOnly, or sameSite flags
+    remediation: "Set secure: true, http_only: true, and same_site: Strict on session cookies. Use HTTPS-only cookies in production"
+    enabled: true
+    tags: ["cookies", "web", "session"]
+
+  # EX-014: Unvalidated Redirect
+  - id: EX-014
+    name: Elixir Open Redirect
+    severity: Medium
+    cwe: ["CWE-601"]
+    owasp: ["A01:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'redirect\s*\(\s*\w+\s*,\s*external:\s*\w+'
+        - 'redirect\s*\(\s*\w+\s*,\s*to:\s*\w+'
+      safe_patterns:
+        - 'redirect\s*\(\s*\w+\s*,\s*to:\s*"/'
+        - 'redirect\s*\(\s*\w+\s*,\s*to:\s*~p'
+        - 'redirect\s*\(\s*\w+\s*,\s*to:\s*Routes\.'
+    languages: ["elixir"]
+    message: Redirect destination from variable input may allow open redirect attacks
+    remediation: Only redirect to relative paths or verified internal URLs. Never use external redirects with user-controlled URLs. Use Phoenix verified routes (~p sigil)
+    enabled: true
+    tags: ["redirect", "web"]
+
+  # EX-015: Erlang Distribution Security
+  - id: EX-015
+    name: Elixir Erlang Distribution Exposure
+    severity: High
+    cwe: ["CWE-284"]
+    owasp: ["A07:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Node\.connect\b'
+        - ':net_kernel\.connect_node\b'
+        - ':erlang\.set_cookie\b'
+        - 'inet_dist_listen_min'
+        - 'inet_dist_listen_max'
+      safe_patterns:
+        - ':net_kernel\.stop'
+        - 'epmd.*-kill'
+    languages: ["elixir"]
+    message: Erlang distribution node connection may expose the system to remote code execution if the cookie is compromised
+    remediation: Use strong, random Erlang cookies. Restrict distribution ports with firewall rules. Consider using TLS for distribution (--erl "-proto_dist inet_tls")
+    enabled: true
+    tags: ["distribution", "beam", "network"]
+
+  # EX-016: Weak Crypto Usage
+  - id: EX-016
+    name: Elixir Weak Cryptography
+    severity: Medium
+    cwe: ["CWE-327", "CWE-328"]
+    owasp: ["A02:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - ':crypto\.hash\s*\(\s*:md5\b'
+        - ':crypto\.hash\s*\(\s*:sha\s*,'
+        - ':md5\b'
+        - 'Base\.encode64\s*\(\s*:crypto\.hash\s*\(\s*:md5'
+      safe_patterns:
+        - ':crypto\.hash\s*\(\s*:sha256'
+        - ':crypto\.hash\s*\(\s*:sha512'
+        - ':crypto\.hash\s*\(\s*:blake2b'
+        - 'Bcrypt'
+        - 'Argon2'
+        - 'Pbkdf2'
+    languages: ["elixir"]
+    message: Use of weak hash algorithm (MD5/SHA1) - not suitable for security purposes
+    remediation: Use SHA-256, SHA-512, or BLAKE2b for hashing. For passwords, use Bcrypt, Argon2, or PBKDF2 via the comeonin/bcrypt_elixir library
+    enabled: true
+    tags: ["crypto", "hashing"]
+
+  # EX-017: Sensitive Data in Logs
+  - id: EX-017
+    name: Elixir Sensitive Data in Logs
+    severity: Medium
+    cwe: ["CWE-532"]
+    owasp: ["A09:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'Logger\.\w+\s*\(.*password'
+        - 'Logger\.\w+\s*\(.*secret'
+        - 'Logger\.\w+\s*\(.*token'
+        - 'Logger\.\w+\s*\(.*api_key'
+        - 'IO\.inspect\s*\(.*password'
+        - 'IO\.inspect\s*\(.*secret'
+        - 'IO\.inspect\s*\(.*token'
+      safe_patterns:
+        - '@derive\s*\{.*Inspect.*redact'
+        - 'redact: true'
+    languages: ["elixir"]
+    message: Sensitive data may be exposed in log output
+    remediation: "Use @derive {Inspect, only: [...]} or redact: true to hide sensitive fields. Filter sensitive parameters in Logger config"
+    enabled: true
+    tags: ["logging", "sensitive-data"]
+
+  # EX-018: Mass Assignment via Ecto changeset
+  - id: EX-018
+    name: Elixir Mass Assignment
+    severity: Medium
+    cwe: ["CWE-915"]
+    owasp: ["A04:2021"]
+    rule_type:
+      type: pattern
+      patterns:
+        - 'cast\s*\(\s*\w+\s*,\s*\w+\s*,\s*__schema__\(:fields\)'
+        - 'cast\s*\(\s*\w+\s*,\s*\w+\s*,\s*Map\.keys'
+        - 'Repo\.insert\s*\(\s*struct\s*\(\s*\w+\s*,\s*\w+'
+      safe_patterns:
+        - 'cast\s*\(\s*\w+\s*,\s*\w+\s*,\s*\['
+    languages: ["elixir"]
+    message: Mass assignment vulnerability - casting all fields from user params without explicit field list
+    remediation: Always specify an explicit list of allowed fields in Ecto changeset cast/3. Never use __schema__(:fields) or Map.keys for cast fields
+    enabled: true
+    tags: ["mass-assignment", "ecto"]

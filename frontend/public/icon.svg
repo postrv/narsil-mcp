@@ -1,0 +1,22 @@
+<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    @media (prefers-color-scheme: light) {
+      .background { fill: #0a0a0a; }
+      .letter { fill: white; }
+    }
+    @media (prefers-color-scheme: dark) {
+      .background { fill: white; }
+      .letter { fill: #0a0a0a; }
+    }
+  </style>
+  <rect class="background" width="180" height="180" rx="37" />
+  <text
+    class="letter"
+    x="90"
+    y="135"
+    font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="130"
+    font-weight="700"
+    text-anchor="middle"
+  >N</text>
+</svg>

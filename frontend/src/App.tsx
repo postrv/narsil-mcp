@@ -77,7 +77,11 @@ function App() {
                 {/* File viewer */}
                 <Route path=":repo/file/*" element={<FilePage />} />
 
-                {/* Future: symbol, function, security, search pages */}
+                {/* Redirect legacy security path to graph view with security overlay */}
+                <Route path=":repo/security" element={<Navigate to="../graph/call?security=true" replace />} />
+
+                {/* Catch-all: redirect unmatched repo sub-paths to repo overview */}
+                <Route path=":repo/*" element={<Navigate to=".." replace />} />
               </Route>
             </Routes>
           </ExplorationProvider>

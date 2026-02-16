@@ -270,7 +270,7 @@ impl TaintConfig {
         }
 
         let yaml_config: YamlConfig =
-            serde_yaml::from_str(yaml_content).map_err(TaintConfigError::ParseError)?;
+            serde_saphyr::from_str(yaml_content).map_err(TaintConfigError::ParseError)?;
 
         let include_defaults = yaml_config.include_defaults.unwrap_or(true);
         let mut config = if include_defaults {
@@ -328,7 +328,7 @@ impl TaintConfig {
 #[derive(Debug)]
 pub enum TaintConfigError {
     /// Error parsing YAML content
-    ParseError(serde_yaml::Error),
+    ParseError(serde_saphyr::Error),
     /// Invalid source kind specified
     InvalidSourceKind(String),
     /// Invalid sink kind specified

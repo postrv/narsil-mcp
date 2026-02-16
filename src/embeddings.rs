@@ -229,7 +229,11 @@ impl VectorStore {
             .collect();
 
         // Sort by similarity (descending)
-        results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap());
+        results.sort_by(|a, b| {
+            b.similarity
+                .partial_cmp(&a.similarity)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Take top results
         results.truncate(max_results);
@@ -588,5 +592,70 @@ mod tests {
             sim > 0.5,
             "Similarity should be high for similar identifiers"
         );
+    }
+
+    #[test]
+    fn test_embedding_sort_handles_nan() {
+        let mut store = VectorStore::new();
+        store.add(EmbeddedDocument {
+            id: "a".to_string(),
+            file_path: "a.rs".to_string(),
+            content: "fn a()".to_string(),
+            start_line: 1,
+            end_line: 1,
+            embedding: vec![1.0],
+        });
+        store.add(EmbeddedDocument {
+            id: "c".to_string(),
+            file_path: "c.rs".to_string(),
+            content: "fn c()".to_string(),
+            start_line: 1,
+            end_line: 1,
+            embedding: vec![1.0],
+        });
+
+        // Test that find_similar doesn't panic (uses the fixed sort internally)
+        let query_with_nan = vec![f32::NAN];
+        let results_from_store = store.find_similar(&query_with_nan, 10);
+        // Should not panic
+        assert_eq!(results_from_store.len(), 2);
+
+        // Also directly test sort with NaN values
+        let make_result = |id: &str, sim: f32| SimilarityResult {
+            document: EmbeddedDocument {
+                id: id.to_string(),
+                file_path: format!("{}.rs", id),
+                content: format!("fn {}()", id),
+                start_line: 1,
+                end_line: 1,
+                embedding: vec![1.0],
+            },
+            similarity: sim,
+        };
+        let mut results = [
+            make_result("a", 0.9),
+            make_result("b", f32::NAN),
+            make_result("c", 0.5),
+        ];
+
+        // This should not panic with our fix
+        results.sort_by(|a, b| {
+            b.similarity
+                .partial_cmp(&a.similarity)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // The non-NaN values should still be properly ordered
+        let non_nan: Vec<f32> = results
+            .iter()
+            .filter(|r| !r.similarity.is_nan())
+            .map(|r| r.similarity)
+            .collect();
+        if non_nan.len() >= 2 {
+            assert!(
+                non_nan[0] >= non_nan[1],
+                "Non-NaN values should be sorted descending"
+            );
+        }
     }
 }

@@ -564,9 +564,10 @@ impl LanguageParser {
                     start_line = node.start_position().row + 1;
                     end_line = node.end_position().row + 1;
 
-                    // Extract first line as signature
+                    // Extract first line as signature (safe byte boundary)
                     let first_line_end = text.find('\n').unwrap_or(text.len());
-                    signature = Some(text[..first_line_end.min(200)].to_string());
+                    let sig_end = first_line_end.min(200);
+                    signature = Some(text.get(..sig_end).unwrap_or(text).to_string());
                 }
             }
 

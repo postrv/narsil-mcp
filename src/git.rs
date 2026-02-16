@@ -318,7 +318,11 @@ impl GitRepo {
             })
             .collect();
 
-        results.sort_by(|a, b| b.churn_score.partial_cmp(&a.churn_score).unwrap());
+        results.sort_by(|a, b| {
+            b.churn_score
+                .partial_cmp(&a.churn_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         Ok(results)
     }
 

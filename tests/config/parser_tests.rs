@@ -18,7 +18,7 @@ tools:
   overrides: {}
 "#;
 
-    let config: ToolConfig = serde_yaml::from_str(yaml).expect("Should parse minimal config");
+    let config: ToolConfig = serde_saphyr::from_str(yaml).expect("Should parse minimal config");
     assert_eq!(config.version, "1.0");
     assert!(config.tools.categories.contains_key("Repository"));
     assert!(config.tools.categories.get("Repository").unwrap().enabled);
@@ -45,7 +45,7 @@ tools:
       requires_api_key: true
 "#;
 
-    let config: ToolConfig = serde_yaml::from_str(yaml).expect("Should parse full config");
+    let config: ToolConfig = serde_saphyr::from_str(yaml).expect("Should parse full config");
     assert_eq!(config.version, "1.0");
 
     // Check categories
@@ -77,7 +77,7 @@ config:
 "#;
 
     let cat_config: CategoryConfig =
-        serde_yaml::from_str(yaml).expect("Should parse category config");
+        serde_saphyr::from_str(yaml).expect("Should parse category config");
     assert!(cat_config.enabled);
     assert_eq!(cat_config.description, Some("Test category".to_string()));
     assert_eq!(cat_config.required_flags, vec!["git", "call_graph"]);
@@ -97,7 +97,7 @@ config:
 "#;
 
     let override_config: ToolOverride =
-        serde_yaml::from_str(yaml).expect("Should parse tool override");
+        serde_saphyr::from_str(yaml).expect("Should parse tool override");
     assert!(!override_config.enabled);
     assert_eq!(
         override_config.reason,
@@ -136,7 +136,7 @@ tools:
 "#;
 
     let config: ToolConfig =
-        serde_yaml::from_str(yaml).expect("Should parse config with empty overrides");
+        serde_saphyr::from_str(yaml).expect("Should parse config with empty overrides");
     assert!(config.tools.overrides.is_empty());
 }
 
@@ -167,10 +167,10 @@ fn test_config_roundtrip() {
     };
 
     // Serialize to YAML
-    let yaml = serde_yaml::to_string(&original).expect("Should serialize");
+    let yaml = serde_saphyr::to_string(&original).expect("Should serialize");
 
     // Deserialize back
-    let parsed: ToolConfig = serde_yaml::from_str(&yaml).expect("Should deserialize");
+    let parsed: ToolConfig = serde_saphyr::from_str(&yaml).expect("Should deserialize");
 
     assert_eq!(parsed.version, original.version);
     assert_eq!(
@@ -189,7 +189,7 @@ tools:
 "#;
 
     // Should parse but validation should catch invalid version
-    let config: ToolConfig = serde_yaml::from_str(yaml).expect("Should parse");
+    let config: ToolConfig = serde_saphyr::from_str(yaml).expect("Should parse");
     assert_eq!(config.version, "999.0");
 }
 
@@ -201,7 +201,8 @@ version: "1.0"
 "#;
 
     // Should succeed - tools field now has a default
-    let config: ToolConfig = serde_yaml::from_str(yaml).expect("Should parse without tools field");
+    let config: ToolConfig =
+        serde_saphyr::from_str(yaml).expect("Should parse without tools field");
     assert_eq!(config.version, "1.0");
     // Tools should be empty by default
     assert!(config.tools.categories.is_empty());
@@ -219,7 +220,7 @@ tools:
   overrides: {}
 "#;
 
-    let config: ToolConfig = serde_yaml::from_str(yaml).expect("Should parse");
+    let config: ToolConfig = serde_saphyr::from_str(yaml).expect("Should parse");
 
     // Performance config should have defaults
     assert_eq!(config.performance.max_tool_count, 76);
@@ -241,7 +242,7 @@ tools:
   overrides: {}
 "#;
 
-    let config: ToolConfig = serde_yaml::from_str(yaml).expect("Should parse");
+    let config: ToolConfig = serde_saphyr::from_str(yaml).expect("Should parse");
     let security_cat = config.tools.categories.get("Security").unwrap();
 
     assert_eq!(

@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-1611%2B%20passed-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
+[![Tests](https://img.shields.io/badge/tests-1763%2B%20passed-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue.svg)](https://modelcontextprotocol.io)
 
 A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 90 specialized tools.
@@ -257,6 +257,7 @@ narsil-mcp \
   --neural \        # Enable neural semantic embeddings
   --neural-backend api \  # Backend: "api" (Voyage/OpenAI) or "onnx"
   --neural-model voyage-code-2 \  # Model to use
+  --neural-dimension 3072 \  # Override embedding dimensions (auto-detected per model)
   --graph           # Enable SPARQL/RDF knowledge graph and CCG tools (requires --features graph build)
 ```
 
@@ -407,7 +408,7 @@ narsil-mcp config export > my-config.yaml
 
 ### Visualization Frontend
 
-Explore call graphs, imports, and code structure interactively in your browser.
+Explore call graphs, imports, symbol references, and control flow interactively in your browser.
 
 ```bash
 # Build with embedded frontend
@@ -418,7 +419,25 @@ narsil-mcp --repos ~/project --http --call-graph
 # Open http://localhost:3000
 ```
 
-Features: interactive graphs, complexity overlays, security highlighting, multiple layouts.
+**Five graph views:**
+
+| View | Description |
+|------|-------------|
+| **Call Graph** | Function call relationships with depth control and direction filtering |
+| **Import Graph** | File-level import dependencies across the codebase |
+| **Symbol Graph** | All references to a symbol, with file clustering |
+| **Hybrid** | Combined call + import graph with split budget |
+| **Control Flow** | Real CFG with basic blocks, branches, and loop back-edges |
+
+**Features:**
+- Interactive Cytoscape.js graphs with drag, zoom, and double-click drill-down
+- Complexity metrics overlay with color coding (green/yellow/orange/red)
+- Security vulnerability overlay highlighting taint sources and sinks
+- Six layout algorithms (dagre, force-directed, breadthfirst, concentric, circle, grid)
+- File tree sidebar with syntax-highlighted code viewer
+- URL-driven state (shareable links, browser back/forward)
+- Dark mode support
+- Node detail panel with code excerpts and navigation to source
 
 > **Full documentation:** See [docs/frontend.md](docs/frontend.md) for setup, API endpoints, and development mode.
 
@@ -839,6 +858,8 @@ narsil-mcp includes built-in security rules in `rules/`:
 - **`secrets.yaml`** - Secret detection (API keys, passwords, tokens)
 
 **Language-Specific Rules:**
+- **`rust.yaml`** - Rust security patterns (unsafe transmute, FFI boundaries, command injection, TOCTOU)
+- **`elixir.yaml`** - Elixir/BEAM patterns (atom exhaustion, binary_to_term, Code.eval, Ecto SQL injection)
 - **`go.yaml`** - Go security patterns (SQL injection, TLS, command injection)
 - **`java.yaml`** - Java vulnerabilities (XXE, deserialization, LDAP injection)
 - **`csharp.yaml`** - C# security issues (deserialization, XSS, path traversal)
@@ -929,7 +950,7 @@ Benchmarked on Apple M1 (criterion.rs):
 ## Development
 
 ```bash
-# Run tests (1611+ tests)
+# Run tests (1763+ tests)
 cargo test
 
 # Run benchmarks (criterion.rs)
@@ -1052,7 +1073,25 @@ cargo build --release --features graph,frontend
 
 ## What's New
 
-### v1.5.x (Current)
+### v1.6.x (Current)
+
+- **Crash-proof chunking** - Fixed unsafe byte-level string slicing in `chunk_file()` and `extract_signature()` that caused `hybrid_search`, `search_chunks`, and `get_chunk_stats` to crash when processing files with multi-byte UTF-8 characters (emoji, CJK, accented chars). All byte slicing now uses safe `content.get()` with fallback.
+- **NaN-safe sort operations** - Fixed 5 locations across search, embeddings, git, index, and extract modules where `partial_cmp().unwrap()` would panic on NaN float values. All sorts now use `unwrap_or(Ordering::Equal)`.
+- **Defense-in-depth chunking** - Added `catch_unwind` wrappers around all repo-wide `chunk_file()` loops so a panic in one file skips it instead of crashing the entire MCP server.
+- **Visualization frontend overhaul** - Full SPA with HashRouter routing, file tree sidebar, syntax-highlighted code viewer, dashboard, and per-repo overview pages
+- **Graph view performance** - Import graph now uses cached index data instead of filesystem walks; symbol graph iterates file cache directly instead of markdown round-trips; all views respect `max_nodes` for early termination
+- **Real control flow graphs** - Flow view now uses the real CFG builder (`cfg::analyze_function`) with proper basic blocks, branch conditions, and loop back-edges instead of the single-block stub
+- **Hybrid graph budget splitting** - Hybrid view allocates 60/40 node budget between call and import graphs for balanced results
+- **Fix [#14](https://github.com/postrv/narsil-mcp/issues/14): configurable embedding dimensions** - Added `--neural-dimension` CLI arg and `default_dimension_for_model()` lookup so models like `text-embedding-3-large` use correct dimensions (3072) instead of hardcoded 1536
+- **Fix [#13](https://github.com/postrv/narsil-mcp/issues/13): Nix frontend build** - Added `frontendDist` derivation in `flake.nix` using `buildNpmPackage` so `nix profile install github:postrv/narsil-mcp#with-frontend` works
+- **Rust security rules** - 18 new rules (RUST-004 to RUST-021) covering command injection, transmute, FFI boundaries, TOCTOU, ReDoS, static mut, SSRF, and more
+- **Elixir security rules** - 18 new rules (EX-001 to EX-018) covering atom exhaustion, binary_to_term deserialization, Code.eval injection, Ecto SQL injection, Phoenix XSS, Erlang distribution security
+- **Migrated from `serde_yaml` to `serde-saphyr`** - Deprecated `serde_yaml` replaced with actively maintained, panic-free YAML library
+- **Custom favicon** - Frontend now uses narsil-mcp branding icon instead of default Vite logo
+- **Dependency security** - Updated `time` to 0.3.47 (RUSTSEC-2026-0009), `bytes` to 1.11.1 (RUSTSEC-2026-0007)
+- **Test count** increased from 1,611 to 1,763 (+152 tests)
+
+### v1.5.x
 
 - **Deterministic call graph resolution** - Scope-hint propagation disambiguates callee resolution (e.g., `App::run()` correctly resolves to `src/app/mod.rs::run`)
 - **8 graph analysis fixes** - Qualified node keys, hotspot filtering, CFG expression handling, import path parsing
@@ -1089,7 +1128,7 @@ cargo build --release --features graph,frontend
 - **Type inference** - Infer types in Python/JavaScript/TypeScript without external tools
 - **Multi-language taint analysis** - Security scanning for PHP, Java, C#, Ruby, Kotlin
 - **WASM build** - Run in browser for code playgrounds and educational tools
-- **111 bundled security rules** - OWASP, CWE, crypto, secrets detection
+- **147 bundled security rules** - OWASP, CWE, crypto, secrets, Rust, Elixir detection
 - **IDE configs included** - Claude Desktop, Cursor, VS Code, Zed templates
 
 ## License

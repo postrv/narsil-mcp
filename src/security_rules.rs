@@ -385,11 +385,23 @@ impl SecurityRulesEngine {
         if let Err(e) = self.load_ruleset_yaml(iac_yaml) {
             eprintln!("Warning: Failed to load IaC rules: {}", e);
         }
+
+        // Rust-specific security rules (extends RUST-001..003 in cwe-top25.yaml)
+        let rust_yaml = include_str!("../rules/rust.yaml");
+        if let Err(e) = self.load_ruleset_yaml(rust_yaml) {
+            eprintln!("Warning: Failed to load Rust rules: {}", e);
+        }
+
+        // Elixir-specific security rules
+        let elixir_yaml = include_str!("../rules/elixir.yaml");
+        if let Err(e) = self.load_ruleset_yaml(elixir_yaml) {
+            eprintln!("Warning: Failed to load Elixir rules: {}", e);
+        }
     }
 
     /// Load a ruleset from YAML string
     pub fn load_ruleset_yaml(&mut self, yaml: &str) -> Result<usize, String> {
-        let ruleset: Ruleset = serde_yaml::from_str(yaml)
+        let ruleset: Ruleset = serde_saphyr::from_str(yaml)
             .map_err(|e| format!("Failed to parse YAML ruleset: {}", e))?;
 
         let count = ruleset.rules.len();
@@ -3405,6 +3417,972 @@ Resources:
             iac_rule_count >= 32,
             "Should have at least 32 IaC rules, got {}",
             iac_rule_count
+        );
+    }
+
+    // ========================================================================
+    // Rust Security Rules Tests
+    // ========================================================================
+
+    #[test]
+    fn test_rust_extended_rules_loading() {
+        let engine = SecurityRulesEngine::new();
+        // Verify all 18 Rust-specific rules loaded (RUST-004 through RUST-021)
+        for id in 4..=21 {
+            let rule_id = format!("RUST-{:03}", id);
+            assert!(
+                engine.get_rule(&rule_id).is_some(),
+                "Rule {} should be loaded",
+                rule_id
+            );
+        }
+    }
+
+    #[test]
+    fn test_rust_rules_language_filtering() {
+        let engine = SecurityRulesEngine::new();
+        // Rust rules should only apply to Rust code
+        let rust_code = r#"
+let cmd = user_input;
+Command::new(cmd).output().unwrap();
+"#;
+        let rust_findings = engine.scan(rust_code, "main.rs", "rust");
+        let py_findings = engine.scan(rust_code, "main.py", "python");
+
+        let rust_rule_count = rust_findings
+            .iter()
+            .filter(|f| f.rule_id.starts_with("RUST-"))
+            .count();
+        let py_rule_count = py_findings
+            .iter()
+            .filter(|f| f.rule_id.starts_with("RUST-"))
+            .count();
+
+        assert!(
+            rust_rule_count > py_rule_count,
+            "Rust rules should fire more on .rs files than .py files"
+        );
+    }
+
+    #[test]
+    fn test_rust_command_injection_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+use std::process::Command;
+let user_cmd = get_user_input();
+let output = Command::new(user_cmd).output().unwrap();
+"#;
+        let findings = engine.scan(vulnerable_code, "main.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-004"),
+            "Should detect command injection via variable in Command::new: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_command_injection_safe_pattern() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+use std::process::Command;
+let output = Command::new("ls").arg("-la").output().unwrap();
+"#;
+        let findings = engine.scan(safe_code, "main.rs", "rust");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "RUST-004"),
+            "Should NOT detect command injection with string literal Command::new"
+        );
+    }
+
+    #[test]
+    fn test_rust_sql_injection_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+let query = format!("SELECT * FROM users WHERE name = '{}'", user_input);
+conn.execute(&query).unwrap();
+"#;
+        let findings = engine.scan(vulnerable_code, "db.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-005"),
+            "Should detect SQL injection via format! with SELECT: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_sql_injection_safe_pattern() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+let result = sqlx::query!("SELECT * FROM users WHERE id = $1", user_id)
+    .fetch_one(&pool)
+    .await?;
+"#;
+        let findings = engine.scan(safe_code, "db.rs", "rust");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "RUST-005"),
+            "Should NOT detect SQL injection with sqlx::query! macro"
+        );
+    }
+
+    #[test]
+    fn test_rust_transmute_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+let value: u64 = unsafe { std::mem::transmute(some_f64) };
+"#;
+        let findings = engine.scan(vulnerable_code, "convert.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-006"),
+            "Should detect transmute usage: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_transmute_safe_with_safety_comment() {
+        let engine = SecurityRulesEngine::new();
+        // Safe pattern check is per-line, so SAFETY: must be on same line as the match
+        let safe_code = r#"
+let value: u64 = unsafe { std::mem::transmute(some_f64) }; // SAFETY: same size and alignment
+"#;
+        let findings = engine.scan(safe_code, "convert.rs", "rust");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "RUST-006"),
+            "Should NOT flag transmute with SAFETY comment on same line"
+        );
+    }
+
+    #[test]
+    fn test_rust_manual_memory_management_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+let raw = Box::into_raw(boxed_value);
+let recovered = unsafe { Box::from_raw(raw) };
+std::mem::forget(some_value);
+"#;
+        let findings = engine.scan(vulnerable_code, "mem.rs", "rust");
+        let manual_mem_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.rule_id == "RUST-007")
+            .collect();
+        assert!(
+            manual_mem_findings.len() >= 2,
+            "Should detect Box::into_raw/from_raw and mem::forget: {:?}",
+            manual_mem_findings
+        );
+    }
+
+    #[test]
+    fn test_rust_unchecked_arithmetic_detection() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+let result = value.wrapping_add(other);
+let result2 = unsafe { value.unchecked_mul(other) };
+"#;
+        let findings = engine.scan(code, "math.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-008"),
+            "Should detect wrapping/unchecked arithmetic: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_hardcoded_secret_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+const API_KEY: &str = "hardcoded_secret_value_that_should_not_be_here";
+static SECRET_TOKEN: &str = "my_super_secret_token_value";
+"#;
+        let findings = engine.scan(vulnerable_code, "config.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-009"),
+            "Should detect hardcoded secrets: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_hardcoded_secret_safe_env() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+let api_key = std::env::var("API_KEY").expect("API_KEY must be set");
+"#;
+        let findings = engine.scan(safe_code, "config.rs", "rust");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "RUST-009"),
+            "Should NOT flag env::var usage as hardcoded secret"
+        );
+    }
+
+    #[test]
+    fn test_rust_weak_hash_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+use md5;
+let hash = md5::compute(password);
+"#;
+        let findings = engine.scan(vulnerable_code, "auth.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-010"),
+            "Should detect MD5 usage: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_weak_hash_safe_sha256() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+use sha2::{Sha256, Digest};
+let hash = Sha256::new().chain_update(data).finalize();
+"#;
+        let findings = engine.scan(safe_code, "auth.rs", "rust");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "RUST-010"),
+            "Should NOT flag SHA-256 usage"
+        );
+    }
+
+    #[test]
+    fn test_rust_ffi_detection() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+extern "C" {
+    fn external_function(ptr: *const c_void) -> i32;
+}
+let c_string = CString::new("hello").unwrap();
+"#;
+        let findings = engine.scan(code, "ffi.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-012"),
+            "Should detect FFI boundary: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_path_traversal_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+let user_path = get_input();
+let contents = fs::read_to_string(user_path)?;
+let file = File::open(user_path)?;
+"#;
+        let findings = engine.scan(vulnerable_code, "handler.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-013"),
+            "Should detect path traversal via variable: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_path_traversal_safe_with_canonicalize() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+let canonical = Path::new(user_path).canonicalize()?;
+if canonical.starts_with("/safe/dir") {
+    let contents = fs::read_to_string(&canonical)?;
+}
+"#;
+        let findings = engine.scan(safe_code, "handler.rs", "rust");
+        let path_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.rule_id == "RUST-013")
+            .collect();
+        // canonicalize and starts_with are safe patterns — there may still be
+        // findings on the fs::read_to_string line but the safe_patterns should
+        // suppress them when they appear on the same line
+        assert!(
+            path_findings.len() <= 1,
+            "Should suppress most path traversal findings with canonicalize: {:?}",
+            path_findings
+        );
+    }
+
+    #[test]
+    fn test_rust_tls_verification_disabled() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+let client = reqwest::Client::builder()
+    .danger_accept_invalid_certs(true)
+    .build()?;
+"#;
+        let findings = engine.scan(vulnerable_code, "http.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-017"),
+            "Should detect disabled TLS verification: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_redos_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+let pattern = get_user_pattern();
+let re = Regex::new(&pattern)?;
+"#;
+        let findings = engine.scan(vulnerable_code, "search.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-018"),
+            "Should detect user-controlled regex pattern: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_redos_safe_literal_pattern() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+let re = Regex::new(r"^\d{4}-\d{2}-\d{2}$")?;
+"#;
+        let findings = engine.scan(safe_code, "search.rs", "rust");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "RUST-018"),
+            "Should NOT flag literal regex pattern"
+        );
+    }
+
+    #[test]
+    fn test_rust_static_mut_detection() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+static mut GLOBAL_COUNTER: u64 = 0;
+"#;
+        let findings = engine.scan(code, "lib.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-019"),
+            "Should detect static mut: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_ssrf_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+let url = get_user_url();
+let response = reqwest::get(url).await?;
+"#;
+        let findings = engine.scan(vulnerable_code, "fetch.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-020"),
+            "Should detect SSRF via user-controlled URL: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_unsafe_slice_detection() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+let value = unsafe { *slice.get_unchecked(index) };
+let ptr_slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+"#;
+        let findings = engine.scan(code, "buffer.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-021"),
+            "Should detect unsafe slice operations: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_rust_deserialization_detection() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+let data: UserData = serde_json::from_str(&body)?;
+let config: Config = serde_saphyr::from_str(&contents)?;
+"#;
+        let findings = engine.scan(code, "api.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-016"),
+            "Should detect deserialization: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    // ========================================================================
+    // Elixir Security Rules Tests
+    // ========================================================================
+
+    #[test]
+    fn test_elixir_rules_loading() {
+        let engine = SecurityRulesEngine::new();
+        // Verify all 18 Elixir rules loaded (EX-001 through EX-018)
+        for id in 1..=18 {
+            let rule_id = format!("EX-{:03}", id);
+            assert!(
+                engine.get_rule(&rule_id).is_some(),
+                "Rule {} should be loaded",
+                rule_id
+            );
+        }
+    }
+
+    #[test]
+    fn test_elixir_rules_language_filtering() {
+        let engine = SecurityRulesEngine::new();
+        // Elixir rules should only apply to Elixir code
+        let elixir_code = r#"
+atom = String.to_atom(user_input)
+"#;
+        let ex_findings = engine.scan(elixir_code, "lib/app.ex", "elixir");
+        let py_findings = engine.scan(elixir_code, "app.py", "python");
+
+        let ex_rule_count = ex_findings
+            .iter()
+            .filter(|f| f.rule_id.starts_with("EX-"))
+            .count();
+        let py_rule_count = py_findings
+            .iter()
+            .filter(|f| f.rule_id.starts_with("EX-"))
+            .count();
+
+        assert!(
+            ex_rule_count > py_rule_count,
+            "Elixir rules should fire on .ex files but not .py files"
+        );
+    }
+
+    #[test]
+    fn test_elixir_atom_exhaustion_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+defmodule MyApp.Handler do
+  def handle(params) do
+    key = String.to_atom(params["key"])
+    Map.get(data, key)
+  end
+end
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/handler.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-001"),
+            "Should detect String.to_atom: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_atom_exhaustion_erlang_variant() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+key = :erlang.binary_to_atom(user_input, :utf8)
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/handler.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-001"),
+            "Should detect :erlang.binary_to_atom: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_atom_exhaustion_safe_pattern() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+key = String.to_existing_atom(params["key"])
+"#;
+        let findings = engine.scan(safe_code, "lib/handler.ex", "elixir");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "EX-001"),
+            "Should NOT flag String.to_existing_atom"
+        );
+    }
+
+    #[test]
+    fn test_elixir_unsafe_deserialization_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+defmodule MyApp.API do
+  def handle_request(data) do
+    term = :erlang.binary_to_term(data)
+    process(term)
+  end
+end
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/api.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-002"),
+            "Should detect binary_to_term: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_unsafe_deserialization_safe_plug_crypto() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+term = Plug.Crypto.non_executable_binary_to_term(data, [:safe])
+"#;
+        let findings = engine.scan(safe_code, "lib/api.ex", "elixir");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "EX-002"),
+            "Should NOT flag Plug.Crypto.non_executable_binary_to_term"
+        );
+    }
+
+    #[test]
+    fn test_elixir_code_injection_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+defmodule MyApp.Eval do
+  def run(user_code) do
+    {result, _} = Code.eval_string(user_code)
+    result
+  end
+end
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/eval.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-003"),
+            "Should detect Code.eval_string: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_command_injection_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+defmodule MyApp.Shell do
+  def execute(user_command) do
+    {output, 0} = System.cmd(user_command, [])
+    output
+  end
+end
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/shell.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-004"),
+            "Should detect System.cmd: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_os_cmd_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+result = :os.cmd(String.to_charlist(user_input))
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/shell.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-004"),
+            "Should detect :os.cmd: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_sql_injection_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+defmodule MyApp.Users do
+  def search(term) do
+    query = "SELECT * FROM users WHERE name = '#{term}'"
+    Ecto.Adapters.SQL.query(Repo, query)
+  end
+end
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/users.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-005"),
+            "Should detect SQL injection via string interpolation: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_sql_injection_safe_ecto_query() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+defmodule MyApp.Users do
+  import Ecto.Query
+
+  def search(term) do
+    from u in User,
+      where: u.name == ^term,
+      select: u
+    |> Repo.all()
+  end
+end
+"#;
+        let findings = engine.scan(safe_code, "lib/users.ex", "elixir");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "EX-005"),
+            "Should NOT flag Ecto query DSL"
+        );
+    }
+
+    #[test]
+    fn test_elixir_xss_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+defmodule MyAppWeb.PageController do
+  def show(conn, %{"content" => content}) do
+    html = Phoenix.HTML.raw(content)
+    render(conn, "show.html", content: html)
+  end
+end
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/page_controller.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-006"),
+            "Should detect Phoenix.HTML.raw with user content: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_path_traversal_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+defmodule MyApp.Files do
+  def read(user_path) do
+    File.read(user_path)
+  end
+end
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/files.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-007"),
+            "Should detect File.read with variable path: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_path_traversal_safe_literal() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+content = File.read!("priv/static/data.json")
+"#;
+        let findings = engine.scan(safe_code, "lib/files.ex", "elixir");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "EX-007"),
+            "Should NOT flag File.read! with literal path"
+        );
+    }
+
+    #[test]
+    fn test_elixir_hardcoded_secrets_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+config :my_app, MyAppWeb.Endpoint,
+  secret_key_base: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890" # gitleaks:allow
+"#;
+        let findings = engine.scan(vulnerable_code, "config/config.exs", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-008"),
+            "Should detect hardcoded secret_key_base: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_hardcoded_secrets_safe_env() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+config :my_app, MyAppWeb.Endpoint,
+  secret_key_base: System.get_env("SECRET_KEY_BASE")
+"#;
+        let findings = engine.scan(safe_code, "config/runtime.exs", "elixir");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "EX-008"),
+            "Should NOT flag System.get_env for secrets"
+        );
+    }
+
+    #[test]
+    fn test_elixir_eex_injection_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+defmodule MyApp.Template do
+  def render(template_string) do
+    EEx.eval_string(template_string)
+  end
+end
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/template.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-012"),
+            "Should detect EEx.eval_string: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_insecure_cookie_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+config :my_app, MyAppWeb.Endpoint,
+  session: [
+    store: :cookie,
+    key: "_my_app_key",
+    secure: false,
+    http_only: false
+  ]
+"#;
+        let findings = engine.scan(vulnerable_code, "config/config.exs", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-013"),
+            "Should detect insecure cookie settings: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_erlang_distribution_detection() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+Node.connect(:"other@192.168.1.100")
+:erlang.set_cookie(node(), :my_secret_cookie)
+"#;
+        let findings = engine.scan(code, "lib/cluster.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-015"),
+            "Should detect Erlang distribution usage: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_weak_crypto_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+hash = :crypto.hash(:md5, password)
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/auth.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-016"),
+            "Should detect MD5 usage: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_weak_crypto_safe_sha256() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+hash = :crypto.hash(:sha256, data)
+"#;
+        let findings = engine.scan(safe_code, "lib/auth.ex", "elixir");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "EX-016"),
+            "Should NOT flag SHA-256 usage"
+        );
+    }
+
+    #[test]
+    fn test_elixir_sensitive_data_in_logs() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+Logger.info("User login with password: #{password}")
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/auth.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-017"),
+            "Should detect password in Logger output: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_rpc_detection() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+:rpc.call(node, Module, :function, [args])
+"#;
+        let findings = engine.scan(code, "lib/cluster.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-010"),
+            "Should detect :rpc.call: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_elixir_open_redirect_detection() {
+        let engine = SecurityRulesEngine::new();
+        let vulnerable_code = r#"
+def callback(conn, %{"redirect_to" => redirect_url}) do
+  redirect(conn, external: redirect_url)
+end
+"#;
+        let findings = engine.scan(vulnerable_code, "lib/controller.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-014"),
+            "Should detect open redirect: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    // ========================================================================
+    // Integration Tests — Real-World Code Patterns
+    // ========================================================================
+
+    #[test]
+    fn test_integration_elixir_docker_backend_system_cmd() {
+        // Pattern from a real Elixir Docker sandbox backend
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+defmodule Krait.Sandbox.DockerBackend do
+  def run_container(image, args) do
+    case System.cmd("docker", args, stderr_to_stdout: true) do
+      {output, 0} -> {:ok, output}
+      {error, _code} -> {:error, error}
+    end
+  end
+
+  def stop_container(container_id) do
+    case System.cmd("docker", ["stop", container_id], stderr_to_stdout: true) do
+      {_, 0} -> :ok
+      _ -> :error
+    end
+  end
+end
+"#;
+        let findings = engine.scan(code, "lib/sandbox/docker_backend.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-004"),
+            "Should detect System.cmd in Docker backend: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_integration_elixir_file_operations_with_variable_path() {
+        // Pattern from a real Elixir attestation/auth module
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+defmodule Krait.Evolution.Attestation do
+  def read_key(path) do
+    case File.read(path) do
+      {:ok, content} -> {:ok, content}
+      {:error, reason} -> {:error, "Failed to read key: #{reason}"}
+    end
+  end
+end
+"#;
+        let findings = engine.scan(code, "lib/evolution/attestation.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-007"),
+            "Should detect File.read with variable path: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_integration_elixir_raw_sql_query() {
+        // Pattern from a real Elixir release module
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+defmodule Krait.Release do
+  def check_db do
+    case Ecto.Adapters.SQL.query(Krait.Repo, "SELECT 1") do
+      {:ok, _} -> :ok
+      {:error, _} -> :error
+    end
+  end
+end
+"#;
+        let findings = engine.scan(code, "lib/release.ex", "elixir");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "EX-005"),
+            "Should detect Ecto.Adapters.SQL.query: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_integration_rust_nif_with_ffi() {
+        // Pattern from a real Rust NIF for Elixir
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+use rustler::{Env, NifResult, Term};
+use std::ffi::CString;
+
+extern "C" {
+    fn tree_sitter_elixir() -> *const ();
+}
+
+#[rustler::nif(schedule = "DirtyCpu")]
+fn quick_validate<'a>(env: Env<'a>, code: &str, language: &str) -> NifResult<Term<'a>> {
+    let parsed = parse_code(code, language);
+    Ok(parsed.encode(env))
+}
+"#;
+        let findings = engine.scan(code, "native/krait_analyzer/src/lib.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-012"),
+            "Should detect FFI boundary in NIF code: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_integration_rust_web_handler_with_deserialization() {
+        // Pattern from a real Rust web API handler
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+use axum::{Json, extract::Path};
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct CreateUser {
+    name: String,
+    email: String,
+}
+
+async fn create_user(Json(body): Json<CreateUser>) -> Result<Json<User>, ApiError> {
+    let user_data: CreateUser = serde_json::from_str(&request_body)?;
+    let user = db::insert_user(user_data).await?;
+    Ok(Json(user))
+}
+"#;
+        let findings = engine.scan(code, "src/handlers/users.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "RUST-016"),
+            "Should detect serde_json::from_str in API handler: {:?}",
+            findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_integration_rust_rules_count() {
+        let engine = SecurityRulesEngine::new();
+        let mut rust_rule_count = 0;
+        for id in 1..=21 {
+            let rule_id = format!("RUST-{:03}", id);
+            if engine.get_rule(&rule_id).is_some() {
+                rust_rule_count += 1;
+            }
+        }
+        assert!(
+            rust_rule_count >= 21,
+            "Should have at least 21 Rust rules (3 from cwe-top25 + 18 from rust.yaml), got {}",
+            rust_rule_count
+        );
+    }
+
+    #[test]
+    fn test_integration_elixir_rules_count() {
+        let engine = SecurityRulesEngine::new();
+        let mut elixir_rule_count = 0;
+        for id in 1..=18 {
+            let rule_id = format!("EX-{:03}", id);
+            if engine.get_rule(&rule_id).is_some() {
+                elixir_rule_count += 1;
+            }
+        }
+        assert!(
+            elixir_rule_count >= 18,
+            "Should have at least 18 Elixir rules, got {}",
+            elixir_rule_count
         );
     }
 }

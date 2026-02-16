@@ -274,7 +274,11 @@ impl SearchIndex {
 
         // Sort by score and take top results
         let mut results: Vec<_> = scores.into_iter().collect();
-        results.sort_by(|a, b| b.1 .0.partial_cmp(&a.1 .0).unwrap());
+        results.sort_by(|a, b| {
+            b.1 .0
+                .partial_cmp(&a.1 .0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(max_results);
 
         results
@@ -628,5 +632,30 @@ mod tests {
         let invalid_pattern = "[invalid(";
         let result = validate_regex_pattern(invalid_pattern);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sort_handles_nan_scores() {
+        let mut index = SearchIndex::new();
+
+        index.index_file("a.rs", "fn hello() { }");
+        index.index_file("b.rs", "fn world() { }");
+
+        // Search should not panic even if scores could theoretically be NaN
+        let results = index.search("hello", 10);
+        assert!(!results.is_empty());
+
+        // Directly test the sort with NaN values
+        let mut scores: Vec<(usize, (f64, Vec<String>))> = vec![
+            (0, (1.0, vec!["a".to_string()])),
+            (1, (f64::NAN, vec!["b".to_string()])),
+            (2, (0.5, vec!["c".to_string()])),
+        ];
+        // This should not panic with our fix
+        scores.sort_by(|a, b| {
+            b.1 .0
+                .partial_cmp(&a.1 .0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 }

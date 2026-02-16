@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-16
+
+### Fixed
+
+- **Crash-proof chunking** - Fixed unsafe byte-level string slicing in `node_text()`, `extract_signature()`, and `parser.rs` signature extraction that panicked when tree-sitter byte positions landed on multi-byte UTF-8 character boundaries (emoji, CJK, accented characters). All byte slicing now uses safe `content.get()` with fallback. This was the root cause of `hybrid_search`, `search_chunks`, and `get_chunk_stats` crashing the MCP server with "Connection closed" when processing repos with multi-byte content.
+- **NaN-safe sort operations** - Fixed 5 locations where `partial_cmp().unwrap()` would panic on NaN float values: `search.rs` (BM25 results), `embeddings.rs` (similarity sort), `git.rs` (churn score sort), `index.rs` (relevance score sort), `extract.rs` (relevance sort). All now use `unwrap_or(std::cmp::Ordering::Equal)`.
+- **Defense-in-depth chunking** - Added `catch_unwind` wrappers around all three repo-wide `chunk_file()` loops in `hybrid_search`, `search_chunks`, and `get_chunk_stats` so a panic in one file logs a warning and skips it instead of killing the MCP server process.
+- **Dependency security** - Updated `time` crate from 0.3.44 to 0.3.47 to fix RUSTSEC-2026-0009 (DoS via stack exhaustion)
+
+### Added
+
+- **Visualization frontend overhaul** - Full single-page application with HashRouter routing, file tree sidebar with syntax-highlighted code viewer (Prism.js), dashboard page with repo picker, and per-repo overview pages with graph view links
+- **Graph view performance** - Import graph now uses cached index data instead of filesystem walks; symbol graph iterates file cache directly instead of markdown round-trips; all graph views respect `max_nodes` parameter for early termination
+- **Real control flow graphs** - Flow view now uses the real CFG builder (`cfg::analyze_function`) with proper basic blocks, branch conditions, and loop back-edges instead of the single-block stub
+- **Hybrid graph budget splitting** - Hybrid view allocates 60/40 node budget between call and import graphs for balanced results
+- **Configurable embedding dimensions** ([#14](https://github.com/postrv/narsil-mcp/issues/14)) - Added `--neural-dimension` CLI arg and `default_dimension_for_model()` lookup so models like `text-embedding-3-large` use correct dimensions (3072) instead of hardcoded 1536
+- **Nix frontend build** ([#13](https://github.com/postrv/narsil-mcp/issues/13)) - Added `frontendDist` derivation in `flake.nix` using `buildNpmPackage` so `nix profile install github:postrv/narsil-mcp#with-frontend` works
+- **Rust security rules** - 18 new language-specific rules (RUST-004 to RUST-021) in `rules/rust.yaml` covering command injection via `Command::new()`, unsafe transmute, FFI boundary issues, TOCTOU race conditions, ReDoS patterns, static mut usage, SSRF via HTTP clients, and more
+- **Elixir security rules** - 18 new language-specific rules (EX-001 to EX-018) in `rules/elixir.yaml` covering atom exhaustion, `binary_to_term` deserialization, `Code.eval` injection, Ecto SQL injection, Phoenix XSS, Erlang distribution security, unsafe NIFs
+- **Custom frontend favicon** - Frontend now uses narsil-mcp branding icon (`icon.svg`) instead of default Vite logo
+
+### Changed
+
+- **Migrated from `serde_yaml` to `serde-saphyr`** - Deprecated `serde_yaml` (unmaintained) replaced with actively maintained, panic-free `serde-saphyr` YAML library across all config loading, security rules parsing, and CLI commands
+- **Test count** increased from 1,611 to 1,763 (+152 tests)
+
 ## [1.5.0] - 2026-02-08
 
 ### Added

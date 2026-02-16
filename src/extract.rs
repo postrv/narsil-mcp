@@ -326,7 +326,11 @@ fn calculate_relevance(matches: &[usize], start: usize, end: usize) -> f32 {
 /// Extract the most relevant excerpt from multiple candidates
 pub fn select_best_excerpt(excerpts: &[Excerpt], max_count: usize) -> Vec<&Excerpt> {
     let mut sorted: Vec<_> = excerpts.iter().collect();
-    sorted.sort_by(|a, b| b.relevance.partial_cmp(&a.relevance).unwrap());
+    sorted.sort_by(|a, b| {
+        b.relevance
+            .partial_cmp(&a.relevance)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     sorted.truncate(max_count);
     sorted
 }

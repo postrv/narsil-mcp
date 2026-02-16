@@ -1,6 +1,6 @@
 [package]
 name = "narsil-mcp"
-version = "1.5.0"
+version = "1.6.0"
 edition = "2021"
 authors = ["postrv"]
 description = "A blazingly fast MCP server for code intelligence - enumerates repos, data structures, algorithms, and returns relevant code context"
@@ -103,7 +103,7 @@ bincode = "1.3"   # Binary serialization for index persistence
 regex = "1.10"    # Regular expression support
 
 # Configuration and rules
-serde_yaml = "0.9"  # YAML parsing for security rules
+serde-saphyr = "0.0"  # YAML parsing for security rules (panic-free, actively maintained)
 toml = "0.8"        # TOML parsing for config
 
 # Utilities

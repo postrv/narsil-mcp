@@ -471,7 +471,7 @@ impl AstChunker {
         // Get the first line or until opening brace
         let start_byte = node.start_byte();
         let end_byte = node.end_byte().min(start_byte + 500); // Limit signature length
-        let text = &content[start_byte..end_byte];
+        let text = content.get(start_byte..end_byte)?;
 
         // Find the end of signature (before body)
         let sig_end = match lang {
@@ -481,7 +481,7 @@ impl AstChunker {
             _ => text.find('{'),
         };
 
-        sig_end.map(|pos| text[..pos].trim().to_string())
+        sig_end.map(|pos| text.get(..pos).unwrap_or(text).trim().to_string())
     }
 
     /// Find the start of doc comments before a symbol
@@ -547,7 +547,10 @@ impl AstChunker {
 
     /// Get text content of a node
     fn node_text(&self, node: &Node, content: &str) -> String {
-        content[node.start_byte()..node.end_byte()].to_string()
+        content
+            .get(node.start_byte()..node.end_byte())
+            .unwrap_or("")
+            .to_string()
     }
 
     /// Create a chunk from a symbol boundary
@@ -1165,5 +1168,105 @@ fn d() {}
         assert_eq!(chunker.detect_language("test.c"), "c");
         assert_eq!(chunker.detect_language("test.cpp"), "cpp");
         assert_eq!(chunker.detect_language("test.unknown"), "unknown");
+    }
+
+    #[test]
+    fn test_node_text_multibyte_safety() {
+        // Content with multi-byte UTF-8 characters (emoji, CJK, accented)
+        let code =
+            "fn héllo_wörld() {\n    let msg = \"你好世界 🌍\";\n    println!(\"{}\", msg);\n}\n";
+        let chunker = AstChunker::new();
+        let chunks = chunker.chunk_file(code, "test.rs");
+
+        // Should not panic and should produce valid chunks
+        assert!(
+            !chunks.is_empty(),
+            "Should produce chunks for multibyte content"
+        );
+        for chunk in &chunks {
+            // Every chunk content must be valid UTF-8 (guaranteed by String type, but verify non-empty)
+            assert!(!chunk.content.is_empty() || chunk.start_line == chunk.end_line);
+        }
+    }
+
+    #[test]
+    fn test_extract_signature_truncation_safety() {
+        // Create a function with a very long name containing multi-byte chars
+        // such that the 500-byte truncation lands mid-character
+        let long_name: String = "á".repeat(260); // 260 * 2 bytes = 520 bytes, exceeds 500-byte limit
+        let code = format!("fn {}() {{\n    println!(\"test\");\n}}\n", long_name);
+        let chunker = AstChunker::new();
+        let chunks = chunker.chunk_file(&code, "test.rs");
+
+        // Should not panic
+        assert!(
+            !chunks.is_empty(),
+            "Should produce chunks despite long multibyte name"
+        );
+    }
+
+    #[test]
+    fn test_chunk_file_with_mixed_encodings() {
+        // File mixing ASCII, Latin-1 extended, CJK, and emoji across function boundaries
+        let code = r#"
+fn ascii_func() {
+    let x = "hello world";
+}
+
+fn café_résumé() {
+    let y = "naïve über";
+}
+
+fn 数据处理() {
+    let z = "日本語テスト";
+}
+
+fn emoji_func() {
+    let w = "🚀🔥💯";
+}
+"#;
+        let chunker = AstChunker::new();
+        let chunks = chunker.chunk_file(code, "test.rs");
+
+        assert!(
+            !chunks.is_empty(),
+            "Should produce chunks for mixed encoding content"
+        );
+
+        // Verify all chunks are valid UTF-8 strings (they are String, so this is guaranteed)
+        let all_content: String = chunks.iter().map(|c| c.content.clone()).collect();
+        assert!(
+            all_content.contains("ascii_func"),
+            "Should contain ASCII function"
+        );
+        assert!(
+            all_content.contains("emoji_func"),
+            "Should contain emoji function"
+        );
+    }
+
+    #[test]
+    fn test_chunk_multiple_files_no_panic() {
+        let chunker = AstChunker::new();
+
+        // Simulate chunking multiple files in sequence, including ones with multibyte content
+        let files = vec![
+            ("file1.rs", "fn normal() { let x = 1; }\n"),
+            ("file2.rs", "fn émoji() { let x = \"🎉\"; }\n"),
+            ("file3.py", "def hello():\n    print('世界')\n"),
+            ("file4.js", "function greet() { return '挨拶'; }\n"),
+            ("file5.rs", "fn café() { let ñ = \"über\"; }\n"),
+        ];
+
+        let mut total_chunks = 0;
+        for (path, content) in &files {
+            let chunks = chunker.chunk_file(content, path);
+            total_chunks += chunks.len();
+        }
+
+        assert!(
+            total_chunks > 0,
+            "Should produce chunks across multiple files"
+        );
     }
 }
