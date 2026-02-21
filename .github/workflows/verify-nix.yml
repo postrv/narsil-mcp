@@ -1,0 +1,16 @@
+name: Verify Nix Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  nix-build:
+    name: Verify flake builds
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build with-frontend
+        run: nix build .#with-frontend-no-check --no-write-lock-file
