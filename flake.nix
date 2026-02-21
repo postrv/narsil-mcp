@@ -27,7 +27,7 @@
           pname = "narsil-mcp-frontend";
           version = "1.6.0";
           src = ./frontend;
-          npmDepsHash = pkgs.lib.fakeHash;
+          npmDepsHash = "sha256-zwO2ek9o4QMJ9jeTzPVGZzgG46NEpHEnpE5OMiXXixQ=";
           # The build script is "tsc -b && vite build"
           buildPhase = ''
             npm run build
