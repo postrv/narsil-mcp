@@ -86,8 +86,7 @@ A Rust-powered MCP (Model Context Protocol) server providing AI assistants with 
 
 **macOS / Linux (Homebrew):**
 ```bash
-brew tap postrv/narsil
-brew install narsil-mcp
+brew install postrv/narsil/narsil-mcp
 ```
 
 **Windows (Scoop):**
