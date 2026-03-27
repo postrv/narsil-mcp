@@ -96,13 +96,6 @@ scoop bucket add narsil https://github.com/postrv/scoop-narsil
 scoop install narsil-mcp
 ```
 
-**Arch Linux (AUR):**
-```bash
-yay -S narsil-mcp-bin  # Binary release (faster)
-# or
-yay -S narsil-mcp      # Build from source
-```
-
 **Rust/Cargo (all platforms):**
 ```bash
 cargo install narsil-mcp
