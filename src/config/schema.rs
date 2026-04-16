@@ -129,7 +129,7 @@ pub struct PerformanceConfig {
 impl Default for PerformanceConfig {
     fn default() -> Self {
         Self {
-            max_tool_count: 76,
+            max_tool_count: 128,
             startup_latency_ms: 10,
             filtering_latency_ms: 1,
         }
@@ -137,7 +137,7 @@ impl Default for PerformanceConfig {
 }
 
 fn default_max_tool_count() -> usize {
-    76
+    128
 }
 
 fn default_startup_latency() -> u64 {
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn test_default_performance_config() {
         let perf = PerformanceConfig::default();
-        assert_eq!(perf.max_tool_count, 76);
+        assert_eq!(perf.max_tool_count, 128);
         assert_eq!(perf.startup_latency_ms, 10);
         assert_eq!(perf.filtering_latency_ms, 1);
     }

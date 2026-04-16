@@ -73,9 +73,13 @@ impl ToolFilter {
         if options.neural_config.enabled {
             flags.insert(FeatureFlag::Neural);
         }
-        // Remote flag would be set via engine options if there's a remote field
-        // For now, we'll check the neural_config backend or other indicators
-        // This can be extended as needed
+        if options.remote_enabled {
+            flags.insert(FeatureFlag::Remote);
+        }
+        #[cfg(feature = "graph")]
+        if options.graph_enabled {
+            flags.insert(FeatureFlag::Graph);
+        }
 
         flags
     }
@@ -91,7 +95,11 @@ impl ToolFilter {
             }
         }
 
-        // Apply performance budget
+        // Full preset: no cap — expose every tool that passes the filter.
+        if matches!(self.preset, Preset::Full) {
+            return enabled_tools;
+        }
+        // Other presets: apply performance budget
         self.apply_performance_budget(enabled_tools)
     }
 
@@ -122,7 +130,7 @@ impl ToolFilter {
         // If preset is Full (empty whitelist), all tools are allowed
 
         // 4. Check if tool's category is enabled
-        let category_name = format!("{:?}", metadata.category);
+        let category_name = format!("{}", metadata.category);
         if let Some(category_config) = self.config.tools.categories.get(&category_name) {
             if !category_config.enabled {
                 return false; // Category disabled
@@ -189,6 +197,7 @@ mod tests {
             call_graph_enabled: true,
             persist_enabled: true,
             watch_enabled: true,
+            remote_enabled: true,
             lsp_config: crate::lsp::LspConfig {
                 enabled: true,
                 ..Default::default()
@@ -202,13 +211,18 @@ mod tests {
 
         let flags = ToolFilter::convert_engine_options(&options);
 
-        assert_eq!(flags.len(), 6);
+        // 7 flags without graph feature, 8 with graph feature
+        #[cfg(not(feature = "graph"))]
+        assert_eq!(flags.len(), 7);
+        #[cfg(feature = "graph")]
+        assert_eq!(flags.len(), 7); // graph_enabled defaults to false via ..Default::default()
         assert!(flags.contains(&FeatureFlag::Git));
         assert!(flags.contains(&FeatureFlag::CallGraph));
         assert!(flags.contains(&FeatureFlag::Persist));
         assert!(flags.contains(&FeatureFlag::Watch));
         assert!(flags.contains(&FeatureFlag::Lsp));
         assert!(flags.contains(&FeatureFlag::Neural));
+        assert!(flags.contains(&FeatureFlag::Remote));
     }
 
     #[test]
