@@ -54,7 +54,7 @@ tools:
       description: "Graph visualization"
   overrides: {}
 performance:
-  max_tool_count: 76
+  max_tool_count: 128
   startup_latency_ms: 10
   filtering_latency_ms: 1
 "#;
@@ -227,7 +227,7 @@ impl ConfigLoader {
         }
 
         // Merge performance config (overlay takes precedence)
-        if overlay.performance.max_tool_count != 76 {
+        if overlay.performance.max_tool_count != 128 {
             base.performance.max_tool_count = overlay.performance.max_tool_count;
         }
         if overlay.performance.startup_latency_ms != 10 {
@@ -249,41 +249,53 @@ impl ConfigLoader {
     fn apply_env_overrides(config: &mut ToolConfig) -> Result<()> {
         use std::env;
 
-        // NARSIL_PRESET - Apply a preset configuration
+        // NARSIL_PRESET - Apply a preset configuration.
+        // Empty value is treated as "not set" — Preset::parse("") currently
+        // returns None which falls back to Full, but guarding here avoids
+        // relying on that accident.
         if let Ok(preset) = env::var("NARSIL_PRESET") {
-            config.preset = Some(preset);
+            let trimmed = preset.trim();
+            if !trimmed.is_empty() {
+                config.preset = Some(trimmed.to_string());
+            }
         }
 
-        // NARSIL_ENABLED_CATEGORIES - comma-separated list of categories to enable
+        // NARSIL_ENABLED_CATEGORIES - comma-separated list of categories to enable.
+        // An empty value is treated as "not set" to avoid accidentally disabling
+        // every category when the variable is exported without a value.
         if let Ok(categories) = env::var("NARSIL_ENABLED_CATEGORIES") {
-            // Disable all categories first
-            for cat in config.tools.categories.values_mut() {
-                cat.enabled = false;
-            }
+            let names: Vec<&str> = categories.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            if !names.is_empty() {
+                // Disable all categories first
+                for cat in config.tools.categories.values_mut() {
+                    cat.enabled = false;
+                }
 
-            // Enable specified categories
-            for name in categories.split(',').map(|s| s.trim()) {
-                if let Some(cat) = config.tools.categories.get_mut(name) {
-                    cat.enabled = true;
-                } else {
-                    // Create category if it doesn't exist
-                    use crate::config::schema::CategoryConfig;
-                    config.tools.categories.insert(
-                        name.to_string(),
-                        CategoryConfig {
-                            enabled: true,
-                            description: None,
-                            required_flags: vec![],
-                            config: HashMap::new(),
-                        },
-                    );
+                // Enable specified categories
+                for name in names {
+                    if let Some(cat) = config.tools.categories.get_mut(name) {
+                        cat.enabled = true;
+                    } else {
+                        // Create category if it doesn't exist
+                        use crate::config::schema::CategoryConfig;
+                        config.tools.categories.insert(
+                            name.to_string(),
+                            CategoryConfig {
+                                enabled: true,
+                                description: None,
+                                required_flags: vec![],
+                                config: HashMap::new(),
+                            },
+                        );
+                    }
                 }
             }
         }
 
-        // NARSIL_DISABLED_TOOLS - comma-separated list of tools to disable
+        // NARSIL_DISABLED_TOOLS - comma-separated list of tools to disable.
+        // Empty value is treated as "not set".
         if let Ok(tools) = env::var("NARSIL_DISABLED_TOOLS") {
-            for name in tools.split(',').map(|s| s.trim()) {
+            for name in tools.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
                 config.tools.overrides.insert(
                     name.to_string(),
                     ToolOverride {

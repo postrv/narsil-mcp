@@ -103,6 +103,8 @@ pub struct EngineOptions {
     pub cache_enabled: bool,
     /// Cache TTL in seconds (default: 1800 = 30 minutes)
     pub cache_ttl_seconds: u64,
+    /// Enable remote GitHub repository support
+    pub remote_enabled: bool,
     /// Enable RDF knowledge graph storage (requires graph feature)
     #[cfg(feature = "graph")]
     pub graph_enabled: bool,
@@ -123,6 +125,7 @@ impl Default for EngineOptions {
             neural_config: NeuralConfig::default(),
             cache_enabled: true,
             cache_ttl_seconds: 1800,
+            remote_enabled: false,
             #[cfg(feature = "graph")]
             graph_enabled: false,
             #[cfg(feature = "graph")]
