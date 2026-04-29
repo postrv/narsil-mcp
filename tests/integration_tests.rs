@@ -560,6 +560,57 @@ fn test_search_code() -> Result<()> {
 }
 
 #[test]
+fn test_unsupported_text_files_are_indexed_for_search_and_chunks() -> Result<()> {
+    let repo = TestRepo::new()?;
+    let xml_path = repo.path().join("onec/Configuration.xml");
+    std::fs::create_dir_all(xml_path.parent().unwrap())?;
+    std::fs::write(
+        &xml_path,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<MetaDataObject>
+  <Name>СправочникНоменклатура</Name>
+  <Synonym>УникальныйМаркер1С</Synonym>
+</MetaDataObject>
+"#,
+    )?;
+
+    let server = TestMcpServer::start_with_repo(repo.path())?;
+    let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
+    let search_response = server.call_tool(
+        "search_code",
+        json!({
+            "query": "УникальныйМаркер1С",
+            "max_results": 10
+        }),
+    )?;
+    assert!(search_response["error"].is_null());
+    let search_content = search_response["result"]["content"][0]["text"]
+        .as_str()
+        .expect("Expected text content");
+    assert!(search_content.contains("onec/Configuration.xml"));
+    assert!(search_content.contains("УникальныйМаркер1С"));
+
+    let chunk_response = server.call_tool(
+        "search_chunks",
+        json!({
+            "query": "УникальныйМаркер1С",
+            "repo": repo_name,
+            "max_results": 10
+        }),
+    )?;
+    assert!(chunk_response["error"].is_null());
+    let chunk_content = chunk_response["result"]["content"][0]["text"]
+        .as_str()
+        .expect("Expected text content");
+    assert!(chunk_content.contains("onec/Configuration.xml"));
+    assert!(chunk_content.contains("УникальныйМаркер1С"));
+
+    Ok(())
+}
+
+#[test]
 fn test_get_file() -> Result<()> {
     let repo = TestRepo::new()?;
     let file_content = r#"fn main() {

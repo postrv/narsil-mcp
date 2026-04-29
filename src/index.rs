@@ -592,12 +592,12 @@ impl CodeIntelEngine {
 
         // Parse files in parallel
         let metrics = Arc::clone(&self.metrics);
-        let parsed_results: Vec<_> = files
+        let indexed_files: Vec<_> = files
             .par_iter()
             .filter_map(|file_path| {
                 let parse_start = std::time::Instant::now();
-                let content = std::fs::read_to_string(file_path).ok()?;
-                let parsed = self.parser.parse_file(file_path, &content).ok()?;
+                let content = read_indexable_text_file(file_path)?;
+                let parsed = self.parser.parse_file(file_path, &content).ok();
                 metrics.record_file_parse(parse_start.elapsed());
                 Some((file_path.clone(), content, parsed))
             })
@@ -606,13 +606,24 @@ impl CodeIntelEngine {
         // Collect parsed trees for call graph construction
         let mut trees_for_callgraph: Vec<(String, String, tree_sitter::Tree)> = Vec::new();
 
-        for (file_path, content, parsed) in parsed_results {
+        for (file_path, content, parsed) in indexed_files {
             file_count += 1;
             let lines = content.lines().count();
             total_lines += lines;
 
-            // Update language stats
-            let lang_stats = languages.entry(parsed.language.clone()).or_default();
+            // Track parseable languages separately from text-only files.
+            let language_key = parsed
+                .as_ref()
+                .map(|parsed| parsed.language.clone())
+                .unwrap_or_else(|| {
+                    file_path
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(ext_to_language)
+                        .filter(|lang| !lang.is_empty())
+                        .unwrap_or_else(|| "text".to_string())
+                });
+            let lang_stats = languages.entry(language_key).or_default();
             lang_stats.file_count += 1;
             lang_stats.line_count += lines;
             lang_stats.byte_count += content.len();
@@ -624,49 +635,51 @@ impl CodeIntelEngine {
                 .to_string_lossy()
                 .to_string();
 
-            for mut symbol in parsed.symbols {
-                symbol.file_path = relative_path.clone();
+            if let Some(parsed) = parsed {
+                let crate::parser::ParsedFile { symbols, tree, .. } = parsed;
 
-                // Index symbol into embedding engine for similarity search
-                if let Some(ref sig) = symbol.signature {
-                    let symbol_id = format!("{}::{}", relative_path, symbol.name);
-                    self.embedding_engine.index_snippet(
-                        symbol_id.clone(),
-                        relative_path.clone(),
-                        sig.clone(),
-                        symbol.start_line,
-                        symbol.end_line,
-                    );
+                for mut symbol in symbols {
+                    symbol.file_path = relative_path.clone();
 
-                    // Collect for neural batch indexing if enabled
-                    if self.neural_engine.is_some() {
-                        neural_docs.push(crate::neural::NeuralDocument {
-                            id: symbol_id,
-                            file_path: relative_path.clone(),
-                            content: sig.clone(),
-                            start_line: symbol.start_line,
-                            end_line: symbol.end_line,
-                            symbol_name: Some(symbol.name.clone()),
-                        });
+                    // Index symbol into embedding engine for similarity search
+                    if let Some(ref sig) = symbol.signature {
+                        let symbol_id = format!("{}::{}", relative_path, symbol.name);
+                        self.embedding_engine.index_snippet(
+                            symbol_id.clone(),
+                            relative_path.clone(),
+                            sig.clone(),
+                            symbol.start_line,
+                            symbol.end_line,
+                        );
+
+                        // Collect for neural batch indexing if enabled
+                        if self.neural_engine.is_some() {
+                            neural_docs.push(crate::neural::NeuralDocument {
+                                id: symbol_id,
+                                file_path: relative_path.clone(),
+                                content: sig.clone(),
+                                start_line: symbol.start_line,
+                                end_line: symbol.end_line,
+                                symbol_name: Some(symbol.name.clone()),
+                            });
+                        }
+                    }
+
+                    symbols_vec.push(symbol);
+                }
+
+                // Collect tree for call graph if enabled and tree exists
+                if self.options.call_graph_enabled {
+                    if let Some(tree) = tree {
+                        trees_for_callgraph.push((relative_path.clone(), content.clone(), tree));
                     }
                 }
-
-                symbols_vec.push(symbol);
             }
 
-            // Cache file content
+            // Cache and index all textual files, even without parser support.
             self.file_cache
                 .insert(file_path.clone(), Arc::new(content.clone()));
-
-            // Index file for semantic search
             self.search_index.index_file(&relative_path, &content);
-
-            // Collect tree for call graph if enabled and tree exists
-            if self.options.call_graph_enabled {
-                if let Some(tree) = parsed.tree {
-                    trees_for_callgraph.push((relative_path, content, tree));
-                }
-            }
         }
 
         let metadata = RepoMetadata {
@@ -1822,40 +1835,40 @@ impl CodeIntelEngine {
             match change.change_type {
                 ChangeType::Created | ChangeType::Modified => {
                     // Re-index the changed file
-                    if let Ok(content) = std::fs::read_to_string(&change.path) {
-                        if let Ok(parsed) = self.parser.parse_file(&change.path, &content) {
-                            let rel_path = change
-                                .path
-                                .strip_prefix(repo_path)
-                                .unwrap_or(&change.path)
-                                .to_string_lossy()
-                                .to_string();
+                    if let Some(content) = read_indexable_text_file(&change.path) {
+                        let parsed = self.parser.parse_file(&change.path, &content).ok();
+                        let rel_path = change
+                            .path
+                            .strip_prefix(repo_path)
+                            .unwrap_or(&change.path)
+                            .to_string_lossy()
+                            .to_string();
 
-                            // Update symbols for this file
-                            if let Some(mut symbols) = self.symbols.get_mut(&repo_name) {
-                                // Remove old symbols from this file
-                                symbols.retain(|s| s.file_path != rel_path);
+                        // Update symbols for this file
+                        if let Some(mut symbols) = self.symbols.get_mut(&repo_name) {
+                            // Remove old symbols from this file
+                            symbols.retain(|s| s.file_path != rel_path);
 
-                                // Add new symbols
+                            if let Some(parsed) = parsed {
                                 for mut symbol in parsed.symbols {
                                     symbol.file_path = rel_path.clone();
                                     symbols.push(symbol);
                                 }
                             }
-
-                            // Update file cache
-                            self.file_cache
-                                .insert(change.path.clone(), Arc::new(content.clone()));
-
-                            // Update search index
-                            self.search_index.index_file(&rel_path, &content);
-
-                            // Smart cache invalidation - only invalidate entries that depend on this file
-                            self.query_cache.invalidate_for_file(&rel_path);
-
-                            info!("Re-indexed file: {}", rel_path);
-                            count += 1;
                         }
+
+                        // Update file cache
+                        self.file_cache
+                            .insert(change.path.clone(), Arc::new(content.clone()));
+
+                        // Update search index
+                        self.search_index.index_file(&rel_path, &content);
+
+                        // Smart cache invalidation - only invalidate entries that depend on this file
+                        self.query_cache.invalidate_for_file(&rel_path);
+
+                        info!("Re-indexed file: {}", rel_path);
+                        count += 1;
                     }
                 }
                 ChangeType::Deleted => {
@@ -7930,6 +7943,15 @@ fn detect_language_from_path(path: &str) -> String {
     } else {
         "unknown".to_string()
     }
+}
+
+fn read_indexable_text_file(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.contains(&0) {
+        return None;
+    }
+
+    String::from_utf8(bytes).ok()
 }
 
 // Helper functions
