@@ -214,6 +214,18 @@ impl LanguageParser {
                     (variable_assignment name: (variable_name) @var.name) @var.def
                 "#,
             },
+            // BSL / 1C
+            LanguageConfig {
+                name: "bsl".to_string(),
+                language: tree_sitter_bsl::LANGUAGE.into(),
+                extensions: vec!["bsl"],
+                symbol_query: r#"
+                    (procedure_definition
+                      name: (identifier) @function.name) @function.def
+                    (function_definition
+                      name: (identifier) @function.name) @function.def
+                "#,
+            },
             // Ruby
             LanguageConfig {
                 name: "ruby".to_string(),
@@ -659,6 +671,57 @@ def standalone_function():
         let names: Vec<_> = parsed.symbols.iter().map(|s| &s.name).collect();
         assert!(names.contains(&&"MyClass".to_string()));
         assert!(names.contains(&&"standalone_function".to_string()));
+    }
+
+    #[test]
+    fn test_parse_bsl_procedure_and_function() {
+        let parser = LanguageParser::new().unwrap();
+        let content = r#"
+Процедура ПередЗаписью(Отказ, РежимЗаписи) Экспорт
+    Если Отказ Тогда
+        Возврат;
+    КонецЕсли;
+КонецПроцедуры
+
+Функция ПолучитьНаименование(Код) Экспорт
+    Возврат "Тест";
+КонецФункции
+        "#;
+
+        let parsed = parser.parse_file(Path::new("module.bsl"), content).unwrap();
+        assert_eq!(parsed.language, "bsl");
+        assert!(!parsed.symbols.is_empty());
+
+        let names: Vec<_> = parsed.symbols.iter().map(|s| &s.name).collect();
+        assert!(names.contains(&&"ПередЗаписью".to_string()));
+        assert!(names.contains(&&"ПолучитьНаименование".to_string()));
+        assert!(parsed
+            .symbols
+            .iter()
+            .all(|s| s.kind == crate::symbols::SymbolKind::Function));
+    }
+
+    #[test]
+    fn test_parse_bsl_english_keywords() {
+        let parser = LanguageParser::new().unwrap();
+        let content = r#"
+Procedure DoWork(Value) Export
+    Return;
+EndProcedure
+
+Function Compute(Value)
+    Return Value;
+EndFunction
+        "#;
+
+        let parsed = parser
+            .parse_file(Path::new("common_module.bsl"), content)
+            .unwrap();
+        assert_eq!(parsed.language, "bsl");
+
+        let names: Vec<_> = parsed.symbols.iter().map(|s| &s.name).collect();
+        assert!(names.contains(&&"DoWork".to_string()));
+        assert!(names.contains(&&"Compute".to_string()));
     }
 
     #[test]

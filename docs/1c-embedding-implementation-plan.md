@@ -273,6 +273,8 @@ Exit criteria:
 ### Phase 2: BSL Language Support in Parser
 Goal: support `*.bsl` as a first-class language.
 
+Status: completed on `feat/1c-phase2-bsl-parser`.
+
 Tasks:
 - Add `tree-sitter-bsl` dependency to `Cargo.toml`
 - Add BSL language config in `src/parser.rs`
@@ -296,6 +298,12 @@ Deliverables:
 - parseable `*.bsl`
 - extracted symbols
 - parser tests
+
+Completed:
+- `tree-sitter-bsl` dependency added to `Cargo.toml`
+- `src/parser.rs` now recognizes `.bsl` files as the `bsl` language
+- initial tree-sitter query extracts BSL procedures and functions as symbols
+- parser tests cover Russian and English keyword variants, including `Экспорт` / `Export`
 
 Exit criteria:
 - `LanguageParser::parse_file()` succeeds for representative BSL modules
