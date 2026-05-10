@@ -177,6 +177,16 @@ impl TestRepo {
         Ok(())
     }
 
+    /// Add a Java file to the repository
+    fn add_java_file(&self, name: &str, content: &str) -> Result<()> {
+        let path = self.dir.path().join(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
     /// Add a .gitignore file
     fn add_gitignore(&self, content: &str) -> Result<()> {
         std::fs::write(self.dir.path().join(".gitignore"), content)?;
@@ -470,6 +480,73 @@ class UserService {
         // If successful, should contain some content
         assert!(!content.is_empty());
     }
+
+    Ok(())
+}
+
+/// Issue #18a: end-to-end check that a Maven-shaped repository
+/// (`src/main/java/...`) actually surfaces Java symbols through
+/// `find_symbols`. Catches regressions in the indexer walker, parser
+/// dispatch, and tool handler — all things that the parser-level unit
+/// test in `src/parser.rs::tests::test_parse_java` does not exercise.
+#[test]
+fn test_find_symbols_java_maven_layout() -> Result<()> {
+    let repo = TestRepo::new()?;
+    repo.add_java_file(
+        "src/main/java/com/example/demo/Greeter.java",
+        r#"
+package com.example.demo;
+
+public class Greeter {
+    public String hello(String name) {
+        return "Hi " + name;
+    }
+}
+
+interface Greetable {
+    String hello(String name);
+}
+
+enum Color { RED, GREEN, BLUE; }
+"#,
+    )?;
+
+    let server = TestMcpServer::start_with_repo(repo.path())?;
+    let repo_name = repo.path().file_name().unwrap().to_str().unwrap();
+    server.wait_for_repo(repo_name, Duration::from_secs(30))?;
+
+    let response = server.call_tool(
+        "find_symbols",
+        json!({
+            "repo": repo_name,
+            "symbol_type": "all"
+        }),
+    )?;
+
+    assert!(
+        response["error"].is_null(),
+        "find_symbols errored: {response:?}"
+    );
+    let content = response["result"]["content"][0]["text"]
+        .as_str()
+        .expect("Expected text content");
+
+    assert!(
+        content.contains("Greeter"),
+        "expected Greeter class in find_symbols output, got:\n{content}"
+    );
+    assert!(
+        content.contains("hello"),
+        "expected hello method in find_symbols output, got:\n{content}"
+    );
+    assert!(
+        content.contains("Greetable"),
+        "expected Greetable interface in find_symbols output, got:\n{content}"
+    );
+    assert!(
+        content.contains("Color"),
+        "expected Color enum in find_symbols output, got:\n{content}"
+    );
 
     Ok(())
 }

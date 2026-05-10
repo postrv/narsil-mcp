@@ -661,6 +661,61 @@ def standalone_function():
         assert!(names.contains(&&"standalone_function".to_string()));
     }
 
+    /// Issue #18a regression coverage. Java was registered in the parser but
+    /// had no unit tests, so a regression in the symbol query (or in the
+    /// tree-sitter-java grammar version) could land silently. Asserts that
+    /// every node-kind in our query (method, class, interface, enum)
+    /// produces a symbol on a representative Maven-shaped class file.
+    #[test]
+    fn test_parse_java() {
+        let parser = LanguageParser::new().unwrap();
+        let content = r#"
+package com.example.demo;
+
+import java.util.List;
+
+public class Greeter {
+    public String hello(String name) {
+        return "Hi " + name;
+    }
+    private int counter = 0;
+}
+
+interface Greetable {
+    String hello(String name);
+}
+
+enum Color {
+    RED, GREEN, BLUE;
+}
+"#;
+        let parsed = parser
+            .parse_file(
+                Path::new("src/main/java/com/example/demo/Greeter.java"),
+                content,
+            )
+            .expect("Java should parse");
+        assert_eq!(parsed.language, "java");
+
+        let names: Vec<_> = parsed.symbols.iter().map(|s| s.name.as_str()).collect();
+        assert!(
+            names.contains(&"Greeter"),
+            "missing class Greeter; got {names:?}"
+        );
+        assert!(
+            names.contains(&"hello"),
+            "missing method hello; got {names:?}"
+        );
+        assert!(
+            names.contains(&"Greetable"),
+            "missing interface Greetable; got {names:?}"
+        );
+        assert!(
+            names.contains(&"Color"),
+            "missing enum Color; got {names:?}"
+        );
+    }
+
     #[test]
     fn test_parse_csharp() {
         let parser = LanguageParser::new().unwrap();
