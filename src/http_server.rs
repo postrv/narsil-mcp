@@ -37,9 +37,15 @@ use axum::{
 #[cfg(feature = "frontend")]
 use rust_embed::Embed;
 
+// `allow_missing` lets `cargo build --features frontend` succeed even when
+// `frontend/dist/` has not been built yet (typical on a fresh clone where
+// the user has not run `cd frontend && npm ci && npm run build`). The
+// build.rs at the crate root prints a `cargo:warning` so the user knows
+// the served UI will return 404 until the dist directory is populated.
 #[cfg(feature = "frontend")]
 #[derive(Embed)]
 #[folder = "frontend/dist"]
+#[allow_missing = true]
 struct FrontendAssets;
 
 /// HTTP Server for the visualization frontend
