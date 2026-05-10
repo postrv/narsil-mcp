@@ -243,3 +243,247 @@ jobs:
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Update Homebrew tap formula with new version and SHA256 hashes
+  update-homebrew:
+    name: Update Homebrew Tap
+    runs-on: ubuntu-latest
+    needs: [release]
+    if: "!contains(github.ref, '-beta') && !contains(github.ref, '-alpha') && !contains(github.ref, '-rc')"
+    timeout-minutes: 10
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download SHA256 sidecar files
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          BASE_URL="https://github.com/postrv/narsil-mcp/releases/download/v${VERSION}"
+          mkdir -p sha256
+          for target in macos-x86_64 macos-aarch64 linux-x86_64; do
+            curl -fSL "${BASE_URL}/narsil-mcp-v${VERSION}-${target}.tar.gz.sha256" -o "sha256/${target}.sha256"
+          done
+
+      - name: Parse SHA256 hashes
+        id: hashes
+        run: |
+          echo "macos_x86_64=$(awk '{print $1}' sha256/macos-x86_64.sha256)" >> "$GITHUB_OUTPUT"
+          echo "macos_aarch64=$(awk '{print $1}' sha256/macos-aarch64.sha256)" >> "$GITHUB_OUTPUT"
+          echo "linux_x86_64=$(awk '{print $1}' sha256/linux-x86_64.sha256)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: postrv/homebrew-narsil
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Generate formula
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          cat > Formula/narsil-mcp.rb << 'FORMULA'
+          class NarsilMcp < Formula
+            desc "Blazingly fast MCP server for code intelligence"
+            homepage "https://github.com/postrv/narsil-mcp"
+            version "VERSION_PLACEHOLDER"
+            license any_of: ["MIT", "Apache-2.0"]
+
+            on_macos do
+              if Hardware::CPU.intel?
+                url "https://github.com/postrv/narsil-mcp/releases/download/vVERSION_PLACEHOLDER/narsil-mcp-vVERSION_PLACEHOLDER-macos-x86_64.tar.gz"
+                sha256 "MACOS_X86_64_PLACEHOLDER"
+              elsif Hardware::CPU.arm?
+                url "https://github.com/postrv/narsil-mcp/releases/download/vVERSION_PLACEHOLDER/narsil-mcp-vVERSION_PLACEHOLDER-macos-aarch64.tar.gz"
+                sha256 "MACOS_AARCH64_PLACEHOLDER"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.intel?
+                url "https://github.com/postrv/narsil-mcp/releases/download/vVERSION_PLACEHOLDER/narsil-mcp-vVERSION_PLACEHOLDER-linux-x86_64.tar.gz"
+                sha256 "LINUX_X86_64_PLACEHOLDER"
+              end
+            end
+
+            def install
+              bin.install "narsil-mcp"
+            end
+
+            def caveats
+              <<~EOS
+                To use narsil-mcp with AI assistants:
+
+                Claude Desktop:
+                  Add to ~/Library/Application Support/Claude/claude_desktop_config.json:
+                  {
+                    "mcpServers": {
+                      "narsil-mcp": {
+                        "command": "narsil-mcp",
+                        "args": ["--repos", "/path/to/your/projects"]
+                      }
+                    }
+                  }
+
+                VS Code with Copilot:
+                  Create .vscode/mcp.json in your workspace:
+                  {
+                    "servers": {
+                      "narsil-mcp": {
+                        "command": "narsil-mcp",
+                        "args": ["--repos", "${workspaceFolder}"]
+                      }
+                    }
+                  }
+
+                Cursor:
+                  Create .cursor/mcp.json in your project:
+                  {
+                    "mcpServers": {
+                      "narsil-mcp": {
+                        "command": "narsil-mcp",
+                        "args": ["--repos", "."]
+                      }
+                    }
+                  }
+
+                Documentation: https://github.com/postrv/narsil-mcp
+              EOS
+            end
+
+            test do
+              # Test that the binary exists and is executable
+              assert_match version.to_s, shell_output("#{bin}/narsil-mcp --version")
+            end
+          end
+          FORMULA
+
+          # Replace placeholders with actual values
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" Formula/narsil-mcp.rb
+          sed -i "s/MACOS_X86_64_PLACEHOLDER/${{ steps.hashes.outputs.macos_x86_64 }}/g" Formula/narsil-mcp.rb
+          sed -i "s/MACOS_AARCH64_PLACEHOLDER/${{ steps.hashes.outputs.macos_aarch64 }}/g" Formula/narsil-mcp.rb
+          sed -i "s/LINUX_X86_64_PLACEHOLDER/${{ steps.hashes.outputs.linux_x86_64 }}/g" Formula/narsil-mcp.rb
+
+          echo "Generated formula:"
+          cat Formula/narsil-mcp.rb
+
+      - name: Commit and push
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/narsil-mcp.rb
+          git commit -m "narsil-mcp ${VERSION}"
+          git push
+
+  # Update Scoop bucket manifest with new version and SHA256 hash
+  update-scoop:
+    name: Update Scoop Bucket
+    runs-on: ubuntu-latest
+    needs: [release]
+    if: "!contains(github.ref, '-beta') && !contains(github.ref, '-alpha') && !contains(github.ref, '-rc')"
+    timeout-minutes: 10
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download SHA256 sidecar file
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          curl -fSL "https://github.com/postrv/narsil-mcp/releases/download/v${VERSION}/narsil-mcp-v${VERSION}-windows-x86_64.zip.sha256" -o windows.sha256
+
+      - name: Parse SHA256 hash
+        id: hash
+        run: echo "windows_x86_64=$(awk '{print $1}' windows.sha256)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Scoop bucket
+        uses: actions/checkout@v4
+        with:
+          repository: postrv/scoop-narsil
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Generate manifest
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          HASH=${{ steps.hash.outputs.windows_x86_64 }}
+          cat > bucket/narsil-mcp.json << 'MANIFEST'
+          {
+              "version": "VERSION_PLACEHOLDER",
+              "description": "Blazingly fast MCP server for code intelligence",
+              "homepage": "https://github.com/postrv/narsil-mcp",
+              "license": "MIT OR Apache-2.0",
+              "architecture": {
+                  "64bit": {
+                      "url": "https://github.com/postrv/narsil-mcp/releases/download/vVERSION_PLACEHOLDER/narsil-mcp-vVERSION_PLACEHOLDER-windows-x86_64.zip",
+                      "hash": "HASH_PLACEHOLDER"
+                  }
+              },
+              "bin": "narsil-mcp.exe",
+              "checkver": {
+                  "github": "https://github.com/postrv/narsil-mcp"
+              },
+              "autoupdate": {
+                  "architecture": {
+                      "64bit": {
+                          "url": "https://github.com/postrv/narsil-mcp/releases/download/v$version/narsil-mcp-v$version-windows-x86_64.zip"
+                      }
+                  },
+                  "hash": {
+                      "url": "$url.sha256"
+                  }
+              },
+              "notes": [
+                  "To use narsil-mcp with AI assistants:",
+                  "",
+                  "Claude Desktop:",
+                  "  Add to %APPDATA%\\Claude\\claude_desktop_config.json:",
+                  "  {",
+                  "    \"mcpServers\": {",
+                  "      \"narsil-mcp\": {",
+                  "        \"command\": \"narsil-mcp\",",
+                  "        \"args\": [\"--repos\", \"C:\\\\path\\\\to\\\\your\\\\projects\"]",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "",
+                  "VS Code with Copilot:",
+                  "  Create .vscode\\mcp.json in your workspace:",
+                  "  {",
+                  "    \"servers\": {",
+                  "      \"narsil-mcp\": {",
+                  "        \"command\": \"narsil-mcp\",",
+                  "        \"args\": [\"--repos\", \"${workspaceFolder}\"]",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "",
+                  "Cursor:",
+                  "  Create .cursor\\mcp.json in your project:",
+                  "  {",
+                  "    \"mcpServers\": {",
+                  "      \"narsil-mcp\": {",
+                  "        \"command\": \"narsil-mcp\",",
+                  "        \"args\": [\"--repos\", \".\"]",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "",
+                  "Documentation: https://github.com/postrv/narsil-mcp"
+              ]
+          }
+          MANIFEST
+
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" bucket/narsil-mcp.json
+          sed -i "s/HASH_PLACEHOLDER/${HASH}/g" bucket/narsil-mcp.json
+
+          echo "Generated manifest:"
+          cat bucket/narsil-mcp.json
+
+      - name: Commit and push
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bucket/narsil-mcp.json
+          git commit -m "narsil-mcp ${VERSION}"
+          git push
