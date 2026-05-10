@@ -7,7 +7,7 @@
 
 [servers.narsil]
 command = "narsil-mcp"
-args = ["--repos", ".", "--git", "--call-graph", "--persist", "--watch"]
+args = ["--repos", ".", "--git", "--call-graph", "--persist", "--watch", "--graph"]
 transport = "stdio"
 timeout_secs = 30
 circuit_breaker = true
