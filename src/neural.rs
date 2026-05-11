@@ -137,6 +137,10 @@ pub mod onnx {
     use std::sync::Mutex;
     use tokenizers::Tokenizer;
 
+    fn ort_error(context: &str, error: impl std::fmt::Display) -> anyhow::Error {
+        anyhow::anyhow!("{context}: {error}")
+    }
+
     /// ONNX-based local embedding model
     /// Uses Mutex for session because ort 2.0 requires &mut self for Session::run
     pub struct OnnxEmbedder {
@@ -149,10 +153,14 @@ pub mod onnx {
     impl OnnxEmbedder {
         /// Create a new ONNX embedder from model and tokenizer paths
         pub fn new(model_path: &Path, tokenizer_path: &Path) -> Result<Self> {
-            let session = Session::builder()?
-                .with_optimization_level(GraphOptimizationLevel::Level3)?
-                .with_intra_threads(4)?
-                .commit_from_file(model_path)?;
+            let session = Session::builder()
+                .map_err(|e| ort_error("Failed to create ONNX session builder", e))?
+                .with_optimization_level(GraphOptimizationLevel::Level3)
+                .map_err(|e| ort_error("Failed to set ONNX optimization level", e))?
+                .with_intra_threads(4)
+                .map_err(|e| ort_error("Failed to set ONNX thread count", e))?
+                .commit_from_file(model_path)
+                .map_err(|e| ort_error("Failed to load ONNX model", e))?;
 
             let tokenizer = Tokenizer::from_file(tokenizer_path)
                 .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;
@@ -249,9 +257,10 @@ pub mod onnx {
             let attention_mask_array = Array2::from_shape_vec((1, seq_len), attention_mask)
                 .context("Invalid mask shape")?;
 
-            // Run inference - ort 2.0 takes owned view without reference
-            let input_ids_tensor = TensorRef::from_array_view(input_ids_array.view())?;
-            let attention_mask_tensor = TensorRef::from_array_view(attention_mask_array.view())?;
+            let input_ids_tensor = TensorRef::from_array_view(&input_ids_array)
+                .map_err(|e| ort_error("Failed to create input_ids tensor", e))?;
+            let attention_mask_tensor = TensorRef::from_array_view(&attention_mask_array)
+                .map_err(|e| ort_error("Failed to create attention_mask tensor", e))?;
 
             // Lock the session for mutable access (ort 2.0 requires &mut self for run)
             let mut session = self
@@ -259,10 +268,12 @@ pub mod onnx {
                 .lock()
                 .map_err(|e| anyhow::anyhow!("Failed to lock session: {}", e))?;
 
-            let outputs = session.run(ort::inputs![
-                "input_ids" => input_ids_tensor,
-                "attention_mask" => attention_mask_tensor,
-            ])?;
+            let outputs = session
+                .run(ort::inputs![
+                    "input_ids" => input_ids_tensor,
+                    "attention_mask" => attention_mask_tensor,
+                ])
+                .map_err(|e| ort_error("ONNX inference failed", e))?;
 
             // Extract embeddings - ort 2.0 API
             // Try to get output by name first, then fallback to first
@@ -271,7 +282,9 @@ pub mod onnx {
                 .ok_or_else(|| anyhow::anyhow!("No output tensor found from ONNX model"))?;
 
             // ort 2.0: try_extract_tensor returns (Shape, &[T])
-            let (_, data) = output.try_extract_tensor::<f32>()?;
+            let (_, data) = output
+                .try_extract_tensor::<f32>()
+                .map_err(|e| ort_error("Failed to extract ONNX output tensor", e))?;
             let embeddings: Vec<f32> = data.to_vec();
 
             Ok(self.mean_pool(&embeddings, seq_len))

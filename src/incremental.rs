@@ -82,7 +82,7 @@ pub struct MerkleTree {
 }
 
 impl MerkleTree {
-    const CURRENT_VERSION: u32 = 1;
+    const CURRENT_VERSION: u32 = 2;
 
     /// Build a Merkle tree from a directory
     pub fn build<F>(root_path: &Path, mut parse_fn: F) -> Result<Self>
@@ -328,7 +328,7 @@ impl MerkleTree {
 
     /// Save tree to disk
     pub fn save(&self, path: &Path) -> Result<()> {
-        let data = bincode::serialize(self).context("Failed to serialize Merkle tree")?;
+        let data = postcard::to_stdvec(self).context("Failed to serialize Merkle tree")?;
 
         let temp_path = path.with_extension("tmp");
         std::fs::write(&temp_path, &data).context("Failed to write temp file")?;
@@ -354,7 +354,7 @@ impl MerkleTree {
 
         let data = std::fs::read(path).context("Failed to read Merkle tree")?;
         let tree: Self =
-            bincode::deserialize(&data).context("Failed to deserialize Merkle tree from cache")?;
+            postcard::from_bytes(&data).context("Failed to deserialize Merkle tree from cache")?;
 
         if tree.version != Self::CURRENT_VERSION {
             return Err(anyhow::anyhow!("Version mismatch"));
@@ -1652,7 +1652,7 @@ mod tests {
         let cache_path = temp_dir.path().join("corrupted.bin");
 
         // Write corrupted data
-        std::fs::write(&cache_path, b"this is not valid bincode data").unwrap();
+        std::fs::write(&cache_path, b"this is not valid postcard data").unwrap();
 
         let result = MerkleTree::load(&cache_path);
         assert!(result.is_err(), "Should reject corrupted cache data");

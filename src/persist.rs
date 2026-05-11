@@ -38,7 +38,7 @@ pub struct PersistedIndex {
 }
 
 impl PersistedIndex {
-    const CURRENT_VERSION: u32 = 1;
+    const CURRENT_VERSION: u32 = 2;
 
     pub fn new(repo_root: PathBuf) -> Self {
         let now = SystemTime::now()
@@ -58,7 +58,7 @@ impl PersistedIndex {
     /// Load index from disk
     pub fn load(path: &Path) -> Result<Self> {
         let data = std::fs::read(path).context("Failed to read index file")?;
-        let index: Self = bincode::deserialize(&data).context("Failed to deserialize index")?;
+        let index: Self = postcard::from_bytes(&data).context("Failed to deserialize index")?;
 
         if index.version != Self::CURRENT_VERSION {
             return Err(anyhow::anyhow!(
@@ -73,7 +73,7 @@ impl PersistedIndex {
 
     /// Save index to disk
     pub fn save(&self, path: &Path) -> Result<()> {
-        let data = bincode::serialize(self).context("Failed to serialize index")?;
+        let data = postcard::to_stdvec(self).context("Failed to serialize index")?;
 
         // Write to temp file then rename for atomicity
         let temp_path = path.with_extension("tmp");

@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check version consistency
         run: |
@@ -95,7 +95,7 @@ jobs:
     needs: [lint, version-check]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install cargo-audit
         uses: taiki-e/install-action@cargo-audit
@@ -110,7 +110,7 @@ jobs:
     needs: [lint, version-check]
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -133,7 +133,7 @@ jobs:
     # Only publish to crates.io for stable releases (not beta, alpha, rc, etc.)
     if: "!contains(github.ref, '-beta') && !contains(github.ref, '-alpha') && !contains(github.ref, '-rc')"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -167,7 +167,7 @@ jobs:
       (needs.publish.result == 'success' || needs.publish.result == 'skipped')
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -220,7 +220,7 @@ jobs:
     if: "!contains(github.ref, '-beta') && !contains(github.ref, '-alpha') && !contains(github.ref, '-rc')"
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -278,7 +278,7 @@ jobs:
           echo "linux_aarch64=$(awk '{print $1}' sha256/linux-aarch64.sha256)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Homebrew tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: postrv/homebrew-narsil
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -410,7 +410,7 @@ jobs:
         run: echo "windows_x86_64=$(awk '{print $1}' windows.sha256)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Scoop bucket
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: postrv/scoop-narsil
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
