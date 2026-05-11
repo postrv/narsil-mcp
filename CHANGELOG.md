@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.7.0-rc3] - 2026-05-11
+## [1.7.0-rc4] - 2026-05-11
 
 ### Fixed
 
@@ -45,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Homebrew, and Scoop updates now wait for successful binary builds and
   crates.io publish (or a skipped publish for prerelease tags), reducing the
   chance of split-channel releases.
+- **Release binaries now match the advertised asset set**. The graph-enabled
+  release matrix publishes the five supported installer/Homebrew/Scoop
+  artifacts: macOS x86_64, macOS ARM64, Linux x86_64, Linux ARM64, and
+  Windows x86_64.
 
 ### Added
 
