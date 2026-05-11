@@ -38,6 +38,8 @@ pub mod ccg;
 #[cfg(feature = "native")]
 pub mod git;
 #[cfg(feature = "native")]
+pub mod http_server;
+#[cfg(feature = "native")]
 pub mod index;
 #[cfg(feature = "native")]
 pub mod lsp;

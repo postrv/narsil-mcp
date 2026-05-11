@@ -119,6 +119,7 @@ async fn test_config_priority_cli_flags_override() -> Result<()> {
         version: "1.0".to_string(),
         preset: None,
         editors: HashMap::new(),
+        profiles: HashMap::new(),
         tools: ToolsConfig {
             categories,
             overrides: HashMap::new(),
@@ -254,7 +255,7 @@ async fn test_full_preset() -> Result<()> {
     let filter = ToolFilter::new(config, &options, None);
     let enabled_tools = filter.get_enabled_tools();
 
-    // Full preset should have most/all tools (~75, minus ones requiring unavailable flags)
+    // Full preset should have most/all tools, minus ones requiring unavailable flags.
     assert!(
         enabled_tools.len() >= 60,
         "Full preset should have 60+ tools, got {}",
@@ -344,6 +345,7 @@ async fn test_category_level_filtering() -> Result<()> {
         version: "1.0".to_string(),
         preset: None,
         editors: HashMap::new(),
+        profiles: HashMap::new(),
         tools: ToolsConfig {
             categories,
             overrides: HashMap::new(),
@@ -395,6 +397,7 @@ async fn test_tool_level_override() -> Result<()> {
         version: "1.0".to_string(),
         preset: None,
         editors: HashMap::new(),
+        profiles: HashMap::new(),
         tools: ToolsConfig {
             categories: HashMap::new(),
             overrides,
@@ -432,6 +435,7 @@ async fn test_performance_budget_max_tool_count() -> Result<()> {
         version: "1.0".to_string(),
         preset: Some("balanced".to_string()),
         editors: HashMap::new(),
+        profiles: HashMap::new(),
         tools: ToolsConfig {
             categories: HashMap::new(),
             overrides: HashMap::new(),
@@ -501,6 +505,7 @@ async fn test_feature_flag_validation() -> Result<()> {
         version: "1.0".to_string(),
         preset: None,
         editors: HashMap::new(),
+        profiles: HashMap::new(),
         tools: ToolsConfig {
             categories,
             overrides: HashMap::new(),

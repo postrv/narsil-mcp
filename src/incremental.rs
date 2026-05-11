@@ -3,8 +3,6 @@
 //! Phase 6 feature: Efficient change detection using Merkle trees to minimize
 //! re-indexing work. Also includes cross-language symbol resolution for imports.
 
-#![allow(dead_code)]
-
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

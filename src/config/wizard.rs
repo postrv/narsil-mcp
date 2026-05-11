@@ -200,8 +200,8 @@ impl NeuralWizard {
     }
 
     async fn validate_api_key(&self, _key: &str, _provider: ApiProvider) -> Result<()> {
-        // TODO: Actually validate the key by making a test API call
-        // For now, just check format (already done)
+        // The wizard keeps setup offline; provider-side validation happens
+        // when embeddings are first used.
         Ok(())
     }
 

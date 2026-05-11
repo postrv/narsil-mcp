@@ -26,8 +26,8 @@ This strategy maximizes adoption while protecting high-value IP for monetization
 ```
 narsil-mcp/                         # MIT License - PUBLIC on GitHub
 ├── src/
-│   ├── mcp/                        # All 76+ MCP tools
-│   ├── parser.rs                   # 16+ language parsers
+│   ├── mcp/                        # All 90 MCP tools
+│   ├── parser.rs                   # 32 language parsers
 │   ├── index.rs                    # Local indexing
 │   ├── cache/                      # Query caching
 │   ├── cfg.rs                      # Control flow analysis
@@ -100,8 +100,8 @@ narsil-cloud/                       # Proprietary - PRIVATE
 
 | Component | Description | Rationale |
 |-----------|-------------|-----------|
-| **MCP Server** | All 76+ tools | Core value proposition, gets users hooked |
-| **Language Parsers** | 16+ languages (expandable) | Community can contribute more |
+| **MCP Server** | All 90 tools | Core value proposition, gets users hooked |
+| **Language Parsers** | 32 languages (expandable) | Community can contribute more |
 | **Code Analysis** | CFG, DFG, call graphs, dead code | Fundamental features |
 | **Security Scanning** | OWASP, CWE rules | Community improves rules |
 | **Local Oxigraph** | RDF storage, SPARQL queries | Self-hosted option |
@@ -205,7 +205,7 @@ narsil-cloud/                       # Proprietary - PRIVATE
 │                    GitHub: narsil-mcp (PUBLIC)               │
 │                                                              │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌──────────┐ │
-│  │ 76+ MCP    │ │ 16+        │ │ Local      │ │ CCG      │ │
+│  │ 90 MCP     │ │ 32         │ │ Local      │ │ CCG      │ │
 │  │ Tools      │ │ Languages  │ │ Oxigraph   │ │ L0-L2    │ │
 │  └────────────┘ └────────────┘ └────────────┘ └──────────┘ │
 │                                                              │

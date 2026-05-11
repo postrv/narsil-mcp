@@ -53,6 +53,7 @@ tools:
       enabled: true
       description: "Graph visualization"
   overrides: {}
+profiles: {}
 performance:
   max_tool_count: 128
   startup_latency_ms: 10
@@ -214,6 +215,11 @@ impl ConfigLoader {
         // Merge editors
         for (name, config) in overlay.editors {
             base.editors.insert(name, config);
+        }
+
+        // Merge named repository profiles
+        for (name, profile) in overlay.profiles {
+            base.profiles.insert(name, profile);
         }
 
         // Merge categories
@@ -406,6 +412,24 @@ mod tests {
         let repo_cat = merged.tools.categories.get("Repository").unwrap();
         assert!(!repo_cat.enabled);
         assert_eq!(repo_cat.description.as_ref().unwrap(), "Overlay");
+    }
+
+    #[test]
+    fn test_merge_profiles() {
+        let base = ToolConfig::default();
+        let mut overlay = ToolConfig::default();
+        overlay.profiles.insert(
+            "work".to_string(),
+            crate::config::schema::RepoProfile {
+                repos: vec![PathBuf::from("~/src/work")],
+                git: Some(true),
+                ..Default::default()
+            },
+        );
+
+        let merged = ConfigLoader::merge_configs(base, overlay);
+        assert!(merged.profiles.contains_key("work"));
+        assert_eq!(merged.profiles["work"].git, Some(true));
     }
 
     #[test]

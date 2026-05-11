@@ -136,10 +136,12 @@ impl LspManager {
 
         info!(
             "Starting LSP server for {}: {} {:?}",
-            language, command, args
+            language,
+            command.display(),
+            args
         );
 
-        let mut child = tokio::process::Command::new(&command)
+        let mut child = tokio::process::Command::new(command.as_os_str())
             .args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -329,30 +331,30 @@ impl LspManager {
     }
 
     /// Get the command and args to start an LSP server
-    fn get_server_command(&self, language: &str) -> Result<(String, Vec<String>)> {
+    fn get_server_command(&self, language: &str) -> Result<(PathBuf, Vec<String>)> {
         // Check custom path first
         if let Some(path) = self.config.server_paths.get(language) {
             let path_str = path.to_string_lossy().to_string();
             crate::validation::validate_lsp_server_path(&path_str)
                 .map_err(|e| anyhow!("Invalid LSP server path for {}: {}", language, e))?;
-            return Ok((path_str, vec![]));
+            return Ok((path.clone(), vec![]));
         }
 
         // Auto-detect common language servers
         match language {
-            "rust" => Ok(("rust-analyzer".to_string(), vec![])),
+            "rust" => Ok((PathBuf::from("rust-analyzer"), vec![])),
             "python" => Ok((
-                "pyright-langserver".to_string(),
+                PathBuf::from("pyright-langserver"),
                 vec!["--stdio".to_string()],
             )),
             "javascript" | "typescript" => Ok((
-                "typescript-language-server".to_string(),
+                PathBuf::from("typescript-language-server"),
                 vec!["--stdio".to_string()],
             )),
-            "go" => Ok(("gopls".to_string(), vec![])),
-            "c" | "cpp" => Ok(("clangd".to_string(), vec![])),
+            "go" => Ok((PathBuf::from("gopls"), vec![])),
+            "c" | "cpp" => Ok((PathBuf::from("clangd"), vec![])),
             "java" => Ok((
-                "jdtls".to_string(),
+                PathBuf::from("jdtls"),
                 vec!["-data".to_string(), "/tmp/jdtls-workspace".to_string()],
             )),
             _ => Err(anyhow!("No LSP server configured for {}", language)),
@@ -650,10 +652,10 @@ mod tests {
         let manager = LspManager::new(config, vec![]);
 
         let (cmd, _) = manager.get_server_command("rust").unwrap();
-        assert_eq!(cmd, "rust-analyzer");
+        assert_eq!(cmd, PathBuf::from("rust-analyzer"));
 
         let (cmd, _) = manager.get_server_command("python").unwrap();
-        assert_eq!(cmd, "pyright-langserver");
+        assert_eq!(cmd, PathBuf::from("pyright-langserver"));
     }
 
     #[test]

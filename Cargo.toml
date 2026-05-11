@@ -1,6 +1,6 @@
 [package]
 name = "narsil-mcp"
-version = "1.7.0"
+version = "1.7.0-rc1"
 edition = "2021"
 authors = ["postrv"]
 description = "A blazingly fast MCP server for code intelligence - enumerates repos, data structures, algorithms, and returns relevant code context"
@@ -122,8 +122,10 @@ uuid = { version = "1.0", features = ["v4"] }  # For generating unique streaming
 chrono = "0.4"  # Date/time handling for SBOM generation
 url = "2.5"  # URL parsing and validation
 
-# GitHub API and remote repos (native only)
-octocrab = { version = "0.38", optional = true }
+# GitHub API and remote repos (native only). Enable webpki roots so headless
+# macOS/Linux environments without a usable native certificate store do not
+# panic during Octocrab client construction.
+octocrab = { version = "0.38", optional = true, features = ["rustls-webpki-tokio"] }
 tempfile = { version = "3.8", optional = true }
 base64 = "0.21"
 

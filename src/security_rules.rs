@@ -16,6 +16,7 @@
 use crate::taint::{self, Confidence, Severity};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// Check if a file path appears to be a test file.
@@ -99,6 +100,260 @@ pub fn is_test_file(path: &str) -> bool {
     }
 
     false
+}
+
+/// Remove inline test-only Rust items while preserving line numbers.
+///
+/// Security scans exclude test files by default because test code often contains
+/// intentional vulnerable examples. Rust commonly keeps those tests in
+/// `#[cfg(test)]` modules inside production source files, so this helper applies
+/// the same default to inline test items.
+///
+/// # Examples
+/// ```
+/// use narsil_mcp::security_rules::strip_inline_test_code;
+///
+/// let code = "#[cfg(test)]\nmod tests {\n    fn vulnerable() {}\n}\nfn real() {}\n";
+/// let stripped = strip_inline_test_code("src/lib.rs", code);
+/// assert!(!stripped.contains("vulnerable"));
+/// assert!(stripped.contains("fn real"));
+/// assert_eq!(stripped.lines().count(), code.lines().count());
+/// ```
+#[must_use]
+pub fn strip_inline_test_code<'a>(path: &str, code: &'a str) -> Cow<'a, str> {
+    if !path.ends_with(".rs") || !code.contains("#[cfg") || !code.contains("test") {
+        return Cow::Borrowed(code);
+    }
+
+    let ranges = rust_cfg_test_ranges(code);
+    if ranges.is_empty() {
+        return Cow::Borrowed(code);
+    }
+
+    let mut stripped = String::with_capacity(code.len());
+    let mut cursor = 0;
+    for (start, end) in ranges {
+        stripped.push_str(&code[cursor..start]);
+        for ch in code[start..end].chars() {
+            if ch == '\n' {
+                stripped.push('\n');
+            } else {
+                stripped.push(' ');
+            }
+        }
+        cursor = end;
+    }
+    stripped.push_str(&code[cursor..]);
+
+    Cow::Owned(stripped)
+}
+
+fn rust_cfg_test_ranges(code: &str) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut cursor = 0;
+
+    while let Some(relative_start) = code[cursor..].find("#[cfg") {
+        let start = cursor + relative_start;
+        let Some(attribute_end) = code[start..].find(']').map(|offset| start + offset + 1) else {
+            cursor = start + "#[cfg".len();
+            continue;
+        };
+
+        let attribute = &code[start..attribute_end];
+        if !attribute.contains("test") {
+            cursor = attribute_end;
+            continue;
+        }
+
+        let end = rust_cfg_item_end(code, attribute_end).unwrap_or(attribute_end);
+        ranges.push((start, end));
+        cursor = end;
+    }
+
+    ranges
+}
+
+fn rust_cfg_item_end(code: &str, after_cfg_attribute: usize) -> Option<usize> {
+    let mut cursor = after_cfg_attribute;
+    loop {
+        cursor = skip_ascii_whitespace(code, cursor);
+        if !code[cursor..].starts_with("#[") {
+            break;
+        }
+
+        let attribute_end = code[cursor..].find(']').map(|offset| cursor + offset + 1)?;
+        cursor = attribute_end;
+    }
+
+    let (boundary, boundary_byte) = find_rust_item_boundary(code, cursor)?;
+    if boundary_byte == b';' {
+        return Some(boundary + 1);
+    }
+
+    find_matching_rust_brace(code, boundary)
+}
+
+fn skip_ascii_whitespace(code: &str, mut cursor: usize) -> usize {
+    while let Some(byte) = code.as_bytes().get(cursor) {
+        if byte.is_ascii_whitespace() {
+            cursor += 1;
+        } else {
+            break;
+        }
+    }
+    cursor
+}
+
+fn find_rust_item_boundary(code: &str, mut cursor: usize) -> Option<(usize, u8)> {
+    let bytes = code.as_bytes();
+
+    while cursor < bytes.len() {
+        if let Some(next) = skip_rust_non_code_token(bytes, cursor) {
+            cursor = next;
+            continue;
+        }
+
+        match bytes[cursor] {
+            b'{' | b';' => return Some((cursor, bytes[cursor])),
+            _ => cursor += 1,
+        }
+    }
+
+    None
+}
+
+fn find_matching_rust_brace(code: &str, open_brace: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut cursor = open_brace;
+    let mut depth = 0usize;
+
+    while cursor < bytes.len() {
+        if let Some(next) = skip_rust_non_code_token(bytes, cursor) {
+            cursor = next;
+            continue;
+        }
+
+        match bytes[cursor] {
+            b'{' => {
+                depth += 1;
+                cursor += 1;
+            }
+            b'}' => {
+                depth = depth.checked_sub(1)?;
+                cursor += 1;
+                if depth == 0 {
+                    return Some(cursor);
+                }
+            }
+            _ => cursor += 1,
+        }
+    }
+
+    None
+}
+
+fn skip_rust_non_code_token(bytes: &[u8], cursor: usize) -> Option<usize> {
+    if cursor + 1 < bytes.len() && bytes[cursor] == b'/' && bytes[cursor + 1] == b'/' {
+        return Some(skip_line_comment(bytes, cursor + 2));
+    }
+
+    if cursor + 1 < bytes.len() && bytes[cursor] == b'/' && bytes[cursor + 1] == b'*' {
+        return Some(skip_block_comment(bytes, cursor + 2));
+    }
+
+    if let Some((prefix_len, hash_count)) = raw_string_start(bytes, cursor) {
+        return Some(skip_raw_string(bytes, cursor + prefix_len, hash_count));
+    }
+
+    if bytes[cursor] == b'"' {
+        return Some(skip_quoted_string(bytes, cursor + 1));
+    }
+
+    None
+}
+
+fn skip_line_comment(bytes: &[u8], mut cursor: usize) -> usize {
+    while cursor < bytes.len() && bytes[cursor] != b'\n' {
+        cursor += 1;
+    }
+    cursor
+}
+
+fn skip_block_comment(bytes: &[u8], mut cursor: usize) -> usize {
+    let mut depth = 1usize;
+
+    while cursor + 1 < bytes.len() {
+        match (bytes[cursor], bytes[cursor + 1]) {
+            (b'/', b'*') => {
+                depth += 1;
+                cursor += 2;
+            }
+            (b'*', b'/') => {
+                depth -= 1;
+                cursor += 2;
+                if depth == 0 {
+                    return cursor;
+                }
+            }
+            _ => cursor += 1,
+        }
+    }
+
+    bytes.len()
+}
+
+fn skip_quoted_string(bytes: &[u8], mut cursor: usize) -> usize {
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'\\' => cursor = (cursor + 2).min(bytes.len()),
+            b'"' => return cursor + 1,
+            _ => cursor += 1,
+        }
+    }
+
+    bytes.len()
+}
+
+fn raw_string_start(bytes: &[u8], cursor: usize) -> Option<(usize, usize)> {
+    let mut pos = cursor;
+
+    if bytes.get(pos) == Some(&b'b') {
+        pos += 1;
+    }
+
+    if bytes.get(pos) != Some(&b'r') {
+        return None;
+    }
+    pos += 1;
+
+    let hash_start = pos;
+    while bytes.get(pos) == Some(&b'#') {
+        pos += 1;
+    }
+
+    if bytes.get(pos) != Some(&b'"') {
+        return None;
+    }
+
+    Some((pos + 1 - cursor, pos - hash_start))
+}
+
+fn skip_raw_string(bytes: &[u8], mut cursor: usize, hash_count: usize) -> usize {
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'"' {
+            let end_hashes = cursor + 1 + hash_count;
+            if end_hashes <= bytes.len()
+                && bytes[cursor + 1..end_hashes]
+                    .iter()
+                    .all(|byte| *byte == b'#')
+            {
+                return end_hashes;
+            }
+        }
+        cursor += 1;
+    }
+
+    bytes.len()
 }
 
 /// Check if a file is a security rule definition or exemplar file.
@@ -676,6 +931,9 @@ impl SecurityRulesEngine {
 
                     // Check if this is suppressed by a safe pattern
                     let line_text = lines.get(line.saturating_sub(1)).unwrap_or(&"");
+                    if is_comment_only_line(line_text) {
+                        continue;
+                    }
                     let is_safe = safe_patterns.iter().any(|sp| {
                         self.pattern_cache
                             .get(sp)
@@ -883,12 +1141,17 @@ impl SecurityRulesEngine {
         _min_key_size: Option<u32>,
     ) -> Vec<SecurityFinding> {
         let mut findings = Vec::new();
+        let lines: Vec<&str> = code.lines().collect();
 
         // Check for weak algorithms
         for algo in weak_algorithms {
             if let Ok(re) = Regex::new(&format!(r"(?i)\b{}\b", regex::escape(algo))) {
                 for mat in re.find_iter(code) {
                     let (line, col) = byte_to_line_col(code, mat.start());
+                    let line_text = lines.get(line.saturating_sub(1)).unwrap_or(&"");
+                    if is_comment_only_line(line_text) || is_quoted_match(line_text, col) {
+                        continue;
+                    }
                     findings.push(SecurityFinding {
                         rule_id: rule.id.clone(),
                         rule_name: format!("{} - Weak Algorithm", rule.name),
@@ -915,6 +1178,10 @@ impl SecurityRulesEngine {
             if let Ok(re) = Regex::new(&format!(r"(?i)\b{}\b", regex::escape(mode))) {
                 for mat in re.find_iter(code) {
                     let (line, col) = byte_to_line_col(code, mat.start());
+                    let line_text = lines.get(line.saturating_sub(1)).unwrap_or(&"");
+                    if is_comment_only_line(line_text) || is_quoted_match(line_text, col) {
+                        continue;
+                    }
                     findings.push(SecurityFinding {
                         rule_id: rule.id.clone(),
                         rule_name: format!("{} - Insecure Mode", rule.name),
@@ -1827,6 +2094,44 @@ fn byte_to_line_col(code: &str, byte_offset: usize) -> (usize, usize) {
     (line, col)
 }
 
+fn is_comment_only_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("//")
+        || trimmed.starts_with("///")
+        || trimmed.starts_with("//!")
+        || trimmed.starts_with('*')
+        || trimmed.starts_with('#')
+}
+
+fn is_quoted_match(line: &str, column: usize) -> bool {
+    let target = column.saturating_sub(1);
+    let mut in_string: Option<char> = None;
+    let mut escaped = false;
+
+    for (idx, ch) in line.chars().enumerate() {
+        if idx >= target {
+            return in_string.is_some();
+        }
+
+        if let Some(quote) = in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == quote {
+                in_string = None;
+            }
+            continue;
+        }
+
+        if ch == '"' || ch == '\'' {
+            in_string = Some(ch);
+        }
+    }
+
+    false
+}
+
 /// Calculate Shannon entropy of a string
 fn calculate_entropy(s: &str) -> f64 {
     if s.is_empty() {
@@ -2074,6 +2379,46 @@ hash = hashlib.md5(password.encode())
             .iter()
             .any(|f| f.cwe.contains(&"CWE-327".to_string())
                 || f.cwe.contains(&"CWE-916".to_string())));
+    }
+
+    #[test]
+    fn test_crypto_rule_ignores_package_name_strings() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+let license = ("md5", "MIT OR Apache-2.0");
+"#;
+        let findings = engine.scan(code, "supply_chain.rs", "rust");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "OWASP-A02-001"),
+            "package names in string literals are not cryptographic use"
+        );
+    }
+
+    #[test]
+    fn test_rdf_http_namespaces_are_not_transport_findings() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+pub const ACL_NS: &str = "http://www.w3.org/ns/auth/acl#";
+pub const FOAF_NS: &str = "http://xmlns.com/foaf/0.1/";
+"#;
+        let findings = engine.scan(code, "access.rs", "rust");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "OWASP-A02-002"),
+            "RDF namespace identifiers are not insecure transport calls"
+        );
+    }
+
+    #[test]
+    fn test_external_http_url_is_transport_finding() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+let url = "http://example.com/api";
+"#;
+        let findings = engine.scan(code, "client.rs", "rust");
+        assert!(
+            findings.iter().any(|f| f.rule_id == "OWASP-A02-002"),
+            "non-local HTTP URLs should still be reported"
+        );
     }
 
     #[test]
@@ -2396,6 +2741,77 @@ token = secrets.token_hex(32)
     }
 
     #[test]
+    fn test_strip_inline_test_code_preserves_lines() {
+        let code = r##"
+pub fn real_before() {}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn vulnerable_example() {
+        let sql = format!("SELECT * FROM users WHERE id = {}", user_id);
+        let sample = r#"fn raw() { braces stay harmless }"#;
+        query(&sql);
+    }
+}
+
+pub fn real_after() {}
+"##;
+
+        let stripped = strip_inline_test_code("src/lib.rs", code);
+
+        assert_eq!(stripped.lines().count(), code.lines().count());
+        assert!(stripped.contains("pub fn real_before"));
+        assert!(stripped.contains("pub fn real_after"));
+        assert!(!stripped.contains("vulnerable_example"));
+        assert!(!stripped.contains("SELECT * FROM users"));
+    }
+
+    #[test]
+    fn test_strip_inline_test_code_keeps_non_rust_files() {
+        let code = "#[cfg(test)]\nmod tests { fn sample() {} }\n";
+        let stripped = strip_inline_test_code("src/lib.py", code);
+
+        assert_eq!(stripped, code);
+    }
+
+    #[test]
+    fn test_security_scan_excludes_rust_inline_tests_after_stripping() {
+        let engine = SecurityRulesEngine::new();
+        let code = r#"
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn contains_vulnerable_fixture() {
+        let sql = format!("SELECT * FROM users WHERE id = {}", user_id);
+        query(&sql);
+    }
+}
+
+pub fn production_code() {
+    println!("safe");
+}
+"#;
+
+        let findings_before = engine.scan(code, "src/lib.rs", "rust");
+        assert!(
+            findings_before
+                .iter()
+                .any(|finding| finding.rule_id == "RUST-005"),
+            "Unstripped inline test fixture should trigger the SQL injection rule"
+        );
+
+        let stripped = strip_inline_test_code("src/lib.rs", code);
+        let findings_after = engine.scan(stripped.as_ref(), "src/lib.rs", "rust");
+        assert!(
+            findings_after
+                .iter()
+                .all(|finding| finding.rule_id != "RUST-005"),
+            "Inline test fixtures should not affect default security scans"
+        );
+    }
+
+    #[test]
     fn test_is_security_exemplar_file() {
         // Security rule definition files
         assert!(is_security_exemplar_file("src/security_rules.rs"));
@@ -2536,6 +2952,12 @@ let other = option.expect("error");
         assert!(
             findings.iter().any(|f| f.rule_id == "RUST-002"),
             "Should detect unwrap usage"
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.rule_id == "RUST-002" && f.severity == Severity::Medium),
+            "broad panic/unwrap findings should be medium severity"
         );
     }
 
@@ -3495,6 +3917,21 @@ let output = Command::new("ls").arg("-la").output().unwrap();
     }
 
     #[test]
+    fn test_rust_command_variable_args_with_literal_executable_safe() {
+        let engine = SecurityRulesEngine::new();
+        let safe_code = r#"
+use std::process::Command;
+let user_arg = get_user_input();
+let output = Command::new("git").arg(user_arg).output().unwrap();
+"#;
+        let findings = engine.scan(safe_code, "main.rs", "rust");
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "RUST-004"),
+            "Rust Command passes argv directly; variable args to a literal executable are not shell injection"
+        );
+    }
+
+    #[test]
     fn test_rust_sql_injection_detection() {
         let engine = SecurityRulesEngine::new();
         let vulnerable_code = r#"
@@ -3675,6 +4112,25 @@ let file = File::open(user_path)?;
             "Should detect path traversal via variable: {:?}",
             findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn test_broad_rust_path_rule_is_medium_severity() {
+        let engine = SecurityRulesEngine::new();
+        let finding = engine
+            .scan(
+                r#"
+let user_path = get_input();
+let contents = fs::read_to_string(user_path)?;
+"#,
+                "handler.rs",
+                "rust",
+            )
+            .into_iter()
+            .find(|f| f.rule_id == "RUST-013")
+            .expect("RUST-013 should detect variable file paths");
+
+        assert_eq!(finding.severity, Severity::Medium);
     }
 
     #[test]

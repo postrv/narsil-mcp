@@ -35,7 +35,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --features "native,neural" -- -D warnings
+        run: cargo clippy --all-targets --features "native,neural,graph" -- -D warnings
 
   # Version consistency check
   version-check:
@@ -69,7 +69,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build binary
-        run: cargo build --release
+        run: cargo build --release --features graph
 
       - name: Verify binary version matches
         run: |
@@ -122,13 +122,13 @@ jobs:
           cache-on-failure: true
 
       - name: Run tests
-        run: cargo test --features "native,neural" --verbose -- --test-threads=1
+        run: cargo test --features "native,neural,graph" --verbose -- --test-threads=1
 
   # Publish to crates.io (skip for pre-release versions)
   publish:
     name: Publish to crates.io
     runs-on: ubuntu-latest
-    needs: [lint, version-check, security, test]
+    needs: [lint, version-check, security, test, build-binaries]
     timeout-minutes: 20
     # Only publish to crates.io for stable releases (not beta, alpha, rc, etc.)
     if: "!contains(github.ref, '-beta') && !contains(github.ref, '-alpha') && !contains(github.ref, '-rc')"
@@ -153,14 +153,18 @@ jobs:
     name: Build Release Binaries
     needs: [lint, security, test]
     uses: ./.github/workflows/build-binaries.yml
+    with:
+      features: graph
 
   # Create GitHub Release with all binaries
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    # Only depend on publish for non-beta releases, always depend on build-binaries
-    needs: [build-binaries]
-    if: always() && needs.build-binaries.result == 'success'
+    needs: [build-binaries, publish]
+    if: >-
+      always() &&
+      needs.build-binaries.result == 'success' &&
+      (needs.publish.result == 'success' || needs.publish.result == 'skipped')
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -377,8 +381,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/narsil-mcp.rb
-          git commit -m "narsil-mcp ${VERSION}"
-          git push
+          if git diff --cached --quiet; then
+            echo "Homebrew formula is already current"
+          else
+            git commit -m "narsil-mcp ${VERSION}"
+            git push
+          fi
 
   # Update Scoop bucket manifest with new version and SHA256 hash
   update-scoop:
@@ -490,5 +498,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add bucket/narsil-mcp.json
-          git commit -m "narsil-mcp ${VERSION}"
-          git push
+          if git diff --cached --quiet; then
+            echo "Scoop manifest is already current"
+          else
+            git commit -m "narsil-mcp ${VERSION}"
+            git push
+          fi

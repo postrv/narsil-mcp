@@ -13,7 +13,8 @@ use super::patterns::{
     SinkPattern, SourcePattern, TaintConfig,
 };
 use super::types::{
-    TaintAnalysisResult, TaintFlow, TaintOperation, TaintSink, TaintSource, TaintStep,
+    Severity, SinkKind, SourceKind, TaintAnalysisResult, TaintFlow, TaintOperation, TaintSink,
+    TaintSource, TaintStep, VulnerabilityKind,
 };
 
 /// Main taint analyzer
@@ -265,12 +266,11 @@ impl TaintAnalyzer {
                 // Check for method calls that might propagate taint (e.g., append, push, add)
                 self.check_method_taint_propagation(line, &mut tainted_vars);
 
-                // Check if any tainted variable reaches a sink
+                // Check if any tainted variable reaches the dangerous sink argument.
                 for sink in sinks {
                     if sink.line == line_num {
-                        // Check if any tainted var is in the sink code
                         for tainted_var in &tainted_vars {
-                            if sink.code.contains(tainted_var) {
+                            if self.sink_argument_contains_taint(sink, tainted_var) {
                                 // Check for sanitizers
                                 let is_sanitized = self.check_sanitization(
                                     &lines,
@@ -286,7 +286,9 @@ impl TaintAnalyzer {
                                     Some(sink.kind.vulnerability_type())
                                 };
 
-                                let severity = vulnerability.as_ref().map(|v| v.default_severity());
+                                let severity = vulnerability
+                                    .as_ref()
+                                    .map(|v| Self::severity_for_flow(source, sink, v));
 
                                 let path =
                                     self.build_path(&lines, source, sink, tainted_var, file_path);
@@ -311,6 +313,46 @@ impl TaintAnalyzer {
         }
 
         flows
+    }
+
+    fn sink_argument_contains_taint(&self, sink: &TaintSink, tainted_var: &str) -> bool {
+        if tainted_var.is_empty() {
+            return false;
+        }
+
+        if let Some(args) = extract_call_arguments(&sink.code, &sink.function) {
+            let arg = split_top_level_args(&args)
+                .get(sink.dangerous_arg)
+                .map_or("", |value| *value);
+            return identifier_occurs(arg, tainted_var);
+        }
+
+        if let Some((_, rhs)) = self.parse_assignment(&sink.code) {
+            return identifier_occurs(&rhs, tainted_var);
+        }
+
+        identifier_occurs(&sink.code, tainted_var)
+    }
+
+    fn severity_for_flow(
+        source: &TaintSource,
+        sink: &TaintSink,
+        vulnerability: &VulnerabilityKind,
+    ) -> Severity {
+        match (&source.kind, &sink.kind, vulnerability) {
+            (
+                SourceKind::UserInput { .. }
+                | SourceKind::Network
+                | SourceKind::CommandArgs
+                | SourceKind::Deserialization,
+                _,
+                _,
+            ) => vulnerability.default_severity(),
+            (_, SinkKind::FilePath | SinkKind::FileWrite, VulnerabilityKind::PathTraversal)
+            | (SourceKind::FileRead, _, VulnerabilityKind::InsecureDeserialization)
+            | (SourceKind::Environment, _, _) => Severity::Medium,
+            _ => vulnerability.default_severity(),
+        }
     }
 
     /// Check if a flow is sanitized
@@ -598,6 +640,97 @@ impl TaintAnalyzer {
             }
         }
     }
+}
+
+fn extract_call_arguments(line: &str, function: &str) -> Option<String> {
+    let function_pos = line.find(function)?;
+    let after_function = &line[function_pos + function.len()..];
+    let open_offset = after_function.find('(')?;
+    let args_start = function_pos + function.len() + open_offset + 1;
+    let mut depth = 1usize;
+    let mut in_string: Option<char> = None;
+    let mut escaped = false;
+
+    for (offset, ch) in line[args_start..].char_indices() {
+        if let Some(quote) = in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == quote {
+                in_string = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => in_string = Some(ch),
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    let end = args_start + offset;
+                    return Some(line[args_start..end].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn split_top_level_args(args: &str) -> Vec<&str> {
+    let mut result = Vec::new();
+    let mut start = 0usize;
+    let mut depth = 0usize;
+    let mut in_string: Option<char> = None;
+    let mut escaped = false;
+
+    for (idx, ch) in args.char_indices() {
+        if let Some(quote) = in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == quote {
+                in_string = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => in_string = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                result.push(args[start..idx].trim());
+                start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    result.push(args[start..].trim());
+    result
+}
+
+fn identifier_occurs(text: &str, identifier: &str) -> bool {
+    let mut start = 0usize;
+    while let Some(offset) = text[start..].find(identifier) {
+        let match_start = start + offset;
+        let match_end = match_start + identifier.len();
+        let before = text[..match_start].chars().next_back();
+        let after = text[match_end..].chars().next();
+        let before_ok = before.is_none_or(|ch| !(ch.is_alphanumeric() || ch == '_'));
+        let after_ok = after.is_none_or(|ch| !(ch.is_alphanumeric() || ch == '_'));
+        if before_ok && after_ok {
+            return true;
+        }
+        start = match_end;
+    }
+
+    false
 }
 
 /// Convenience function to analyze Python code
@@ -1145,6 +1278,49 @@ db.query(data.query);
         assert!(
             !result.vulnerabilities.is_empty(),
             "Should detect vulnerability through JS object property"
+        );
+    }
+
+    #[test]
+    fn test_rust_file_read_lhs_is_not_path_traversal_flow() {
+        let code = r#"
+use std::path::Path;
+
+fn load_file(file_path: &Path) -> std::io::Result<String> {
+    let content = std::fs::read_to_string(file_path)?;
+    Ok(content)
+}
+"#;
+
+        let result = analyze_rust(code, "src/lib.rs");
+        assert!(
+            result.vulnerabilities.is_empty(),
+            "file contents assigned from a read must not be treated as the path argument: {:?}",
+            result.vulnerabilities
+        );
+    }
+
+    #[test]
+    fn test_rust_env_path_to_file_read_is_path_traversal_flow() {
+        let code = r#"
+fn load_config() -> std::io::Result<String> {
+    let file_path = std::env::var("CONFIG_PATH").unwrap();
+    std::fs::read_to_string(file_path)
+}
+"#;
+
+        let result = analyze_rust(code, "src/lib.rs");
+        assert!(
+            result.vulnerabilities.iter().any(|flow| flow.vulnerability
+                == Some(crate::taint::types::VulnerabilityKind::PathTraversal)),
+            "environment-controlled file path should still be detected"
+        );
+        assert!(
+            result
+                .vulnerabilities
+                .iter()
+                .any(|flow| flow.severity == Some(crate::taint::types::Severity::Medium)),
+            "environment-controlled local paths should not be reported as high-severity remote input"
         );
     }
 }

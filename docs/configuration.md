@@ -8,6 +8,7 @@ narsil-mcp supports flexible configuration through multiple layers, allowing you
 - [Configuration Levels](#configuration-levels)
 - [Configuration File Format](#configuration-file-format)
 - [Presets](#presets)
+- [Named Repository Profiles](#named-repository-profiles)
 - [Environment Variables](#environment-variables)
 - [CLI Commands](#cli-commands)
 - [Categories](#categories)
@@ -49,7 +50,7 @@ narsil-mcp --repos ~/project
 export NARSIL_PRESET=balanced
 narsil-mcp --repos ~/project --git --call-graph
 
-# Apply full preset (all 79 tools)
+# Apply full preset (all 90 tools)
 export NARSIL_PRESET=full
 narsil-mcp --repos ~/project --git --call-graph --neural
 ```
@@ -69,6 +70,34 @@ vim ~/.config/narsil-mcp/config.yaml
 # Start server (config is automatically loaded)
 narsil-mcp --repos ~/project
 ```
+
+### Named Repository Profiles
+
+Profiles store reusable workspace definitions in your config file. They are
+useful when you regularly switch between multi-repo projects.
+
+```yaml
+version: "1.0"
+profiles:
+  platform:
+    repos:
+      - ~/src/api
+      - ~/src/web
+    git: true
+    call_graph: true
+    persist: true
+    preset: balanced
+```
+
+Start with a profile:
+
+```bash
+narsil-mcp --profile platform
+narsil-mcp config profiles
+```
+
+CLI flags still win, so `narsil-mcp --profile platform --repos ~/src/one-off`
+uses the explicit `--repos` value while keeping profile feature defaults.
 
 ## Configuration Levels
 
@@ -265,14 +294,14 @@ narsil-mcp --repos ~/project --git --call-graph
 - Research and exploration
 
 **Includes:**
-- ALL 79 tools
+- ALL 90 tools
 - All search modes (including neural with `--neural`)
 - Full security scanning
 - Supply chain analysis
 - Remote GitHub repository support (with `--remote`)
 - All code analysis features
 
-**Expected tool count:** 50-60 tools without flags, 70+ tools with all flags
+**Expected tool count:** 50-60 tools without flags, 90 tools with all flags
 
 **Usage:**
 ```bash
@@ -330,6 +359,18 @@ Use a custom config file location:
 ```bash
 export NARSIL_CONFIG_PATH=/path/to/my-config.yaml
 narsil-mcp --repos ~/project
+```
+
+### NARSIL_REPOS and NARSIL_PROFILE
+
+Select repositories without command-line arguments:
+
+```bash
+export NARSIL_REPOS=~/src/api,~/src/web
+narsil-mcp --git
+
+export NARSIL_PROFILE=platform
+narsil-mcp
 ```
 
 ### NARSIL_ENABLED_CATEGORIES
@@ -472,7 +513,7 @@ narsil-mcp config export --resolved
 
 ## Categories
 
-narsil-mcp organizes its 79 tools into 12 categories:
+narsil-mcp organizes its 90 tools into 12 categories:
 
 ### Repository (10 tools)
 
@@ -1009,4 +1050,4 @@ narsil-mcp --repos . --git
 - [Migration Guide](./migration.md) - Upgrading from previous versions
 - [Example Configurations](../examples/configs/README.md) - Ready-to-use config templates
 - [README](../README.md) - Main project documentation
-- [Tool Reference](../README.md#mcp-tools-76-total) - Complete tool documentation
+- [Tool Reference](../README.md#mcp-tools-90-total) - Complete tool documentation

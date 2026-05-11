@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-1763%2B%20passed-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue.svg)](https://modelcontextprotocol.io)
 
 A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 90 specialized tools.
@@ -75,7 +75,7 @@ A Rust-powered MCP (Model Context Protocol) server providing AI assistants with 
 | **Zig** | `.zig` | functions, variables |
 | **Erlang** | `.erl`, `.hrl` | functions, modules, records |
 | **Elm** | `.elm` | functions, types |
-| **Fortran** | `.f90`, `.f95`, `.f03`, `.f08` | programs, subroutines, functions, modules |
+| **Fortran** | `.f90`, `.f95`, `.f03`, `.f08`, `.f`, `.for`, `.fpp` | programs, subroutines, functions, modules |
 | **PowerShell** | `.ps1`, `.psm1`, `.psd1` | functions, classes, enums |
 | **Nix** | `.nix` | bindings |
 | **Groovy** | `.groovy`, `.gradle` | methods, classes, interfaces, enums, functions |
@@ -94,13 +94,6 @@ brew install narsil-mcp
 ```powershell
 scoop bucket add narsil https://github.com/postrv/scoop-narsil
 scoop install narsil-mcp
-```
-
-**Arch Linux (AUR):**
-```bash
-yay -S narsil-mcp-bin  # Binary release (faster)
-# or
-yay -S narsil-mcp      # Build from source
 ```
 
 **Rust/Cargo (all platforms):**
@@ -311,7 +304,7 @@ narsil-mcp detects your editor and applies an optimal preset automatically:
 |--------|--------|-------|----------------|-----|
 | **Zed** | Minimal | 26 | ~4,686 | Fast startup, minimal context |
 | **VS Code** | Balanced | 51 | ~8,948 | Good feature balance |
-| **Claude Desktop** | Full | 75+ | ~12,001 | Maximum capabilities |
+| **Claude Desktop** | Full | 90 | ~12,001 | Maximum capabilities |
 
 **Token Savings:**
 - **Minimal preset:** 61% fewer tokens vs Full
@@ -368,11 +361,35 @@ tools:
       enabled: true
 ```
 
+**Named repository profiles** are useful for multi-repo workspaces:
+
+```yaml
+version: "1.0"
+profiles:
+  platform:
+    repos:
+      - ~/src/api
+      - ~/src/web
+    git: true
+    call_graph: true
+    persist: true
+    preset: balanced
+```
+
+```bash
+narsil-mcp --profile platform
+narsil-mcp config profiles
+```
+
 **Priority:** CLI flags > Environment vars > Project config > User config > Defaults
 
 #### Environment Variables
 
 ```bash
+# Select repos/profile
+export NARSIL_REPOS=~/src/api,~/src/web
+export NARSIL_PROFILE=platform
+
 # Apply preset
 export NARSIL_PRESET=minimal
 
@@ -400,6 +417,9 @@ narsil-mcp tools search "git"
 
 # Export config
 narsil-mcp config export > my-config.yaml
+
+# List named repository profiles
+narsil-mcp config profiles
 ```
 
 **Learn More:**
@@ -529,7 +549,7 @@ cd /path/to/project
 claude
 ```
 
-Using `.` for `--repos` automatically indexes the current directory. Claude now has access to 76 code intelligence tools.
+Using `.` for `--repos` automatically indexes the current directory. Claude now has access to 90 code intelligence tools.
 
 > **Tip**: Add `--persist --index-path .claude/cache` for faster startup on subsequent runs.
 
@@ -978,7 +998,7 @@ Benchmarked on Apple M1 (criterion.rs):
 ## Development
 
 ```bash
-# Run tests (1763+ tests)
+# Run the full test suite
 cargo test
 
 # Run benchmarks (criterion.rs)

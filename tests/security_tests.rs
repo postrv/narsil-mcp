@@ -180,3 +180,31 @@ async fn test_get_repo_path_allows_indexed_repo_path() {
         result.err()
     );
 }
+
+#[tokio::test]
+async fn test_check_type_errors_accepts_directory_path() {
+    let temp_dir = TempDir::new().unwrap();
+    let repo_path = temp_dir.path().join("typed-project");
+    let src_path = repo_path.join("src");
+    fs::create_dir_all(&src_path).unwrap();
+    fs::write(
+        src_path.join("app.py"),
+        "def add_one(value):\n    return value + 1\n",
+    )
+    .unwrap();
+    fs::write(src_path.join("lib.rs"), "pub fn rust_file() {}\n").unwrap();
+
+    let index_path = temp_dir.path().join("index");
+    let engine = CodeIntelEngine::new(index_path, vec![repo_path])
+        .await
+        .unwrap();
+    engine.complete_initialization().await.unwrap();
+
+    let result = engine
+        .check_type_errors("typed-project", "src", Some(true))
+        .await
+        .unwrap();
+
+    assert!(result.contains("**Files analyzed**: 1"));
+    assert!(result.contains("**Functions analyzed**: 1"));
+}

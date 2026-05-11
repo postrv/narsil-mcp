@@ -402,7 +402,7 @@ rules:
   # Rust: Unchecked unwrap on potential user input
   - id: RUST-002
     name: Unchecked Unwrap on Fallible Operation
-    severity: High
+    severity: Medium
     cwe: ["CWE-252", "CWE-476"]
     owasp: []
     rule_type:

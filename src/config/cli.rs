@@ -68,6 +68,13 @@ pub enum ConfigCommand {
         #[arg(long, default_value = "yaml")]
         format: OutputFormat,
     },
+
+    /// List named repository profiles
+    Profiles {
+        /// Output format (table, yaml, json)
+        #[arg(long, default_value = "table")]
+        format: OutputFormat,
+    },
 }
 
 /// Tools CLI subcommands
@@ -125,6 +132,7 @@ pub async fn handle_config_command(cmd: ConfigCommand) -> Result<()> {
         } => cmd_init(preset, project, user, neural).await,
         ConfigCommand::Preset { preset, project } => cmd_preset(preset, project),
         ConfigCommand::Export { resolved, format } => cmd_export(resolved, format),
+        ConfigCommand::Profiles { format } => cmd_profiles(format),
     }
 }
 
@@ -416,6 +424,67 @@ fn cmd_export(resolved: bool, format: OutputFormat) -> Result<()> {
         OutputFormat::Table => {
             eprintln!("Error: table format not supported for export, use yaml or json");
             std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_profiles(format: OutputFormat) -> Result<()> {
+    let loader = ConfigLoader::new();
+    let config = loader.load()?;
+    let mut profiles: Vec<_> = config.profiles.iter().collect();
+    profiles.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    match format {
+        OutputFormat::Table => {
+            if profiles.is_empty() {
+                println!("No repository profiles configured.");
+                return Ok(());
+            }
+
+            println!("Repository Profiles ({} total):", profiles.len());
+            println!("{:-<80}", "");
+            for (name, profile) in profiles {
+                let features = [
+                    ("git", profile.git),
+                    ("call-graph", profile.call_graph),
+                    ("persist", profile.persist),
+                    ("watch", profile.watch),
+                    ("lsp", profile.lsp),
+                    ("remote", profile.remote),
+                    ("neural", profile.neural),
+                    ("graph", profile.graph),
+                ]
+                .into_iter()
+                .filter_map(|(label, enabled)| enabled.unwrap_or(false).then_some(label))
+                .collect::<Vec<_>>()
+                .join(",");
+                println!(
+                    "{:<20} repos={:<3} discover={:<20} preset={:<16} features={}",
+                    name,
+                    profile.repos.len(),
+                    profile
+                        .discover
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    profile.preset.as_deref().unwrap_or("-"),
+                    if features.is_empty() {
+                        "-"
+                    } else {
+                        features.as_str()
+                    }
+                );
+            }
+        }
+        OutputFormat::Yaml => {
+            let yaml = serde_saphyr::to_string(&config.profiles)?;
+            println!("{}", yaml);
+        }
+        OutputFormat::Json => {
+            let json = serde_json::to_string_pretty(&config.profiles)?;
+            println!("{}", json);
         }
     }
 

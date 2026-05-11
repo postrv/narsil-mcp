@@ -13,6 +13,7 @@ const SUPPORTED_VERSIONS: &[&str] = &["1.0"];
 /// Validate a configuration
 pub fn validate_config(config: &ToolConfig) -> Result<()> {
     validate_version(config)?;
+    validate_profiles(config)?;
     validate_categories(config)?;
     validate_overrides(config)?;
     validate_performance(config)?;
@@ -28,6 +29,24 @@ fn validate_version(config: &ToolConfig) -> Result<()> {
             SUPPORTED_VERSIONS.join(", ")
         );
     }
+    Ok(())
+}
+
+/// Validate named repository profiles.
+fn validate_profiles(config: &ToolConfig) -> Result<()> {
+    for (name, profile) in &config.profiles {
+        if name.trim().is_empty() {
+            bail!("Profile names must not be empty");
+        }
+
+        if profile.repos.is_empty() && profile.discover.is_none() {
+            bail!(
+                "Profile '{}' must define at least one repo path or a discover path",
+                name
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -139,6 +158,7 @@ mod tests {
             version: "1.0".to_string(),
             preset: None,
             editors: HashMap::new(),
+            profiles: HashMap::new(),
             tools: ToolsConfig {
                 categories: HashMap::new(),
                 overrides: HashMap::new(),
@@ -156,6 +176,7 @@ mod tests {
             version: "999.0".to_string(),
             preset: None,
             editors: HashMap::new(),
+            profiles: HashMap::new(),
             tools: ToolsConfig {
                 categories: HashMap::new(),
                 overrides: HashMap::new(),
@@ -173,6 +194,7 @@ mod tests {
             version: "1.0".to_string(),
             preset: None,
             editors: HashMap::new(),
+            profiles: HashMap::new(),
             tools: ToolsConfig {
                 categories: HashMap::new(),
                 overrides: HashMap::new(),
@@ -205,6 +227,7 @@ mod tests {
             version: "1.0".to_string(),
             preset: None,
             editors: HashMap::new(),
+            profiles: HashMap::new(),
             tools: ToolsConfig {
                 categories,
                 overrides: HashMap::new(),
@@ -236,6 +259,7 @@ mod tests {
             version: "1.0".to_string(),
             preset: None,
             editors: HashMap::new(),
+            profiles: HashMap::new(),
             tools: ToolsConfig {
                 categories: HashMap::new(),
                 overrides,

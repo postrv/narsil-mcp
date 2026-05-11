@@ -2,9 +2,6 @@
 //!
 //! Phase 2 feature - tracks timing for all operations.
 
-// Allow dead code for planned metrics features
-#![allow(dead_code)]
-
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;

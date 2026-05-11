@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.7.0] - 2026-05-10
+## [1.7.0-rc1] - 2026-05-11
 
 ### Fixed
 
@@ -30,11 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on its first poll and exited milliseconds after startup, silently
   disabling `--watch`. Restructured into `persist::spawn_watch_mode` which
   returns the sender (`#[must_use]`) so the lifetime requirement is now a
-  compile-time error class, not a comment.
+  compile-time error class, not a comment. Watch mode now uses notify's
+  polling backend for reliable behavior across Linux desktops, containers,
+  network mounts, and macOS temp directories.
 - **`cargo build --features frontend` succeeds without `frontend/dist`**
   (issue #18b). Added `#[allow_missing = true]` to the `rust-embed` derive
   and a `build.rs` that emits `cargo:warning` pointing the user at
   `cd frontend && npm ci && npm run build` if the dist directory is empty.
+- **Binary installers use the correct release asset names**. The shell
+  installer now maps platforms to `macos-x86_64`, `macos-aarch64`,
+  `linux-x86_64`, and `linux-aarch64` assets instead of Rust target triples;
+  npm now downloads the Linux ARM64 binary for `linux-arm64`.
+- **Stable release automation is gated more safely**. GitHub Release, npm,
+  Homebrew, and Scoop updates now wait for successful binary builds and
+  crates.io publish (or a skipped publish for prerelease tags), reducing the
+  chance of split-channel releases.
 
 ### Added
 
@@ -46,7 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bare `narsil-mcp` defaults to the current working directory** (issue
   #22 partial). No more empty-repo errors when invoked inside a project
   with no `--repos`. Missing repository paths are filtered out at startup
-  with a WARN log naming each one.
+  with a WARN log naming each one, and existing paths are canonicalized for
+  better relative-path and symlink behavior.
+- **Named repository profiles** (issue #22). Add profiles to `config.yaml`
+  or `.narsil.yaml` and start them with `--profile NAME` or
+  `NARSIL_PROFILE=NAME`. Profiles can provide repos, discovery paths,
+  presets, and common feature flags such as `git`, `call_graph`, `persist`,
+  and `watch`.
 - **Native Linux ARM64 release binary** (issue #20). Built on GitHub's
   `ubuntu-24.04-arm` Graviton runner; published as
   `narsil-mcp-vX.Y.Z-linux-aarch64.tar.gz`. The Homebrew tap formula now
@@ -55,11 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 
-- Added 17 new tests across config filter (Lsp Display lookup, Remote/Graph
+- Added 20+ new tests across config filter (Lsp Display lookup, Remote/Graph
   propagation, Full-preset bypass, Remote tool visibility, env-var empty
   handling), CLI parsing (every NARSIL_* env var, cwd fallback,
-  missing-path filter), watch mode (end-to-end file change → reindex), and
-  Java parsing (parser unit + Maven-layout integration test).
+  missing-path filter, named profiles), watch mode (end-to-end file change
+  → reindex), installer metadata, and Java parsing (parser unit +
+  Maven-layout integration test).
 - Added a process-wide `ENV_LOCK` mutex in env-var test sites and updated
   six pre-existing `priority_tests` that were race-vulnerable.
 

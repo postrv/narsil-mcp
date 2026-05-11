@@ -62,7 +62,7 @@ cd /path/to/project
 claude
 ```
 
-Claude now has access to 76 code intelligence tools. Ask questions naturally:
+Claude now has access to 90 code intelligence tools. Ask questions naturally:
 
 ```
 > What's the structure of this project?

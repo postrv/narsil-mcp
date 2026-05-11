@@ -27,8 +27,8 @@ Then start Claude Code in your project directory.
 
 ## Features
 
-- **76 MCP tools** for code intelligence
-- **16 languages** supported via tree-sitter
+- **90 MCP tools** for code intelligence
+- **32 languages** supported via tree-sitter
 - **Multi-mode search**: BM25, TF-IDF, hybrid, neural embeddings
 - **Call graph analysis**: callers, callees, paths, hotspots
 - **Security scanning**: OWASP Top 10, CWE Top 25, secrets detection

@@ -34,7 +34,7 @@ function getTargetInfo() {
       extension: "tar.gz",
     },
     "linux-arm64": {
-      artifact: "linux-x86_64", // Fallback - no ARM Linux build yet
+      artifact: "linux-aarch64",
       extension: "tar.gz",
     },
     "win32-x64": {
@@ -48,7 +48,7 @@ function getTargetInfo() {
 
   if (!target) {
     console.error(`Unsupported platform: ${platform}-${arch}`);
-    console.error("Supported platforms: darwin-x64, darwin-arm64, linux-x64, win32-x64");
+    console.error("Supported platforms: darwin-x64, darwin-arm64, linux-x64, linux-arm64, win32-x64");
     console.error("\nYou can build from source instead:");
     console.error("  cargo install narsil-mcp");
     process.exit(1);

@@ -4,7 +4,7 @@
 
 use anyhow::{Context, Result};
 #[cfg(feature = "native")]
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Config, Event, EventKind, PollWatcher, RecursiveMode, Watcher};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -232,7 +232,7 @@ impl IndexStore {
 /// File watcher for incremental updates (legacy, sync-based polling)
 #[cfg(feature = "native")]
 pub struct FileWatcher {
-    watcher: RecommendedWatcher,
+    watcher: PollWatcher,
     rx: std::sync::mpsc::Receiver<Result<Event, notify::Error>>,
     watched_paths: Vec<PathBuf>,
 }
@@ -242,9 +242,12 @@ impl FileWatcher {
     pub fn new() -> Result<Self> {
         let (tx, rx) = std::sync::mpsc::channel();
 
-        let watcher = notify::recommended_watcher(move |res| {
-            let _ = tx.send(res);
-        })?;
+        let watcher = PollWatcher::new(
+            move |res| {
+                let _ = tx.send(res);
+            },
+            Config::default().with_poll_interval(Duration::from_millis(500)),
+        )?;
 
         Ok(Self {
             watcher,
@@ -282,13 +285,7 @@ impl FileWatcher {
                         _ => continue,
                     };
 
-                    // Filter to source files
-                    if is_source_file(&path) {
-                        changes.push(FileChange {
-                            path: path.to_path_buf(),
-                            change_type,
-                        });
-                    }
+                    changes.extend(source_changes_for_path(&path, change_type));
                 }
             }
         }
@@ -313,12 +310,7 @@ impl FileWatcher {
                     _ => continue,
                 };
 
-                if is_source_file(&path) {
-                    changes.push(FileChange {
-                        path: path.to_path_buf(),
-                        change_type,
-                    });
-                }
+                changes.extend(source_changes_for_path(&path, change_type));
             }
         }
 
@@ -332,7 +324,7 @@ impl FileWatcher {
 /// Async file watcher for event-driven incremental updates
 #[cfg(feature = "native")]
 pub struct AsyncFileWatcher {
-    _watcher: RecommendedWatcher,
+    _watcher: PollWatcher,
     watched_paths: Vec<PathBuf>,
 }
 
@@ -345,9 +337,12 @@ impl AsyncFileWatcher {
         // Create a channel for the notify watcher
         let (notify_tx, mut notify_rx) = mpsc::unbounded_channel();
 
-        let watcher = notify::recommended_watcher(move |res| {
-            let _ = notify_tx.send(res);
-        })?;
+        let watcher = PollWatcher::new(
+            move |res| {
+                let _ = notify_tx.send(res);
+            },
+            Config::default().with_poll_interval(Duration::from_millis(500)),
+        )?;
 
         // Spawn a task to process notify events and send batched changes
         tokio::spawn(async move {
@@ -369,11 +364,9 @@ impl AsyncFileWatcher {
                                     _ => continue,
                                 };
 
-                                // Filter to source files
-                                if is_source_file(&path) {
+                                for change in source_changes_for_path(&path, change_type.clone()) {
                                     // Add to debounce buffer (overwrites previous events for same file)
-                                    let path_buf = path.to_path_buf();
-                                    debounce_buffer.insert(path_buf.clone(), FileChange { path: path_buf, change_type });
+                                    debounce_buffer.insert(change.path.clone(), change);
                                 }
                             }
                         }
@@ -447,6 +440,47 @@ fn is_source_file(path: &Path) -> bool {
         .and_then(|e| e.to_str())
         .map(|e| extensions.contains(&e))
         .unwrap_or(false)
+}
+
+/// Convert a notify path into source-file changes.
+///
+/// Some platforms, especially macOS FSEvents and network/container mounts,
+/// can report a directory as modified instead of the exact file. When that
+/// happens, scan the reported directory for source files so watch mode does
+/// not silently miss the change.
+fn source_changes_for_path(path: &Path, change_type: ChangeType) -> Vec<FileChange> {
+    if is_source_file(path) {
+        return vec![FileChange {
+            path: path.to_path_buf(),
+            change_type,
+        }];
+    }
+
+    if change_type == ChangeType::Deleted || !path.is_dir() {
+        return Vec::new();
+    }
+
+    let mut changes = Vec::new();
+    collect_source_files(path, change_type, &mut changes);
+    changes
+}
+
+fn collect_source_files(path: &Path, change_type: ChangeType, changes: &mut Vec<FileChange>) {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        if is_source_file(&entry_path) {
+            changes.push(FileChange {
+                path: entry_path,
+                change_type: change_type.clone(),
+            });
+        } else if entry_path.is_dir() {
+            collect_source_files(&entry_path, change_type.clone(), changes);
+        }
+    }
 }
 
 /// Incremental indexer that combines persistence and watching

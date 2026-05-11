@@ -2,9 +2,6 @@
 //!
 //! Provides intelligent code search that understands programming patterns.
 
-// Allow dead code for planned search improvements
-#![allow(dead_code)]
-
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

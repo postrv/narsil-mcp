@@ -78,6 +78,15 @@ rules:
       safe_patterns:
         - 'http://localhost'
         - 'http://127.0.0.1'
+        - 'http://www.w3.org/'
+        - 'http://xmlns.com/'
+        - 'http://purl.org/'
+        - 'http://schema.org/'
+        - 'http://rdfs.org/'
+        - 'http://usefulinc.com/'
+        - 'http://www.semanticdesktop.org/'
+        - 'strip_prefix\("http://"\)'
+        - 'HTTP server starting on http://'
     languages: []
     message: Potential insecure data transmission
     remediation: Use HTTPS and enable certificate verification

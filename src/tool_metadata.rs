@@ -1,6 +1,6 @@
 /// Tool Metadata Registry
 ///
-/// This module provides comprehensive metadata for all 75 MCP tools,
+/// This module provides comprehensive metadata for all 90 MCP tools,
 /// including categorization, performance indicators, required feature flags,
 /// and JSON schemas.
 use lazy_static::lazy_static;

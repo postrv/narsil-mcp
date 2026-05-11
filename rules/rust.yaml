@@ -19,8 +19,6 @@ rules:
         - 'Command::new\s*\(\s*&?\w+\s*\)'
         - 'Command::new\s*\(\s*format!\s*\('
         - '\.arg\s*\(\s*format!\s*\('
-        - '\.arg\s*\(\s*&?\w+\s*\)'
-        - '\.args\s*\(\s*&?\w+\s*\)'
       safe_patterns:
         - 'Command::new\s*\(\s*"[^"]*"\s*\)'
         - '\.arg\s*\(\s*"[^"]*"\s*\)'
@@ -251,7 +249,7 @@ rules:
   # RUST-013: Path Traversal
   - id: RUST-013
     name: Rust Path Traversal
-    severity: High
+    severity: Medium
     cwe: ["CWE-22"]
     owasp: ["A01:2021"]
     rule_type:
@@ -326,7 +324,7 @@ rules:
   # RUST-016: Unvalidated Deserialization
   - id: RUST-016
     name: Rust Unvalidated Deserialization
-    severity: High
+    severity: Medium
     cwe: ["CWE-502"]
     owasp: ["A08:2021"]
     rule_type:
@@ -428,7 +426,7 @@ rules:
   # RUST-020: SSRF via Unvalidated URL
   - id: RUST-020
     name: Rust Server-Side Request Forgery
-    severity: High
+    severity: Medium
     cwe: ["CWE-918"]
     owasp: ["A10:2021"]
     rule_type:

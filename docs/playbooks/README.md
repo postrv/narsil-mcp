@@ -12,7 +12,7 @@ narsil-mcp is an **MCP server** - it gives AI assistants like Claude direct acce
 - Scan for security vulnerabilities
 - Track git history and blame
 
-**You don't need plugins, agents, or skills.** The MCP protocol is built into Claude Desktop, Claude Code, VS Code (Copilot), Cursor, and other tools. You just configure the server once, and Claude gains 76 code intelligence capabilities.
+**You don't need plugins, agents, or skills.** The MCP protocol is built into Claude Desktop, Claude Code, VS Code (Copilot), Cursor, and other tools. You just configure the server once, and Claude gains 90 code intelligence capabilities.
 
 ## Quick Example
 

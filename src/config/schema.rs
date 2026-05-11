@@ -4,6 +4,7 @@
 /// They are designed to be serialized/deserialized with serde.
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Default version for configuration
 fn default_version() -> String {
@@ -25,6 +26,10 @@ pub struct ToolConfig {
     #[serde(default)]
     pub editors: HashMap<String, serde_json::Value>,
 
+    /// Named repository profiles for reusable workspace path sets.
+    #[serde(default)]
+    pub profiles: HashMap<String, RepoProfile>,
+
     /// Tool configuration (categories and overrides)
     /// Defaults to empty config when using preset-only configurations
     #[serde(default)]
@@ -45,11 +50,60 @@ impl Default for ToolConfig {
             version: default_version(),
             preset: None,
             editors: HashMap::new(),
+            profiles: HashMap::new(),
             tools: ToolsConfig::default(),
             performance: PerformanceConfig::default(),
             feature_requirements: HashMap::new(),
         }
     }
+}
+
+/// Named workspace profile selected with `--profile NAME`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RepoProfile {
+    /// Repository paths to index when this profile is selected.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repos: Vec<PathBuf>,
+
+    /// Optional directory to auto-discover repositories from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discover: Option<PathBuf>,
+
+    /// Optional tool preset to apply with this profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
+
+    /// Enable git integration for this profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git: Option<bool>,
+
+    /// Enable call graph analysis for this profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call_graph: Option<bool>,
+
+    /// Enable persistent index storage for this profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persist: Option<bool>,
+
+    /// Enable watch mode for this profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watch: Option<bool>,
+
+    /// Enable LSP integration for this profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lsp: Option<bool>,
+
+    /// Enable remote GitHub repository support for this profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<bool>,
+
+    /// Enable neural search for this profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub neural: Option<bool>,
+
+    /// Enable graph/SPARQL/CCG tools for this profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph: Option<bool>,
 }
 
 /// Tools configuration (categories and overrides)
@@ -195,6 +249,7 @@ mod tests {
     fn test_default_tool_config() {
         let config = ToolConfig::default();
         assert_eq!(config.version, "1.0");
+        assert!(config.profiles.is_empty());
         assert!(config.tools.categories.is_empty());
         assert!(config.tools.overrides.is_empty());
     }
@@ -225,6 +280,27 @@ preset: "full"
         assert_eq!(config.preset, Some("full".to_string()));
         assert!(config.tools.categories.is_empty());
         assert!(config.tools.overrides.is_empty());
+    }
+
+    #[test]
+    fn test_repo_profile_config() {
+        let yaml = r#"
+version: "1.0"
+profiles:
+  work:
+    repos:
+      - ~/src/api
+      - ~/src/web
+    git: true
+    call_graph: true
+    preset: balanced
+"#;
+        let config: ToolConfig = serde_saphyr::from_str(yaml).unwrap();
+        let profile = config.profiles.get("work").unwrap();
+        assert_eq!(profile.repos.len(), 2);
+        assert_eq!(profile.git, Some(true));
+        assert_eq!(profile.call_graph, Some(true));
+        assert_eq!(profile.preset.as_deref(), Some("balanced"));
     }
 
     #[test]

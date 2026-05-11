@@ -5,9 +5,6 @@
 //!
 //! This is a Phase 3 feature - semantic embeddings for "find similar code" queries.
 
-// Allow dead code for Phase 3 embedding features
-#![allow(dead_code)]
-
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

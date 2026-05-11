@@ -49,17 +49,6 @@ cargo install narsil-mcp
 npm install -g narsil-mcp
 ```
 
-### Arch Linux
-
-**AUR** (recommended):
-```bash
-# Binary release (faster)
-yay -S narsil-mcp-bin
-
-# Build from source
-yay -S narsil-mcp
-```
-
 ## Platform-Specific Instructions
 
 ### macOS
@@ -74,10 +63,15 @@ The Homebrew formula automatically detects your architecture.
 
 Supported distributions:
 - Any distro with Homebrew for Linux
-- Arch Linux (via AUR)
 - Any distro with Cargo/Rust
+- Direct binary install via `install.sh`
+- npm on x86_64 and aarch64/ARM64
 
-For non-Arch distros, use Homebrew or cargo.
+Supported binary architectures:
+- x86_64
+- aarch64/ARM64
+
+Use Homebrew, npm, the install script, or Cargo on Linux.
 
 ### Windows
 
@@ -92,7 +86,7 @@ After installation, verify it works:
 
 ```bash
 narsil-mcp --version
-# Should output: narsil-mcp 1.1.1
+# Should output the installed narsil-mcp version
 ```
 
 ## Next Steps
@@ -121,10 +115,14 @@ Optional features can be enabled at build time:
 
 | Feature | Description |
 |---------|-------------|
+| `graph` | RDF knowledge graph, SPARQL, and CCG tools |
 | `frontend` | Embedded web visualization frontend |
 | `neural-onnx` | Local ONNX neural embeddings (no API key needed) |
 
 ```bash
+# Build with SPARQL / Code Context Graph support
+cargo build --release --features graph
+
 # Build with frontend visualization
 cargo build --release --features frontend
 
@@ -132,13 +130,13 @@ cargo build --release --features frontend
 cargo build --release --features neural-onnx
 
 # Build with multiple features
-cargo build --release --features "frontend neural-onnx"
+cargo build --release --features "graph frontend neural-onnx"
 
 # Build with all features
 cargo build --release --all-features
 ```
 
-> **Pre-built binaries** (Homebrew, Scoop, npm, releases) include the basic feature set. For ONNX or frontend features, build from source.
+> **Pre-built binaries** (Homebrew, Scoop, npm, releases) include `native` + `graph` so `--graph` can expose SPARQL/CCG tools. For ONNX or frontend features, build from source.
 
 ## Troubleshooting
 
@@ -166,10 +164,10 @@ If install script fails on Windows:
 ### npm Installation Issues
 
 If `npm install -g` fails:
-1. Check Node.js version: `node --version` (requires 14+)
+1. Check Node.js version: `node --version` (requires 16+)
 2. Try with sudo on macOS/Linux: `sudo npm install -g narsil-mcp`
 3. Or install without global: `npm install narsil-mcp` (then use `npx narsil-mcp`)
-4. Check platform support: macOS (Intel/ARM), Linux (x64), Windows (x64)
+4. Check platform support: macOS (Intel/ARM), Linux (x64/ARM64), Windows (x64)
 
 ## Updating
 
@@ -183,11 +181,6 @@ brew upgrade narsil-mcp
 ```powershell
 scoop update
 scoop update narsil-mcp
-```
-
-### AUR
-```bash
-yay -Syu narsil-mcp-bin
 ```
 
 ### Cargo
@@ -212,11 +205,6 @@ brew untap postrv/narsil
 ```powershell
 scoop uninstall narsil-mcp
 scoop bucket rm narsil
-```
-
-### AUR
-```bash
-yay -R narsil-mcp-bin
 ```
 
 ### Cargo

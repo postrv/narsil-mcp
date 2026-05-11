@@ -403,7 +403,7 @@ fn test_empty_config_with_all_flags_enabled() {
     let filter = ToolFilter::new(config, &options, None);
     let enabled = filter.get_enabled_tools();
 
-    // Should get most tools (75 total, some might not be flagged)
+    // Should get most tools; some still depend on compile-time or runtime flags.
     assert!(
         enabled.len() >= 65,
         "Should have most tools enabled with all flags"

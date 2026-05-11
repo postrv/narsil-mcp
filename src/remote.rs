@@ -10,9 +10,6 @@
 //!
 //! This is a Phase 3 feature - remote repository support.
 
-// Allow dead code for Phase 3 remote repo features
-#![allow(dead_code)]
-
 use anyhow::{anyhow, Context, Result};
 use octocrab::Octocrab;
 use serde::{Deserialize, Serialize};

@@ -30,13 +30,13 @@ detect_platform() {
 
     case "$os" in
         darwin)
-            os="apple-darwin"
+            os="macos"
             ;;
         linux)
-            os="unknown-linux-gnu"
+            os="linux"
             ;;
         mingw*|msys*|cygwin*)
-            os="pc-windows-msvc"
+            os="windows"
             IS_WINDOWS=true
             BINARY_NAME="narsil-mcp.exe"
             INSTALL_DIR="${LOCALAPPDATA}/Programs/narsil-mcp"
@@ -67,7 +67,7 @@ detect_platform() {
             ;;
     esac
 
-    echo "${arch}-${os}"
+    echo "${os}-${arch}"
 }
 
 # Get latest release version

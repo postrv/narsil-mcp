@@ -2,9 +2,6 @@
 //!
 //! Handles repository discovery, validation, and configuration.
 
-// Allow dead code for planned config features
-#![allow(dead_code)]
-
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
