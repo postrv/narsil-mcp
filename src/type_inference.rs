@@ -3379,13 +3379,9 @@ impl<'a> TypeInferencer<'a> {
                 Constraint::Equal(t1, t2) => {
                     self.unify(&t1, &t2)?;
                 }
-                Constraint::Subtype(sub, sup) => {
-                    if !sub.is_subtype_of(&sup) {
-                        // Add substitution for type variables
-                        if let Type::Var(id) = sub {
-                            self.env.add_substitution(id, sup.clone());
-                        }
-                    }
+                Constraint::Subtype(Type::Var(id), sup) if !Type::Var(id).is_subtype_of(&sup) => {
+                    // Add substitution for type variables
+                    self.env.add_substitution(id, sup.clone());
                 }
                 _ => {}
             }

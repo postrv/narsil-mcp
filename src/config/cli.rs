@@ -434,7 +434,7 @@ fn cmd_profiles(format: OutputFormat) -> Result<()> {
     let loader = ConfigLoader::new();
     let config = loader.load()?;
     let mut profiles: Vec<_> = config.profiles.iter().collect();
-    profiles.sort_by(|(a, _), (b, _)| a.cmp(b));
+    profiles.sort_by_key(|(name, _)| *name);
 
     match format {
         OutputFormat::Table => {

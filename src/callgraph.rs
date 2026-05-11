@@ -807,7 +807,7 @@ impl CallGraph {
             }
         }
 
-        candidates.sort_by(|a, b| b.1.cmp(&a.1));
+        candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.1));
         candidates
             .into_iter()
             .take(limit)
@@ -1002,7 +1002,7 @@ impl CallGraph {
             }
         }
 
-        hotspots.sort_by(|a, b| (b.1 + b.2).cmp(&(a.1 + a.2)));
+        hotspots.sort_by_key(|hotspot| std::cmp::Reverse(hotspot.1 + hotspot.2));
         hotspots
     }
 
@@ -1121,7 +1121,7 @@ impl CallGraph {
                     .iter()
                     .map(|e| (e.key().clone(), e.called_by.len()))
                     .collect();
-                by_callers.sort_by(|a, b| b.1.cmp(&a.1));
+                by_callers.sort_by_key(|caller| std::cmp::Reverse(caller.1));
 
                 for (name, count) in by_callers.iter().take(10) {
                     md.push_str(&format!("- `{}`: {} callers\n", name, count));
@@ -1135,7 +1135,7 @@ impl CallGraph {
                     .iter()
                     .map(|e| (e.key().clone(), e.metrics.clone()))
                     .collect();
-                by_complexity.sort_by(|a, b| b.1.cyclomatic.cmp(&a.1.cyclomatic));
+                by_complexity.sort_by_key(|entry| std::cmp::Reverse(entry.1.cyclomatic));
 
                 for (name, metrics) in by_complexity.iter().take(10) {
                     md.push_str(&format!(

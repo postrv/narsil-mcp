@@ -746,7 +746,7 @@ impl CcgGenerator {
             })
             .collect();
 
-        languages.sort_by(|a, b| b.file_count.cmp(&a.file_count));
+        languages.sort_by_key(|language| std::cmp::Reverse(language.file_count));
         languages
     }
 

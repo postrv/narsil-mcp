@@ -1525,60 +1525,58 @@ impl SupplyChainAnalyzer {
                     });
                 }
             }
-            Ecosystem::PyPI => {
+            Ecosystem::PyPI
+                if dep.name == "requests" && self.version_lt(&dep.version, "2.31.0") =>
+            {
                 // requests < 2.31.0 has vulnerability
-                if dep.name == "requests" && self.version_lt(&dep.version, "2.31.0") {
-                    vulns.push(Vulnerability {
-                        id: "GHSA-j8r2-6x86-q33q".to_string(),
-                        aliases: vec!["CVE-2023-32681".to_string()],
-                        summary: "Unintended leak of Proxy-Authorization header in requests".to_string(),
-                        details: Some("Since Requests 2.3.0, Requests has been leaking Proxy-Authorization headers to destination servers when redirected to an HTTPS endpoint.".to_string()),
-                        severity: VulnSeverity::Medium,
-                        cvss_score: Some(6.1),
-                        affected_versions: vec![">=2.3.0,<2.31.0".to_string()],
-                        fixed_versions: vec!["2.31.0".to_string()],
-                        references: vec!["https://github.com/psf/requests/security/advisories/GHSA-j8r2-6x86-q33q".to_string()],
-                        published: Some("2023-05-22".to_string()),
-                        modified: Some("2023-05-26".to_string()),
-                    });
-                }
+                vulns.push(Vulnerability {
+                    id: "GHSA-j8r2-6x86-q33q".to_string(),
+                    aliases: vec!["CVE-2023-32681".to_string()],
+                    summary: "Unintended leak of Proxy-Authorization header in requests".to_string(),
+                    details: Some("Since Requests 2.3.0, Requests has been leaking Proxy-Authorization headers to destination servers when redirected to an HTTPS endpoint.".to_string()),
+                    severity: VulnSeverity::Medium,
+                    cvss_score: Some(6.1),
+                    affected_versions: vec![">=2.3.0,<2.31.0".to_string()],
+                    fixed_versions: vec!["2.31.0".to_string()],
+                    references: vec!["https://github.com/psf/requests/security/advisories/GHSA-j8r2-6x86-q33q".to_string()],
+                    published: Some("2023-05-22".to_string()),
+                    modified: Some("2023-05-26".to_string()),
+                });
             }
-            Ecosystem::Cargo => {
+            Ecosystem::Cargo if dep.name == "regex" && self.version_lt(&dep.version, "1.5.5") => {
                 // regex < 1.5.5 has ReDoS
-                if dep.name == "regex" && self.version_lt(&dep.version, "1.5.5") {
-                    vulns.push(Vulnerability {
-                        id: "RUSTSEC-2022-0013".to_string(),
-                        aliases: vec!["CVE-2022-24713".to_string()],
-                        summary: "Regex denial of service".to_string(),
-                        details: Some("The regex crate features built-in mitigations to prevent untrusted regexes from consuming arbitrary CPU time and memory during parsing and compilation. However, the mitigations could be bypassed.".to_string()),
-                        severity: VulnSeverity::High,
-                        cvss_score: Some(7.5),
-                        affected_versions: vec!["< 1.5.5".to_string()],
-                        fixed_versions: vec!["1.5.5".to_string()],
-                        references: vec!["https://rustsec.org/advisories/RUSTSEC-2022-0013.html".to_string()],
-                        published: Some("2022-03-08".to_string()),
-                        modified: Some("2022-03-08".to_string()),
-                    });
-                }
+                vulns.push(Vulnerability {
+                    id: "RUSTSEC-2022-0013".to_string(),
+                    aliases: vec!["CVE-2022-24713".to_string()],
+                    summary: "Regex denial of service".to_string(),
+                    details: Some("The regex crate features built-in mitigations to prevent untrusted regexes from consuming arbitrary CPU time and memory during parsing and compilation. However, the mitigations could be bypassed.".to_string()),
+                    severity: VulnSeverity::High,
+                    cvss_score: Some(7.5),
+                    affected_versions: vec!["< 1.5.5".to_string()],
+                    fixed_versions: vec!["1.5.5".to_string()],
+                    references: vec!["https://rustsec.org/advisories/RUSTSEC-2022-0013.html".to_string()],
+                    published: Some("2022-03-08".to_string()),
+                    modified: Some("2022-03-08".to_string()),
+                });
             }
-            Ecosystem::Go => {
+            Ecosystem::Go
+                if dep.name.contains("golang.org/x/net")
+                    && self.version_lt(&dep.version, "0.17.0") =>
+            {
                 // net/http in Go has various vulnerabilities based on version
-                if dep.name.contains("golang.org/x/net") && self.version_lt(&dep.version, "0.17.0")
-                {
-                    vulns.push(Vulnerability {
-                        id: "GO-2023-2102".to_string(),
-                        aliases: vec!["CVE-2023-44487".to_string()],
-                        summary: "HTTP/2 rapid reset attack".to_string(),
-                        details: Some("A malicious HTTP/2 client can rapidly reset streams and cause extreme resource consumption.".to_string()),
-                        severity: VulnSeverity::High,
-                        cvss_score: Some(7.5),
-                        affected_versions: vec!["< 0.17.0".to_string()],
-                        fixed_versions: vec!["0.17.0".to_string()],
-                        references: vec!["https://pkg.go.dev/vuln/GO-2023-2102".to_string()],
-                        published: Some("2023-10-10".to_string()),
-                        modified: Some("2023-10-12".to_string()),
-                    });
-                }
+                vulns.push(Vulnerability {
+                    id: "GO-2023-2102".to_string(),
+                    aliases: vec!["CVE-2023-44487".to_string()],
+                    summary: "HTTP/2 rapid reset attack".to_string(),
+                    details: Some("A malicious HTTP/2 client can rapidly reset streams and cause extreme resource consumption.".to_string()),
+                    severity: VulnSeverity::High,
+                    cvss_score: Some(7.5),
+                    affected_versions: vec!["< 0.17.0".to_string()],
+                    fixed_versions: vec!["0.17.0".to_string()],
+                    references: vec!["https://pkg.go.dev/vuln/GO-2023-2102".to_string()],
+                    published: Some("2023-10-10".to_string()),
+                    modified: Some("2023-10-12".to_string()),
+                });
             }
             _ => {}
         }

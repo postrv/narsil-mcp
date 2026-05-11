@@ -746,7 +746,7 @@ impl SecurityRulesEngine {
         }
 
         // Sort by severity (Critical first)
-        findings.sort_by(|a, b| b.severity.cmp(&a.severity));
+        findings.sort_by_key(|finding| std::cmp::Reverse(finding.severity));
         findings
     }
 
@@ -772,7 +772,7 @@ impl SecurityRulesEngine {
             }
         }
 
-        findings.sort_by(|a, b| b.severity.cmp(&a.severity));
+        findings.sort_by_key(|finding| std::cmp::Reverse(finding.severity));
         findings
     }
 
@@ -798,7 +798,7 @@ impl SecurityRulesEngine {
             }
         }
 
-        findings.sort_by(|a, b| b.severity.cmp(&a.severity));
+        findings.sort_by_key(|finding| std::cmp::Reverse(finding.severity));
         findings
     }
 
@@ -833,7 +833,7 @@ impl SecurityRulesEngine {
             findings.extend(rule_findings);
         }
 
-        findings.sort_by(|a, b| b.severity.cmp(&a.severity));
+        findings.sort_by_key(|finding| std::cmp::Reverse(finding.severity));
         findings
     }
 

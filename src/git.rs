@@ -394,7 +394,7 @@ impl GitRepo {
         }
 
         // Sort by commit count descending
-        contributors.sort_by(|a, b| b.1.cmp(&a.1));
+        contributors.sort_by_key(|contributor| std::cmp::Reverse(contributor.1));
 
         Ok(contributors)
     }
