@@ -64,6 +64,11 @@ jobs:
           key: ${{ matrix.target }}
           cache-on-failure: true
 
+      - name: Install NASM (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nasm -y --no-progress
+
       - name: Build release binary
         run: |
           if [ -n "${{ inputs.features }}" ]; then
