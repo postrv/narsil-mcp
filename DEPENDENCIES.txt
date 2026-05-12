@@ -1,4 +1,4 @@
-narsil-mcp v1.7.0-rc5 (/Users/laurence/RustroverProjects/narsil-mcp)
+narsil-mcp v1.7.0 (/Users/laurence/RustroverProjects/narsil-mcp)
 ├── anyhow v1.0.102
 ├── async-trait v0.1.89 (proc-macro)
 │   ├── proc-macro2 v1.0.106
