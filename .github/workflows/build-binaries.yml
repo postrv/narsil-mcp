@@ -41,7 +41,10 @@ jobs:
             target: aarch64-apple-darwin
             artifact: narsil-mcp-macos-aarch64
             binary: narsil-mcp
-          - os: windows-latest
+          # Pin Windows release builds to the stable VS2022 image. The
+          # moving windows-latest image has broken rust-cache during hosted
+          # image transitions, which can fail the binary job before compile.
+          - os: windows-2022
             target: x86_64-pc-windows-msvc
             artifact: narsil-mcp-windows-x86_64
             binary: narsil-mcp.exe
