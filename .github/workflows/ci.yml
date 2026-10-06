@@ -98,5 +98,6 @@ jobs:
   build-release:
     name: Build Release Binaries
     needs: [test, security]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/build-binaries.yml
+    with:
+      features: graph

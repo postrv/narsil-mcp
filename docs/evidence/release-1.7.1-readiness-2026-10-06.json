@@ -235,13 +235,18 @@
       "version": "1.7.1",
       "cargoNpmLockAgree": true,
       "crateFiles": 187,
-      "crateBytes": 635984,
-      "crateSha256": "8b87d63f02ef60361bda32d4f0c802ef7337d45bd7e83d111e40bf02b8996e40",
-      "retainedArchive": "narsil-mcp-1.7.1.crate",
+      "crateBytes": 636071,
+      "crateSha256": "1d6327976b4a24f92d60997c147687afe84d48f8126048f957554600699c3f1a",
+      "retainedArchive": "narsil-mcp-1.7.1-clean-candidate.crate",
       "localAssistantConfigsExcluded": true,
       "derVersion": "0.8.1",
+      "asyncTraitVersion": "0.1.92",
       "dryRun": true,
-      "published": false
+      "locked": true,
+      "allowDirty": false,
+      "published": false,
+      "verificationSource": "Isolated clean Git snapshot of tracked candidate inputs; source and lock bytes checked against the candidate checkout. Snapshot VCS metadata differs from the eventual release commit.",
+      "snapshotCommit": "6c243f20a330770f7688380a5e5ac8ba2860f273"
     },
     "npmPackDryRun": {
       "id": "narsil-mcp@1.7.1",
@@ -292,6 +297,25 @@
       },
       "reason": "Pinned gitleaks hook requires modern Go but host Go is1.20.2. Standalone staged scan passed. All-features Rust hooks include optional ONNX/WASM profiles outside release CI; default and native,neural,graph checks passed separately. Hook configuration unchanged.",
       "unrelatedUnstagedDiffPreserved": true
+    },
+    "ciFollowup": {
+      "initialFailure": "Rust 1.99 Clippy double_must_use in async-trait 0.1.89 macro expansion",
+      "initialRun": "https://github.com/postrv/narsil-mcp/actions/runs/37544921000",
+      "upstreamIssue": "https://github.com/rust-lang/rust-clippy/issues/17529",
+      "dependencyUpdate": "async-trait 0.1.92 removes the generated attribute; adds syn 3.0.6",
+      "hostProfilesRechecked": [
+        "default",
+        "native,neural,graph"
+      ],
+      "unifiedHttpRegressionPassed": 2,
+      "nixVersion": "Derived directly from Cargo.toml",
+      "prArtifactBuildFeatures": [
+        "native",
+        "graph"
+      ],
+      "releaseLockfileRequired": true,
+      "publicationAllowDirty": false,
+      "updatedNativeCi": "pending follow-up push"
     }
   },
   "limitations": [
@@ -302,7 +326,7 @@
   ],
   "sourceSha256": {
     "Cargo.toml": "18119898cc8771e4308b266c2c55cb73b7ac563b031469b1b062212def203e0f",
-    "Cargo.lock": "9a90282d12da22d28d45692d6778dc422b02aeff42692f1629b56032f3e87a08",
+    "Cargo.lock": "da586c8c0733aae58215c7b579cfe65f5753eef78924ca7d7f34d4507f52c05d",
     "npm/package.json": "7d54e1336e27e516f6112c0dc8750ac7a51c6b6f31355b172e55b31428c0b26c",
     "src/index.rs": "62f17600c2c7003f5eda4378977ef317310007345ee15717c5101eebc76a3d69",
     "src/parser.rs": "0b1ef19aea397181574410cc75d99f304c8b516b6598cb53fc5d8518ec5bc5a1",
@@ -312,10 +336,11 @@
     "tests/index_reuse_tests.rs": "dbc3a0c46ed4a082c04d016e89c9085aa7b12d4d8423fb9e0ab6ebd68eefad6b",
     ".cargo/audit.toml": "32d8925056470690de2a4e480b9b5d6e6b8cb4780224377c5b777c193cc52ed0",
     ".github/workflows/build-binaries.yml": "28f8de32665a33479f0afb80ec2995da0691fb582db8c53b311ec68a45b46012",
-    ".github/workflows/release.yml": "29c0d8e4168d6541cd5a718ae346d52def6e0d8e3d53915fc3edc5f4f82d6cbd",
-    ".github/workflows/ci.yml": "8f53d508d26f9b91ebe86475cd58f0d2236302687111a53b689b9e780ddc9f55",
+    ".github/workflows/release.yml": "d55c5771c2abd72ffa90c59df6481b1a10e012fd17315928aba71ca10c088549",
+    ".github/workflows/ci.yml": "1f3bec5ef070972b0eaada3683e3445a56814e1824f887747da82f963c809c7f",
     "npm/README.md": "d213c0ab928cd32c3e52eaef60dd3a44b5f426abc0f0b4ad10e9792f65a8ce7e",
-    "CHANGELOG.md": "a67455901e268704ee8af69b0bcfaa05af2aa1591b3b5f46c3c5fcaab5a6582b"
+    "CHANGELOG.md": "6b34a1b7dd11a7a14265c1383044987e42675b30c364ad1bd11c81e91e85147c",
+    "flake.nix": "62392f7013defe182328edc2637eb485e8c1a542e3bfae5f42f1282b2367706f"
   },
   "retainedLocalEvidenceSha256": {
     "cargo-test-initial.log": "cf10b905cc77c21b7e43e0b93d7536e01822edf2dd2b6fb3059bd66d4ac5a343",
@@ -332,6 +357,19 @@
     "candidate-quality-tools-final.json": "7158da48efb91b9d6f8e24edee4b487d705f8fce95291f8019887666dd86ee08",
     "cargo-test-final-default-serial.log": "aa4939500046ded067b52477512690ce9b5360df502c1878814ddd8354f5f6de",
     "cargo-publish-dry-run-final.log": "6df363f517c19affe2800f79a2f9929a8309378da1cb204bd0876d9d8625c949",
-    "precommit-reindex.json": "e81e4c1cf3e9dfd1ec08dbf659de9ce62c6bc8841ac83e2aed5b9ced6d9f18c3"
+    "precommit-reindex.json": "e81e4c1cf3e9dfd1ec08dbf659de9ce62c6bc8841ac83e2aed5b9ced6d9f18c3",
+    "ci-first-failure.log": "1f8059a35a86c3796d98e3bfff89a06cf13eb3b8afa68c06aaa7d6325db5cb4e",
+    "async-trait-ci-followup.json": "83f287f10caa4456b53b76c6ce49ea669dd2502839f378058ee528b751a4b5d4",
+    "ci-followup-clippy-default.log": "4b6cc75a01752ee7ee3c958539bbce90496992e83fe2d201d424cacb37996e25",
+    "ci-followup-clippy-full.log": "2ccee496162b0447441383a036f12ff741ff2b97114245224c21271fe3d093b2",
+    "ci-followup-test-default.log": "6e320f413e19821d4220fba85bb0deb8cb7153edee07102b81019a628b5c7370",
+    "ci-followup-test-full.log": "b3e8f270e92d6e36ba3c703e6c7a1131ad4d14e9a44552a158f1408a2fe9734a",
+    "ci-followup-service-denial.log": "22e7ff296b5add21bb7cf05508471801a3f3256cb44487b7fe0563c3fd7e1692",
+    "ci-followup-audit.json": "c29eac18e78c04cd9c51a7ba4be81b96f84b544755f59bb60f914b66ff94955f",
+    "ci-followup-quality-tools.json": "4e492460dadb988ad36b1df26b71ffcfc63063e5b168654cb16cb612adad73b4",
+    "ci-followup-clean-git-publish-dry-run.log": "24e6b019302cf43f5adb1e2f92e59827d23a321b78e5230b33bec6a1b4b49e45",
+    "ci-followup-package-verification.json": "68f801ab6bf4c22d5625c1a85ae8dc49cd1a7ac2c50904be44f9d40b4c4f843b",
+    "clean-publication-source-hashes.json": "e08f0e7ff5b8048d6de2b8b7eddf7c8b71a761621dcfd93c5c28bfbf3bb909c6",
+    "ci-followup-end-reindex.json": "466261a821af4f538444a059f63d4161e4ef760731b250bcbac898cd74daa509"
   }
 }

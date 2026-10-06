@@ -45,7 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Linux release builds use Ubuntu 22.04 userspace on both supported
   architectures and verify a GLIBC 2.35 ceiling for older distribution support.
 - Updated vulnerable crossbeam-epoch, quinn-proto, and rustls lockfile entries.
+- Updated async-trait to avoid its generated-attribute Clippy failure on Rust 1.99.
+- Pull requests build the graph-enabled release binaries after tests and audit pass, before any publication.
+- Release checks and crate publication require the reviewed lockfile and a clean package.
 - Rust crate packages omit local `.claude` and `.codex` workspace configuration.
+- Nix packages derive their version from Cargo.toml so release metadata stays aligned.
 - Public graph queries explicitly reject external SPARQL services even when
   another crate enables Oxigraph's HTTP feature. Two quick-xml advisories remain
   in a transitive dependency and have documented, scoped applicability exceptions
