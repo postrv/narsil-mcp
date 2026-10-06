@@ -339,6 +339,20 @@ impl McpServer {
         let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
         let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
+        // Status tools stay available during startup; everything else reports EAGAIN
+        // with file-level progress so clients can retry (issue #27).
+        const STARTUP_TOOLS: &[&str] = &[
+            "list_repos",
+            "get_index_status",
+            "get_metrics",
+            "get_incremental_status",
+        ];
+        if !STARTUP_TOOLS.contains(&tool_name) {
+            if let Some(message) = self.engine.indexing_progress_message() {
+                return JsonRpcResponse::error(id, -32001, &message);
+            }
+        }
+
         // Dispatch to tool registry
         let result: Result<String> = self
             .tool_registry

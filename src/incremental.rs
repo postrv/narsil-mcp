@@ -1245,27 +1245,11 @@ fn is_source_file(path: &Path) -> bool {
 
 /// Check if a file/directory should be ignored
 fn should_ignore(name: &str) -> bool {
-    // Hidden files/directories
+    // Hidden files/directories (WalkBuilder also skips these)
     if name.starts_with('.') {
         return true;
     }
-
-    // Common ignore patterns
-    let ignore_patterns = [
-        "node_modules",
-        "target",
-        "build",
-        "dist",
-        "__pycache__",
-        ".git",
-        ".svn",
-        "vendor",
-        "venv",
-        ".venv",
-        "env",
-    ];
-
-    ignore_patterns.contains(&name)
+    crate::ignore::is_denied_dir_name(name)
 }
 
 // =============================================================================
@@ -1513,8 +1497,10 @@ mod tests {
         assert!(should_ignore("node_modules"));
         assert!(should_ignore("target"));
         assert!(should_ignore("__pycache__"));
+        assert!(should_ignore("coverage"));
         assert!(!should_ignore("src"));
         assert!(!should_ignore("lib"));
+        assert!(!should_ignore("env"));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "narsil-mcp"
-version = "1.7.0"
+version = "1.7.1"
 edition = "2021"
 authors = ["postrv"]
 description = "A blazingly fast MCP server for code intelligence - enumerates repos, data structures, algorithms, and returns relevant code context"
@@ -9,18 +9,21 @@ repository = "https://github.com/postrv/narsil-mcp"
 readme = "README.md"
 keywords = ["mcp", "code-intelligence", "tree-sitter", "lsp", "ai"]
 categories = ["development-tools", "command-line-utilities", "parsing"]
-exclude = ["frontend/", "docs/", ".github/", "*.md", "!README.md"]
+exclude = ["frontend/", "docs/", ".github/", ".claude/", ".codex/", "*.md", "!README.md"]
 
 [features]
 default = ["native"]
 native = ["dep:notify", "dep:tokio", "dep:async-trait", "dep:reqwest", "dep:octocrab", "dep:lsp-types", "dep:lsp-server", "dep:tempfile", "dep:axum", "dep:tower", "dep:tower-http"]
-graph = ["dep:oxigraph", "dep:flate2"]  # RDF knowledge graph with SPARQL support
+graph = ["dep:oxigraph", "dep:oxiri", "dep:spargebra", "dep:flate2"]  # RDF knowledge graph with SPARQL support
 frontend = ["native", "dep:rust-embed", "dep:mime_guess"]  # Embeds visualization frontend in binary
 neural = ["usearch", "ndarray"]
 neural-onnx = ["neural", "ort", "tokenizers"]
 wasm = ["wasm-bindgen", "web-sys", "js-sys", "console_error_panic_hook", "getrandom/js"]
 
 [dependencies]
+oxiri = { version = "0.2.11", optional = true }
+spargebra = { version = "0.4.6", optional = true }
+
 # File watching (optional, enabled by default in native)
 notify = { version = "6.1", optional = true }
 

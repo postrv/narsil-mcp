@@ -292,8 +292,8 @@ async fn test_security_focused_preset() -> Result<()> {
     // Security preset should have ~28 tools
     // Security (9) + SupplyChain (4) + Analysis (11) + Repository basics (4)
     assert!(
-        enabled_tools.len() >= 26 && enabled_tools.len() <= 32,
-        "Security preset should have 26-32 tools, got {}",
+        enabled_tools.len() >= 26 && enabled_tools.len() <= 36,
+        "Security preset should have 26-36 tools, got {}",
         enabled_tools.len()
     );
 
@@ -527,7 +527,7 @@ async fn test_feature_flag_validation() -> Result<()> {
 #[tokio::test]
 async fn test_metadata_completeness() -> Result<()> {
     // Verify all tools in TOOL_METADATA have required fields
-    assert_eq!(TOOL_METADATA.len(), 90, "Expected 90 tools in metadata");
+    assert_eq!(TOOL_METADATA.len(), 93, "Expected 93 tools in metadata");
 
     for (name, meta) in TOOL_METADATA.iter() {
         // Name should match key

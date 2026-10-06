@@ -15,6 +15,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
+use crate::ignore::{self, IgnoreService, IndexLimits};
 use crate::symbols::Symbol;
 
 /// File metadata for change detection
@@ -86,19 +87,14 @@ impl PersistedIndex {
     /// Check if a file needs re-indexing
     pub fn needs_reindex(&self, path: &Path) -> Result<bool> {
         let metadata = std::fs::metadata(path)?;
-        let modified = metadata
-            .modified()?
-            .duration_since(SystemTime::UNIX_EPOCH)?
-            .as_secs();
         let size = metadata.len();
 
         if let Some(cached) = self.files.get(path) {
-            // Quick check: size and mtime
-            if cached.size == size && cached.modified_time == modified {
-                return Ok(false);
+            if cached.size != size {
+                return Ok(true);
             }
 
-            // Slower check: content hash
+            // Equal sizes and timestamps do not establish equal source bytes.
             let hash = hash_file(path)?;
             Ok(hash != cached.content_hash)
         } else {
@@ -258,7 +254,7 @@ impl FileWatcher {
 
     /// Start watching a directory
     pub fn watch(&mut self, path: &Path) -> Result<()> {
-        self.watcher.watch(path, RecursiveMode::Recursive)?;
+        watch_allowed_roots(&mut self.watcher, path)?;
         self.watched_paths.push(path.to_path_buf());
         info!("Watching for changes: {:?}", path);
         Ok(())
@@ -294,7 +290,7 @@ impl FileWatcher {
         changes.sort_by(|a, b| a.path.cmp(&b.path));
         changes.dedup_by(|a, b| a.path == b.path);
 
-        changes
+        filter_watch_changes(changes)
     }
 
     /// Block until changes occur
@@ -317,7 +313,7 @@ impl FileWatcher {
         // Drain any additional events
         changes.extend(self.poll_changes());
 
-        changes
+        filter_watch_changes(changes)
     }
 }
 
@@ -375,6 +371,7 @@ impl AsyncFileWatcher {
                     _ = debounce_timer.tick() => {
                         if !debounce_buffer.is_empty() {
                             let changes: Vec<FileChange> = debounce_buffer.drain().map(|(_, v)| v).collect();
+                            let changes = filter_watch_changes(changes);
                             if tx.send(changes).await.is_err() {
                                 // Receiver dropped, exit task
                                 break;
@@ -396,7 +393,7 @@ impl AsyncFileWatcher {
 
     /// Watch a directory for changes
     pub fn watch(&mut self, path: &Path) -> Result<()> {
-        self._watcher.watch(path, RecursiveMode::Recursive)?;
+        watch_allowed_roots(&mut self._watcher, path)?;
         self.watched_paths.push(path.to_path_buf());
         info!("Async watching for changes: {:?}", path);
         Ok(())
@@ -442,13 +439,68 @@ fn is_source_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Watch first-party roots only. Recursive polling of `node_modules` / `.pnpm`
+/// is what bricks `--watch` during a package install.
+fn watch_allowed_roots<W: Watcher>(watcher: &mut W, root: &Path) -> Result<()> {
+    let ignore = IgnoreService::for_repo(root);
+    watcher.watch(root, RecursiveMode::NonRecursive)?;
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Ok(());
+    };
+    for entry in entries.flatten() {
+        let child = entry.path();
+        if ignore.should_skip_watch(&child) {
+            continue;
+        }
+        if ignore::is_symlink(&child) {
+            continue;
+        }
+        if child.is_dir() {
+            watcher.watch(&child, RecursiveMode::Recursive)?;
+        }
+    }
+    Ok(())
+}
+
+/// Drop ignored paths and apply the watch burst circuit breaker.
+fn filter_watch_changes(changes: Vec<FileChange>) -> Vec<FileChange> {
+    let filtered: Vec<FileChange> = changes
+        .into_iter()
+        .filter(|change| !ignore::path_has_denied_component(&change.path))
+        .filter(|change| {
+            !ignore::is_denied_generated_file(
+                change
+                    .path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(""),
+            )
+        })
+        .filter(|change| !ignore::is_symlink(&change.path))
+        .collect();
+
+    let limit = IndexLimits::from_env().watch_burst_limit;
+    let (kept, dropped) = ignore::apply_watch_burst_limit(filtered, limit);
+    if dropped {
+        warn!(
+            "Watch burst exceeded {} source files; dropping batch (likely a package install). Run reindex if needed.",
+            limit
+        );
+    }
+    kept
+}
+
 /// Convert a notify path into source-file changes.
 ///
 /// Some platforms, especially macOS FSEvents and network/container mounts,
 /// can report a directory as modified instead of the exact file. When that
 /// happens, scan the reported directory for source files so watch mode does
-/// not silently miss the change.
+/// not silently miss the change. Denied vendor trees are never expanded.
 fn source_changes_for_path(path: &Path, change_type: ChangeType) -> Vec<FileChange> {
+    if ignore::path_has_denied_component(path) || ignore::is_symlink(path) {
+        return Vec::new();
+    }
+
     if is_source_file(path) {
         return vec![FileChange {
             path: path.to_path_buf(),
@@ -466,12 +518,19 @@ fn source_changes_for_path(path: &Path, change_type: ChangeType) -> Vec<FileChan
 }
 
 fn collect_source_files(path: &Path, change_type: ChangeType, changes: &mut Vec<FileChange>) {
+    if ignore::path_has_denied_component(path) || ignore::is_symlink(path) {
+        return;
+    }
+
     let Ok(entries) = std::fs::read_dir(path) else {
         return;
     };
 
     for entry in entries.flatten() {
         let entry_path = entry.path();
+        if ignore::path_has_denied_component(&entry_path) || ignore::is_symlink(&entry_path) {
+            continue;
+        }
         if is_source_file(&entry_path) {
             changes.push(FileChange {
                 path: entry_path,
@@ -686,6 +745,49 @@ mod tests {
         assert!(is_source_file(Path::new("src/index.ts")));
         assert!(!is_source_file(Path::new("README.md")));
         assert!(!is_source_file(Path::new("data.json")));
+    }
+
+    #[test]
+    fn test_collect_source_files_skips_node_modules() {
+        let dir = tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::create_dir_all(dir.path().join("node_modules/lodash")).unwrap();
+        std::fs::write(dir.path().join("src/main.ts"), "export const x = 1;").unwrap();
+        std::fs::write(
+            dir.path().join("node_modules/lodash/index.js"),
+            "module.exports = {};",
+        )
+        .unwrap();
+
+        let changes = source_changes_for_path(dir.path(), ChangeType::Modified);
+        assert!(
+            changes.iter().any(|c| c.path.ends_with("main.ts")),
+            "first-party source should be collected: {:?}",
+            changes
+        );
+        assert!(
+            changes
+                .iter()
+                .all(|c| !c.path.to_string_lossy().contains("node_modules")),
+            "vendor files must not be collected: {:?}",
+            changes
+        );
+
+        let vendor =
+            source_changes_for_path(&dir.path().join("node_modules"), ChangeType::Modified);
+        assert!(vendor.is_empty(), "direct vendor events must be dropped");
+    }
+
+    #[test]
+    fn test_filter_watch_changes_drops_bursts() {
+        let changes: Vec<FileChange> = (0..300)
+            .map(|i| FileChange {
+                path: PathBuf::from(format!("src/f{i}.rs")),
+                change_type: ChangeType::Modified,
+            })
+            .collect();
+        let filtered = filter_watch_changes(changes);
+        assert!(filtered.is_empty());
     }
 
     #[test]

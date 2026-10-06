@@ -489,6 +489,13 @@ impl LanguageParser {
             .find(|c| c.config.extensions.contains(&ext))
     }
 
+    /// Return the configured language for a supported source path.
+    #[must_use]
+    pub(crate) fn language_for_path(&self, path: &Path) -> Option<&str> {
+        self.get_config(path)
+            .map(|config| config.config.name.as_str())
+    }
+
     /// Parse a file and extract symbols
     pub fn parse_file(&self, path: &Path, content: &str) -> Result<ParsedFile> {
         let lazy_config = self

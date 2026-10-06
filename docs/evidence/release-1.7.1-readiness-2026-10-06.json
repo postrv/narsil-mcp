@@ -1,0 +1,337 @@
+{
+  "schemaVersion": 1,
+  "reviewedOn": "2026-10-06",
+  "candidateVersion": "1.7.1",
+  "baseCommit": "a4a2bd7a95f8ef9aab682bf1db97905d8f79b895",
+  "releaseActions": {
+    "published": false,
+    "tagged": false,
+    "status": "candidate; version decision pending"
+  },
+  "toolchain": {
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)"
+  },
+  "published1_7_0": {
+    "schemaVersion": 1,
+    "version": "1.7.0",
+    "github": {
+      "tag": "v1.7.0",
+      "url": "https://github.com/postrv/narsil-mcp/releases/tag/v1.7.0",
+      "publishedAt": "2026-05-13T07:46:38Z",
+      "isDraft": false,
+      "isPrerelease": false,
+      "assets": [
+        {
+          "name": "narsil-mcp-v1.7.0-linux-aarch64.tar.gz",
+          "bytes": 15399795,
+          "sha256": "sha256:ef79328cf397f21a5ab24b9e932f0254043c9e5672bf7b9df66229fc44c76026",
+          "githubDigestMatched": true,
+          "sidecarMatched": true,
+          "binaryBytes": 96343816,
+          "binarySha256": "sha256:c6b2823395da8dec6ba55724abfcad7e5f79d9cdadf479b06fbf86833191c329",
+          "glibcVersionStrings": [
+            "GLIBC_2.17",
+            "GLIBC_2.18",
+            "GLIBC_2.25",
+            "GLIBC_2.27",
+            "GLIBC_2.28",
+            "GLIBC_2.29",
+            "GLIBC_2.30",
+            "GLIBC_2.32",
+            "GLIBC_2.33",
+            "GLIBC_2.34",
+            "GLIBC_2.38",
+            "GLIBC_2.39"
+          ]
+        },
+        {
+          "name": "narsil-mcp-v1.7.0-linux-aarch64.tar.gz.sha256",
+          "bytes": 105,
+          "sha256": "sha256:6be86e4b1f1422cdb688bfe602ba9340074b0ff618f7453d6456169777f4f034",
+          "githubDigestMatched": true
+        },
+        {
+          "name": "narsil-mcp-v1.7.0-linux-x86_64.tar.gz",
+          "bytes": 16333929,
+          "sha256": "sha256:46986fe312f6fc1bb5fd57d028ee007a321a810084b7e0a6c6c66b337291f4f0",
+          "githubDigestMatched": true,
+          "sidecarMatched": true,
+          "binaryBytes": 100055792,
+          "binarySha256": "sha256:45c5e33c3f2ac0831c29a454cf6c5f5f37be1ddb20b6271fd1539dd308cc1d2b",
+          "glibcVersionStrings": [
+            "GLIBC_2.2",
+            "GLIBC_2.3",
+            "GLIBC_2.4",
+            "GLIBC_2.7",
+            "GLIBC_2.9",
+            "GLIBC_2.10",
+            "GLIBC_2.14",
+            "GLIBC_2.15",
+            "GLIBC_2.16",
+            "GLIBC_2.17",
+            "GLIBC_2.18",
+            "GLIBC_2.25",
+            "GLIBC_2.27",
+            "GLIBC_2.28",
+            "GLIBC_2.29",
+            "GLIBC_2.30",
+            "GLIBC_2.32",
+            "GLIBC_2.33",
+            "GLIBC_2.34",
+            "GLIBC_2.38",
+            "GLIBC_2.39"
+          ]
+        },
+        {
+          "name": "narsil-mcp-v1.7.0-linux-x86_64.tar.gz.sha256",
+          "bytes": 104,
+          "sha256": "sha256:6d8c9eb256454a227bf28a782afba883b25e7210bf2e3090f12778714150c511",
+          "githubDigestMatched": true
+        },
+        {
+          "name": "narsil-mcp-v1.7.0-macos-aarch64.tar.gz",
+          "bytes": 14756163,
+          "sha256": "sha256:a838ffe5d931645191b9c26e7daba9e8ab12042325adf293c881cb458baa5bee",
+          "githubDigestMatched": true,
+          "sidecarMatched": true,
+          "binaryBytes": 94203192,
+          "binarySha256": "sha256:3f59ca13e8f5458fa6f896bbd8e6e6bbb497cc49e9ede3e5d7d926393d4ae236",
+          "executedVersion": "narsil-mcp 1.7.0",
+          "matchesInstalledHomebrewBytes": true
+        },
+        {
+          "name": "narsil-mcp-v1.7.0-macos-aarch64.tar.gz.sha256",
+          "bytes": 105,
+          "sha256": "sha256:38f0fbe19655b4677e06fd9ef2020c91ec9308364e6f8faf60c01c599b61e9ad",
+          "githubDigestMatched": true
+        },
+        {
+          "name": "narsil-mcp-v1.7.0-macos-x86_64.tar.gz",
+          "bytes": 15166522,
+          "sha256": "sha256:ec143e76654f926b6a1f466b5533b4e178b7e4b21460f052aad5def106ad2483",
+          "githubDigestMatched": true,
+          "sidecarMatched": true,
+          "binaryBytes": 96925328,
+          "binarySha256": "sha256:4c41c33741fcae18f96902f64b5b8c8e5110505a39c2c205ec354a18e3bb788b"
+        },
+        {
+          "name": "narsil-mcp-v1.7.0-macos-x86_64.tar.gz.sha256",
+          "bytes": 104,
+          "sha256": "sha256:5482074a44f68128a5de9a660cfabcf633efe94d380c085baf7ba834363e7cab",
+          "githubDigestMatched": true
+        },
+        {
+          "name": "narsil-mcp-v1.7.0-windows-x86_64.zip",
+          "bytes": 14347044,
+          "sha256": "sha256:3524cf2a3364bf5d79a1bf5d7abcbcb9a0eea1d7e42963cbb249ac6730332d76",
+          "githubDigestMatched": true,
+          "sidecarMatched": true,
+          "binaryBytes": 94543360,
+          "binarySha256": "sha256:bba50c4183da73fe31f1f9040ed135dcc261a6f223caea16360626cd3b913fd8"
+        },
+        {
+          "name": "narsil-mcp-v1.7.0-windows-x86_64.zip.sha256",
+          "bytes": 103,
+          "sha256": "sha256:edd3ceb0d6ec79bf3a63833e3b136a00d7a0349c210747fc012bc67adeafb40e",
+          "githubDigestMatched": true
+        }
+      ]
+    },
+    "npm": {
+      "version": "1.7.0",
+      "integrityMatched": true,
+      "integrity": "sha512-bVRh8c502lZlg0jFfwjXwlYEDlTS4bivWBQPkbhadSG8b3cGMMqJtBR985DSLcaudwaCbg00lOJ+0yoU3Jbf6w==",
+      "gitHead": "a4a2bd7a95f8ef9aab682bf1db97905d8f79b895",
+      "installScriptMatchesLocal": true
+    },
+    "crate": {
+      "version": "1.7.0",
+      "checksumMatched": true,
+      "checksum": "ee9b496b34f5e1a8857127b17590c8df8bab72dcec8daee589fc8398850cdc9a",
+      "yanked": false,
+      "vcs": {
+        "git": {
+          "sha1": "a4a2bd7a95f8ef9aab682bf1db97905d8f79b895"
+        },
+        "path_in_vcs": ""
+      }
+    },
+    "limitations": [
+      "Windows and non-host macOS binaries checksum-verified but not executed.",
+      "Linux GLIBC strings are compatibility hints, not an execution proof.",
+      "Registry source packages and release artifacts may have different build recipes; checksums alone do not prove reproducible compilation."
+    ]
+  },
+  "candidate": {
+    "cacheRegressionTests": {
+      "initialFailures": 4,
+      "passedAfterFix": 5
+    },
+    "serviceRegressionTests": {
+      "initialFailures": 2,
+      "passedWithHttpFeatureUnification": 2,
+      "networkRequests": 0
+    },
+    "fullFeatures": {
+      "features": [
+        "native",
+        "neural",
+        "graph"
+      ],
+      "passed": 1299,
+      "failed": 0,
+      "ignored": 32,
+      "testThreads": 1
+    },
+    "defaultFeatures": {
+      "status": "passed",
+      "earlierPassed": 1136,
+      "earlierIgnored": 17,
+      "parallelRerunFailure": {
+        "test": "config::filter_tests::test_filtering_performance",
+        "requiredUnderMs": 1,
+        "observedMs": 1.750291
+      },
+      "passed": 1136,
+      "failed": 0,
+      "ignored": 17,
+      "testThreads": 1
+    },
+    "clippy": {
+      "default": "passed",
+      "nativeNeuralGraph": "passed",
+      "warnings": 0
+    },
+    "sourceTools": {
+      "reindex": "passed",
+      "scanSecurityHighCritical": 0,
+      "productionFilesScanned": 101,
+      "checkTypeErrors": {
+        "filesAnalyzed": 0,
+        "reason": "Rust unsupported by this Python/JavaScript/TypeScript tool; Cargo provides Rust type checks"
+      },
+      "injectionAnalysis": {
+        "mediumHeuristicFindings": 11,
+        "highCriticalFindings": 0
+      }
+    },
+    "cargoAudit": {
+      "status": "passes with reviewed applicability exceptions",
+      "affectedDependencyRetained": "quick-xml 0.37.5",
+      "exceptions": [
+        "RUSTSEC-2026-0194",
+        "RUSTSEC-2026-0195"
+      ],
+      "otherWarningCategories": [
+        "unmaintained",
+        "unsound"
+      ],
+      "review": "docs/SECURITY_ADVISORY_APPLICABILITY.md"
+    },
+    "format": "passed",
+    "workflowActionlint": "passed",
+    "cratePackage": {
+      "version": "1.7.1",
+      "cargoNpmLockAgree": true,
+      "crateFiles": 187,
+      "crateBytes": 635984,
+      "crateSha256": "8b87d63f02ef60361bda32d4f0c802ef7337d45bd7e83d111e40bf02b8996e40",
+      "retainedArchive": "narsil-mcp-1.7.1.crate",
+      "localAssistantConfigsExcluded": true,
+      "derVersion": "0.8.1",
+      "dryRun": true,
+      "published": false
+    },
+    "npmPackDryRun": {
+      "id": "narsil-mcp@1.7.1",
+      "name": "narsil-mcp",
+      "version": "1.7.1",
+      "size": 3390,
+      "unpackedSize": 8877,
+      "shasum": "a128f29d6bf834decc3c496a1e50a0ae22c734f3",
+      "integrity": "sha512-FaSTGp2WCr0i2AiVsA8o90ZdEI1hQLgVHl9Mw+WDNSxxBghhzqWzoE2Nl5ry6E7eTBb0ibMSJ7fsHUOY4yeGCQ==",
+      "filename": "narsil-mcp-1.7.1.tgz",
+      "files": [
+        {
+          "path": "README.md",
+          "size": 1621,
+          "mode": 384
+        },
+        {
+          "path": "install.js",
+          "size": 6264,
+          "mode": 384
+        },
+        {
+          "path": "package.json",
+          "size": 992,
+          "mode": 384
+        }
+      ],
+      "entryCount": 3,
+      "bundled": []
+    },
+    "linuxRuntime": {
+      "status": "pending candidate build and bookworm execution",
+      "workflowBuildUserspace": "Ubuntu22.04 on both architectures",
+      "maxGlibcRequired": "2.35",
+      "published1_7_0Bookworm": "fails; requires GLIBC2.38/2.39 and GLIBCXX3.4.31"
+    },
+    "precommit": {
+      "status": "applicable hooks passed with equivalent release checks",
+      "skippedHookIds": [
+        "gitleaks",
+        "cargo-clippy",
+        "cargo-check"
+      ],
+      "standaloneStagedGitleaks": {
+        "version": "8.30.1",
+        "findings": 0,
+        "redacted": true
+      },
+      "reason": "Pinned gitleaks hook requires modern Go but host Go is1.20.2. Standalone staged scan passed. All-features Rust hooks include optional ONNX/WASM profiles outside release CI; default and native,neural,graph checks passed separately. Hook configuration unchanged.",
+      "unrelatedUnstagedDiffPreserved": true
+    }
+  },
+  "limitations": [
+    "Manual reindex rebuilds all configured repositories because query indexes are shared.",
+    "Persisted symbol reuse still reads current files and rebuilds transient search indexes and enabled call-graph trees.",
+    "Watch-mode incremental index behavior is unchanged by the persistence/manual-reindex fixes.",
+    "Published1.7.0 non-host artifacts are checksum-verified; platform execution coverage is recorded separately."
+  ],
+  "sourceSha256": {
+    "Cargo.toml": "18119898cc8771e4308b266c2c55cb73b7ac563b031469b1b062212def203e0f",
+    "Cargo.lock": "9a90282d12da22d28d45692d6778dc422b02aeff42692f1629b56032f3e87a08",
+    "npm/package.json": "7d54e1336e27e516f6112c0dc8750ac7a51c6b6f31355b172e55b31428c0b26c",
+    "src/index.rs": "62f17600c2c7003f5eda4378977ef317310007345ee15717c5101eebc76a3d69",
+    "src/parser.rs": "0b1ef19aea397181574410cc75d99f304c8b516b6598cb53fc5d8518ec5bc5a1",
+    "src/persist.rs": "9d7178e588824975aa23dee819f263305deaf7290004ed9045717f716adaa689",
+    "src/persistence/graph.rs": "5b3001a5af3db892ad5a66f31776cf036b2d503688cc16b24226c6b552d0a1ab",
+    "src/persistence/mod.rs": "0af12194d325b8613f53ac98ed534441d7e9089b513affda2ae56a185b4dfa24",
+    "tests/index_reuse_tests.rs": "dbc3a0c46ed4a082c04d016e89c9085aa7b12d4d8423fb9e0ab6ebd68eefad6b",
+    ".cargo/audit.toml": "32d8925056470690de2a4e480b9b5d6e6b8cb4780224377c5b777c193cc52ed0",
+    ".github/workflows/build-binaries.yml": "28f8de32665a33479f0afb80ec2995da0691fb582db8c53b311ec68a45b46012",
+    ".github/workflows/release.yml": "29c0d8e4168d6541cd5a718ae346d52def6e0d8e3d53915fc3edc5f4f82d6cbd",
+    ".github/workflows/ci.yml": "8f53d508d26f9b91ebe86475cd58f0d2236302687111a53b689b9e780ddc9f55",
+    "npm/README.md": "d213c0ab928cd32c3e52eaef60dd3a44b5f426abc0f0b4ad10e9792f65a8ce7e",
+    "CHANGELOG.md": "a67455901e268704ee8af69b0bcfaa05af2aa1591b3b5f46c3c5fcaab5a6582b"
+  },
+  "retainedLocalEvidenceSha256": {
+    "cargo-test-initial.log": "cf10b905cc77c21b7e43e0b93d7536e01822edf2dd2b6fb3059bd66d4ac5a343",
+    "index-reuse-red.log": "77f39bf704d91d7521fda9ba3d116830e727486e8799e473ad41e3d9f37e0e88",
+    "index-reuse-green-final.log": "ec25d16a1f4231fe03f10bea3897b712dd6e3a77e95c22dca0dc3bc7087728de",
+    "service-denial-red.log": "6cc057097b59775c3f985060d21e9aee0d03a0b6efb3d90425a7521c645a924e",
+    "service-denial-green-locked.log": "de844f65c8c589034a63007d1eb5686a709b65a3b6a5b617f57a8584cbd9df26",
+    "clippy-final.log": "32d81c10b4c8abcde27368bb48cc399f105b2bd59019a1e3fa5027952d9eafe0",
+    "cargo-test-final-full.log": "8fa955d31be93f4c09ef952dac97ad0d5d05d455cdece8adb77997d8039b529c",
+    "clippy-final-default.log": "3358edb944b68bf33492738058238469052f32892ba6cad977a39b29bb2d32be",
+    "cargo-test-final-default.log": "7619615652795fbabfe54ad44da4321fef9f2f5cf928e0ed831c444e32916e05",
+    "cargo-publish-dry-run.log": "538d9b5273330b578dd2e4fce54e78267c26fc8d2acdab0f42ba2c8068f60d98",
+    "cargo-audit-final.json": "fc0266bf757251453ace925e71a9d66e1e341f6aa433afadfde40d818f65a816",
+    "candidate-quality-tools-final.json": "7158da48efb91b9d6f8e24edee4b487d705f8fce95291f8019887666dd86ee08",
+    "cargo-test-final-default-serial.log": "aa4939500046ded067b52477512690ce9b5360df502c1878814ddd8354f5f6de",
+    "cargo-publish-dry-run-final.log": "6df363f517c19affe2800f79a2f9929a8309378da1cb204bd0876d9d8625c949",
+    "precommit-reindex.json": "e81e4c1cf3e9dfd1ec08dbf659de9ce62c6bc8841ac83e2aed5b9ced6d9f18c3"
+  }
+}

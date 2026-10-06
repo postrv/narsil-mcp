@@ -1,0 +1,10 @@
+[advisories]
+# Reviewed for the 1.7.1 candidate with oxigraph 0.5.8 and quick-xml 0.37.5.
+# The dependency remains affected, but Narsil does not expose XML parsing:
+# RDF input is fixed to Turtle, and query/ask explicitly reject external
+# SERVICE evaluation even when a downstream crate enables Oxigraph HTTP.
+# Keep the feature-unification regression in the release gate. Re-review on
+# any graph input/evaluator change; remove once a compatible fixed Oxigraph
+# release is available. Full evidence and upstream fix tracking:
+# docs/SECURITY_ADVISORY_APPLICABILITY.md
+ignore = ["RUSTSEC-2026-0194", "RUSTSEC-2026-0195"]

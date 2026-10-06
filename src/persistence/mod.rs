@@ -6,8 +6,8 @@
 //! # Features
 //!
 //! - RDF triple storage with named graphs per repository
-//! - SPARQL 1.1 query support
-//! - Turtle, N-Quads, and RDF/XML serialization
+//! - Local SPARQL 1.1 queries; external SERVICE calls are disabled
+//! - Turtle and N-Quads serialization
 //! - RocksDB-backed persistent storage
 //!
 //! # Example

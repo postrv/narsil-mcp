@@ -1,6 +1,6 @@
 /// Tool Metadata Registry
 ///
-/// This module provides comprehensive metadata for all 90 MCP tools,
+/// This module provides comprehensive metadata for all 93 MCP tools,
 /// including categorization, performance indicators, required feature flags,
 /// and JSON schemas.
 use lazy_static::lazy_static;
@@ -1710,6 +1710,69 @@ lazy_static! {
             }),
             requires_api_key: false,
             aliases: vec!["unused_exports", "dead_exports"],
+        });
+
+        map.insert("review_change", ToolMetadata {
+            name: "review_change",
+            description: "Review working-tree changes or a specific path with a bounded security scan. Skips vendor trees. Prefer this over calling get_modified_files plus scan_security separately.",
+            category: ToolCategory::Analysis,
+            tags: ["workflow", "review", "git", "security", "diff"].iter().copied().collect(),
+            stability: StabilityLevel::Beta,
+            performance: PerformanceImpact::Medium,
+            required_flags: HashSet::new(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string", "description": "Repository name"},
+                    "path": {"type": "string", "description": "Optional file to review instead of the full working tree"},
+                    "max_files": {"type": "integer", "description": "Maximum files to review (default 20, cap 50)"}
+                },
+                "required": ["repo"]
+            }),
+            requires_api_key: false,
+            aliases: vec!["review_changes", "review_diff"],
+        });
+
+        map.insert("impact_of", ToolMetadata {
+            name: "impact_of",
+            description: "Summarize blast radius for a symbol: definition, references, and callers when --call-graph is enabled.",
+            category: ToolCategory::Analysis,
+            tags: ["workflow", "impact", "callers", "references", "blast-radius"].iter().copied().collect(),
+            stability: StabilityLevel::Beta,
+            performance: PerformanceImpact::Medium,
+            required_flags: HashSet::new(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string", "description": "Repository name"},
+                    "symbol": {"type": "string", "description": "Function or type name"},
+                    "max_depth": {"type": "integer", "description": "Caller walk depth (default 3)"}
+                },
+                "required": ["repo", "symbol"]
+            }),
+            requires_api_key: false,
+            aliases: vec!["blast_radius", "who_uses"],
+        });
+
+        map.insert("security_gate", ToolMetadata {
+            name: "security_gate",
+            description: "Bounded security gate combining scan_security and injection analysis with a PASS/FAIL verdict. Use as a pre-commit or agent quality gate.",
+            category: ToolCategory::Security,
+            tags: ["workflow", "security", "gate", "owasp", "injection"].iter().copied().collect(),
+            stability: StabilityLevel::Beta,
+            performance: PerformanceImpact::High,
+            required_flags: HashSet::new(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string", "description": "Repository name"},
+                    "path": {"type": "string", "description": "Optional path filter"},
+                    "severity_threshold": {"type": "string", "description": "Minimum severity (default high)"}
+                },
+                "required": ["repo"]
+            }),
+            requires_api_key: false,
+            aliases: vec!["security_check", "quality_gate"],
         });
 
         // ===== Graph Tools (1) =====
