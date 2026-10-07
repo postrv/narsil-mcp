@@ -6,7 +6,7 @@
   "releaseActions": {
     "published": false,
     "tagged": false,
-    "status": "candidate; version decision pending"
+    "status": "1.7.1 release authorized; native CI must pass before merge and tag"
   },
   "toolchain": {
     "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
@@ -278,9 +278,92 @@
       "bundled": []
     },
     "linuxRuntime": {
-      "status": "pending candidate build and bookworm execution",
-      "workflowBuildUserspace": "Ubuntu22.04 on both architectures",
-      "maxGlibcRequired": "2.35",
+      "status": "passed local final-candidate Bookworm qualification",
+      "build": {
+        "candidateCommit": "8d19d5b10207a57468c1f557337b78e8bf241bd2",
+        "sourceArchiveSha256": "1d6327976b4a24f92d60997c147687afe84d48f8126048f957554600699c3f1a",
+        "sourceProvenance": {
+          "candidateCommit": "8d19d5b10207a57468c1f557337b78e8bf241bd2",
+          "archiveSha256": "1d6327976b4a24f92d60997c147687afe84d48f8126048f957554600699c3f1a",
+          "verifiedCommittedFiles": 185,
+          "exceptions": {
+            "Cargo.toml": "Cargo-normalized manifest; original verified as Cargo.toml.orig",
+            ".cargo_vcs_info.json": "Clean temporary snapshot metadata; eventual release commit will differ"
+          },
+          "status": "all other packaged bytes match candidate commit"
+        },
+        "buildImageId": "sha256:71858de216e26f524bc23a5a62ab31bd04bebd6241dfc66c8e70fb04c8c523f1",
+        "imageLabel": "narsil-release-audit:jammy-rust-1.98",
+        "platform": "linux/amd64",
+        "startedAt": "2026-10-06T23:44:29.499619674Z",
+        "memoryBytes": 4294967296,
+        "nanoCpus": 2000000000,
+        "pidsLimit": 512,
+        "timeoutSeconds": 1800,
+        "rustToolchain": "1.98.0",
+        "features": [
+          "native",
+          "graph"
+        ],
+        "status": "passed",
+        "buildExitCode": 0,
+        "buildElapsedSeconds": 361,
+        "binarySha256": "93e73173b74b0b15fd467df48ae58f7f266bcf3683d838c8c97cd73aeacdce34",
+        "binaryBytes": 99383432,
+        "maxGlibcRequired": "2.34",
+        "maxGlibcxxRequired": "3.4.30",
+        "glibcCeilingVerified": "2.35",
+        "containerCleanupConfirmed": true
+      },
+      "bookworm": {
+        "runtimeImage": "node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6",
+        "binarySha256": "93e73173b74b0b15fd467df48ae58f7f266bcf3683d838c8c97cd73aeacdce34",
+        "binaryBytes": 99383432,
+        "network": "none",
+        "readOnlyRoot": true,
+        "versionOutput": "narsil-mcp 1.7.1",
+        "readyMs": 669.3367089610547,
+        "toolCount": 77,
+        "indexStatus": "# Index Status\n\n## Initialization Status\n\n- **Status**: \u2713 Complete\n- **Progress**: 1/1 repositories (100%)\n\n**Total Documents**: 4\n**Total Terms**: 127\n**Avg Document Length**: 166.8 tokens\n\n## Enabled Features\n\n- **Git integration**: disabled\n- **Call graph analysis**: enabled\n- **Index persistence**: disabled\n- **Watch mode**: disabled\n- **Neural embeddings**: disabled\n\n\n## Ignore and Scale Limits\n\n- **Max file size**: 1048576 bytes\n- **Max index files**: 50000\n- **File cache**: 4 / 50000\n- **Watch burst limit**: 250\n- **Vendor denylist**: node_modules, .pnpm, target, vendor, dist, build, and peers\n- **Custom ignore file**: `.narsilignore` (gitignore syntax)\n\n## Document Types\n\n- File: 4\n\n## Repositories\n\n### repo\n- Files: 4\n- Symbols: 17\n- Git: disabled\n\n",
+        "calls": [
+          {
+            "name": "get_symbol_definition",
+            "arguments": {
+              "repo": "repo",
+              "symbol": "readValue",
+              "context_lines": 0
+            },
+            "elapsedMs": 2.4743330432102084,
+            "result": "# readValue\n\n**File**: `cache.mjs`\n**Lines**: 4-9\n**Kind**: Function\n\n```\n\u00e2\u2020\u2019    4 \u00e2\u201d\u201a export async function readValue(readStore) {\n\u00e2\u2020\u2019    5 \u00e2\u201d\u201a   if (cached && Date.now() < cached.expiresAt) return cached.value;\n\u00e2\u2020\u2019    6 \u00e2\u201d\u201a   const value = await readStore();\n\u00e2\u2020\u2019    7 \u00e2\u201d\u201a   if (cacheTtlMs > 0) cached = { value, expiresAt: Date.now() + cacheTtlMs };\n\u00e2\u2020\u2019    8 \u00e2\u201d\u201a   return value;\n\u00e2\u2020\u2019    9 \u00e2\u201d\u201a }\n```\n"
+          },
+          {
+            "name": "get_callers",
+            "arguments": {
+              "repo": "repo",
+              "function": "invalidate",
+              "max_depth": 2,
+              "transitive": true
+            },
+            "elapsedMs": 2.149250009097159,
+            "result": "# Callers of `invalidate`\n\nFound 2 transitive callers (max depth: 2)\n\n- `mutation.mjs::writeValue` (depth: 1)\n- `server.mjs::data` (depth: 2)\n"
+          },
+          {
+            "name": "sparql_query",
+            "arguments": {
+              "query": "ASK { ?s ?p ?o }",
+              "timeout_ms": 1000
+            },
+            "elapsedMs": 15.160624985583127,
+            "result": "# SPARQL ASK Query Result\n\n**Result**: true\n\n*Executed in 13ms*"
+          }
+        ],
+        "containerCleanupConfirmed": true
+      },
+      "limitations": [
+        "Local emulated Linux build used Rust1.98; native CI uses Rust1.99 and remains pending.",
+        "Runtime fixture checks startup, graph support and selected outputs; it does not establish analyzer completeness or production throughput.",
+        "The transitive call graph is heuristic; only the expected direct writeValue caller was asserted."
+      ],
       "published1_7_0Bookworm": "fails; requires GLIBC2.38/2.39 and GLIBCXX3.4.31"
     },
     "precommit": {
@@ -315,7 +398,46 @@
       ],
       "releaseLockfileRequired": true,
       "publicationAllowDirty": false,
-      "updatedNativeCi": "pending follow-up push"
+      "updatedNativeCi": {
+        "head": "8d19d5b10207a57468c1f557337b78e8bf241bd2",
+        "run": "https://github.com/postrv/narsil-mcp/actions/runs/37547239189",
+        "status": "Linux/macOS tests, lint, audit and Nix passed. Windows failed two malformed JSON test fixtures; subsequent platform builds skipped."
+      }
+    },
+    "windowsFixtureFollowup": {
+      "priorWindowsJob": "https://github.com/postrv/narsil-mcp/actions/runs/37547239189/job/112557189661",
+      "initialPassed": 1011,
+      "initialFailed": 2,
+      "failingTests": [
+        "compile_commands::tests::discover_reads_repo_root_file",
+        "compile_commands::tests::discover_reads_build_subdir"
+      ],
+      "cause": "Test fixtures inserted Windows directory paths directly into JSON without escaping backslashes; serde_json correctly rejected malformed input.",
+      "fix": "Serialize both fixture values with serde_json instead of text interpolation. Production code is unchanged.",
+      "nativeRerun": "pending push of fixture correction",
+      "localWatcherTest": {
+        "initialResult": "test_async_watcher_file_change_detection missed an event; focused unchanged rerun passed",
+        "rootCause": "notify6.1.1 PollWatcher stores whole-second modification times; original test rewrote the file after200ms and could stay within one second.",
+        "fix": "Explicitly advance the temporary file mtime by2seconds after rewriting; assert the event channel remains open and delivers a nonempty batch. Production watcher behavior is unchanged.",
+        "originalFailureLog": "windows-fix-tests.log",
+        "focusedUnchangedRerunLog": "windows-fix-watch-rerun.log"
+      },
+      "localDefaultSuite": {
+        "passed": 1136,
+        "failed": 0,
+        "ignored": 17,
+        "testThreads": 1,
+        "productionCodeChanged": false
+      },
+      "readmeRustPrerequisite": "Current stable Rust; release verified with1.98and1.99. No minimum supported Rust version is asserted.",
+      "finalPersistenceTests": {
+        "passed": 12,
+        "failed": 0,
+        "ignored": 0,
+        "testThreads": 1
+      },
+      "finalClippy": "passed; warnings denied",
+      "wasmScope": "Public @narsil-mcp/wasm package absent; experimental source-only workflow with separate generated version metadata, not a CLI1.7.1 publication channel. README and WASM guide corrected."
     }
   },
   "limitations": [
@@ -339,8 +461,12 @@
     ".github/workflows/release.yml": "d55c5771c2abd72ffa90c59df6481b1a10e012fd17315928aba71ca10c088549",
     ".github/workflows/ci.yml": "1f3bec5ef070972b0eaada3683e3445a56814e1824f887747da82f963c809c7f",
     "npm/README.md": "d213c0ab928cd32c3e52eaef60dd3a44b5f426abc0f0b4ad10e9792f65a8ce7e",
-    "CHANGELOG.md": "6b34a1b7dd11a7a14265c1383044987e42675b30c364ad1bd11c81e91e85147c",
-    "flake.nix": "62392f7013defe182328edc2637eb485e8c1a542e3bfae5f42f1282b2367706f"
+    "CHANGELOG.md": "a3ab7809a41fb7dbb99b04cad7225e9f588ceaea2eb040e6b3c2c2108ec7259c",
+    "flake.nix": "62392f7013defe182328edc2637eb485e8c1a542e3bfae5f42f1282b2367706f",
+    "src/compile_commands.rs": "14a70bb3f21495954c4004560bf05b546fbaad27a948a48186bb0995105502b3",
+    "tests/persistence_tests.rs": "391714583cc986518d09e3b0b5bd93f8a5f6679bfb1f8533ee24473a28f69035",
+    "README.md": "245f18f4fc776d5d69dcdd36b57bf8ee61877e24dd416ca03fcb6f6b41c11f97",
+    "docs/wasm.md": "d2eaf423f1ab1cb031dc08c949ebd0e2b680412a9b0e0540c8e4a2eb9eafe451"
   },
   "retainedLocalEvidenceSha256": {
     "cargo-test-initial.log": "cf10b905cc77c21b7e43e0b93d7536e01822edf2dd2b6fb3059bd66d4ac5a343",
@@ -370,6 +496,22 @@
     "ci-followup-clean-git-publish-dry-run.log": "24e6b019302cf43f5adb1e2f92e59827d23a321b78e5230b33bec6a1b4b49e45",
     "ci-followup-package-verification.json": "68f801ab6bf4c22d5625c1a85ae8dc49cd1a7ac2c50904be44f9d40b4c4f843b",
     "clean-publication-source-hashes.json": "e08f0e7ff5b8048d6de2b8b7eddf7c8b71a761621dcfd93c5c28bfbf3bb909c6",
-    "ci-followup-end-reindex.json": "466261a821af4f538444a059f63d4161e4ef760731b250bcbac898cd74daa509"
+    "ci-followup-end-reindex.json": "466261a821af4f538444a059f63d4161e4ef760731b250bcbac898cd74daa509",
+    "linux-final-build-metadata.json": "472602d526f28927f982c7dec8d3e24e21e8c4af7332f2ffba67c6bdd8e62452",
+    "bookworm-candidate-smoke.json": "f562e601c9eef8cdefca95268db0ea200d12ee0607284cdc91bd54054323926e",
+    "final-package-source-provenance.json": "3305035e15faceecafffc9e54156af965d045605bfba37dcdf789f1ef1914148",
+    "windows-ci-failure.log": "754d5f990ec749226e99e89f3a2592ac4d66312354c03f09051be581a36fee1c",
+    "windows-fix-tests.log": "93329ec1b2840815ac264baa0f092469097bf84a84fb010cfb36d1e6479420d9",
+    "windows-fix-watch-rerun.log": "5231cf57e7b788d7e33ea95eb7982dd4992fff9a9fcb0d6e67705dede974b1c1",
+    "fixture-final-tests.log": "2acc0409c4736b2d03f621fd6253c978ec7283805c0ba2b3fcc0aa06149803fd",
+    "fixture-final-clippy.log": "e94a6abea7dee2bc7c9976942804556ad83d07a669df93bb26a9bfc48aa32276",
+    "fixture-precommit-quality-tools.json": "cbbe7cc9b79b48b84854d290d53813539b15b34ae8d2d77996e410225bbbf92c",
+    "fixture-precommit-clippy.log": "c340ddd83280db55c244d6e223855dc21910373b74ec9eaa8b1edb03818dc942",
+    "fixture-precommit-persistence-tests.log": "1074491339e1521c40ecd3187fd50e62adc4b79a0a251741f36d66e4767d45ce"
+  },
+  "updatedAtUtc": "2026-10-07T08:03:59.341172+00:00",
+  "sourceSnapshot": {
+    "baseCommit": "8d19d5b10207a57468c1f557337b78e8bf241bd2",
+    "followupChanges": "Test fixtures, release notes and documentation only; qualified Linux runtime artifact still identifies exact8d19source."
   }
 }

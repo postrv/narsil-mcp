@@ -447,6 +447,8 @@ async fn test_async_watcher_file_change_detection() -> Result<()> {
 
     let repo = TestRepo::new()?;
     repo.add_rust_file("src/lib.rs", "pub fn original() {}")?;
+    let source = repo.path().join("src/lib.rs");
+    let original_modified = std::fs::metadata(&source)?.modified()?;
 
     let index_dir = TempDir::new()?;
 
@@ -476,17 +478,24 @@ async fn test_async_watcher_file_change_detection() -> Result<()> {
 
     // Modify the file
     repo.add_rust_file("src/lib.rs", "pub fn modified() {}")?;
+    // PollWatcher compares whole seconds, so an edit within the same second
+    // would not produce the metadata event this test exercises.
+    std::fs::File::options()
+        .write(true)
+        .open(&source)?
+        .set_times(
+            std::fs::FileTimes::new().set_modified(original_modified + Duration::from_secs(2)),
+        )?;
 
     // Wait for debounce timer and file system events (generous for slow CI)
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
     // Check if we received change events
-    let timeout = tokio::time::timeout(Duration::from_secs(5), rx.recv()).await;
-    assert!(timeout.is_ok(), "Should receive file change event");
-
-    if let Ok(Some(changes)) = timeout {
-        assert!(!changes.is_empty(), "Changes should not be empty");
-    }
+    let changes = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("Should receive file change event")
+        .expect("Watcher event channel should remain open");
+    assert!(!changes.is_empty(), "Changes should not be empty");
 
     Ok(())
 }

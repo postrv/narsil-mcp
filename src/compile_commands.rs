@@ -344,9 +344,16 @@ mod tests {
     #[test]
     fn discover_reads_repo_root_file() {
         let dir = tempdir().unwrap();
-        let db = r#"[{"directory":"ROOT","file":"main.c","command":"gcc -c main.c"}]"#;
-        let db = db.replace("ROOT", dir.path().to_string_lossy().as_ref());
-        fs::write(dir.path().join("compile_commands.json"), db).unwrap();
+        let db = serde_json::json!([{
+            "directory": dir.path(),
+            "file": "main.c",
+            "command": "gcc -c main.c",
+        }]);
+        fs::write(
+            dir.path().join("compile_commands.json"),
+            serde_json::to_vec(&db).unwrap(),
+        )
+        .unwrap();
         fs::write(dir.path().join("main.c"), "int main() { return 0; }").unwrap();
         let scope = CompileCommandsScope::discover(dir.path()).expect("database");
         assert!(!scope.should_skip_c_file(&dir.path().join("main.c")));
@@ -357,11 +364,16 @@ mod tests {
     fn discover_reads_build_subdir() {
         let dir = tempdir().unwrap();
         fs::create_dir_all(dir.path().join("build")).unwrap();
-        let db = format!(
-            r#"[{{"directory":"{}","file":"src/app.c","command":"gcc -c src/app.c"}}]"#,
-            dir.path().display()
-        );
-        fs::write(dir.path().join("build/compile_commands.json"), db).unwrap();
+        let db = serde_json::json!([{
+            "directory": dir.path(),
+            "file": "src/app.c",
+            "command": "gcc -c src/app.c",
+        }]);
+        fs::write(
+            dir.path().join("build/compile_commands.json"),
+            serde_json::to_vec(&db).unwrap(),
+        )
+        .unwrap();
         let scope = CompileCommandsScope::discover(dir.path()).expect("build db");
         assert!(!scope.should_skip_c_file(&dir.path().join("src/app.c")));
     }
