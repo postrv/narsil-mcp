@@ -63,7 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/postrv/narsil-mcp/main/install.sh |
 cargo install narsil-mcp
 
 # Homebrew (macOS)
-brew install postrv/tap/narsil-mcp
+brew install postrv/narsil/narsil-mcp
 ```
 
 ## License

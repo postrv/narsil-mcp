@@ -20,6 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check packed npm command before publication
+        run: npm --prefix npm test
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -296,7 +303,6 @@ jobs:
           class NarsilMcp < Formula
             desc "Blazingly fast MCP server for code intelligence"
             homepage "https://github.com/postrv/narsil-mcp"
-            version "VERSION_PLACEHOLDER"
             license any_of: ["MIT", "Apache-2.0"]
 
             on_macos do

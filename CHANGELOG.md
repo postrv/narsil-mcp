@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-10-07
+
+### Fixed
+
+- npm packages include a stable Node launcher before installation creates command
+  shims. The native executable downloads into a separate, excluded directory,
+  preserving the launcher and keeping packed packages portable across platforms.
+- The npm launcher forwards arguments and standard streams, preserves exit status,
+  and forwards termination signals to the native process.
+- Corrected npm README Homebrew installation to the maintained `postrv/narsil` tap.
+- Homebrew formulas infer their version from release URLs without a redundant
+  explicit version declaration, satisfying the strict formula audit.
+- The shell installer accepts compact GitHub release JSON when resolving the latest
+  version, and returns an empty result when release metadata has no tag.
+
+### Changed
+
+- CI checks packed npm installation and command execution on Linux, macOS and
+  Windows. Release gates run the package check before any publication.
+- Native CI test jobs allow cold Windows graph builds up to 45 minutes while
+  retaining the full suite and focused graph checks.
+
 ## [1.7.1] - 2026-10-07
 
 ### Added
