@@ -125,7 +125,7 @@ async function main() {
   console.log(`Installing narsil-mcp v${PACKAGE_VERSION}...`);
 
   const target = getTargetInfo();
-  const binDir = path.join(__dirname, "bin");
+  const binDir = path.join(__dirname, "vendor");
   const binaryPath = path.join(binDir, BINARY_NAME);
 
   // Create bin directory

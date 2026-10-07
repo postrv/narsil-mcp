@@ -67,7 +67,9 @@ SECURITY_PATCH.md
 /docs/CODE_CONTEXT_GRAPH_SIZING_ARCH.md
 
 # npm package artifacts (created during install)
-npm/bin/
+npm/bin/*
+!npm/bin/narsil-mcp.js
+npm/vendor/
 npm/node_modules/
 npm/*.tgz
 

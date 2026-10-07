@@ -1,6 +1,6 @@
 {
   "name": "narsil-mcp",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "A blazingly fast MCP server for code intelligence - multi-language parsing, semantic search, call graphs, security scanning",
   "keywords": [
     "mcp",
@@ -25,14 +25,15 @@
     "url": "https://github.com/postrv/narsil-mcp/issues"
   },
   "bin": {
-    "narsil-mcp": "bin/narsil-mcp"
+    "narsil-mcp": "bin/narsil-mcp.js"
   },
   "scripts": {
-    "postinstall": "node install.js"
+    "postinstall": "node install.js",
+    "test": "node ../scripts/test-npm-package.mjs"
   },
   "files": [
     "install.js",
-    "bin/",
+    "bin/narsil-mcp.js",
     "README.md"
   ],
   "engines": {
