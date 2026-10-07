@@ -77,11 +77,16 @@ async fn compile_commands_skips_out_of_scope_c_files() {
         "int unused_driver(void) { return 1; }\n",
     )
     .unwrap();
-    let db = format!(
-        r#"[{{"directory":"{}","file":"fs/namei.c","command":"gcc -Iinclude -c fs/namei.c"}}]"#,
-        repo.path().display()
-    );
-    fs::write(repo.path().join("compile_commands.json"), db).unwrap();
+    let db = serde_json::json!([{
+        "directory": repo.path(),
+        "file": "fs/namei.c",
+        "command": "gcc -Iinclude -c fs/namei.c",
+    }]);
+    fs::write(
+        repo.path().join("compile_commands.json"),
+        serde_json::to_vec(&db).unwrap(),
+    )
+    .unwrap();
 
     let engine = CodeIntelEngine::new(
         tempdir().unwrap().path().to_path_buf(),

@@ -438,6 +438,26 @@
       },
       "finalClippy": "passed; warnings denied",
       "wasmScope": "Public @narsil-mcp/wasm package absent; experimental source-only workflow with separate generated version metadata, not a CLI1.7.1 publication channel. README and WASM guide corrected."
+    },
+    "windowsIntegrationFixtureFollowup": {
+      "priorCommit": "cfd0209160bdbfb07f861074e34bd6631b4a8a44",
+      "failedJob": "https://github.com/postrv/narsil-mcp/actions/runs/37591695599/job/112694808744",
+      "windowsLibraryTestsPassed": 1013,
+      "failedTest": "ignore_index_tests::compile_commands_skips_out_of_scope_c_files",
+      "cause": "The remaining integration fixture manually inserted a Windows path into JSON, so discover rejected malformed input and indexing proceeded without a compilation scope.",
+      "fix": "Serialize the fixture with serde_json; production code unchanged.",
+      "independentSweep": "All changed integration tests and inline test changes since a4a2bd7 reviewed; no additional concrete Windows portability defect found.",
+      "ciDiagnostics": "Full native and release suites now use --no-fail-fast so all test targets run; any failure still produces a failing exit status.",
+      "nativeRerun": "pending push of integration fixture correction",
+      "localGates": {
+        "passed": 1136,
+        "failed": 0,
+        "ignored": 17,
+        "testThreads": 1,
+        "clippyWarnings": 0,
+        "actionlint": "passed",
+        "productionSourceHighCritical": 0
+      }
     }
   },
   "limitations": [
@@ -458,15 +478,16 @@
     "tests/index_reuse_tests.rs": "dbc3a0c46ed4a082c04d016e89c9085aa7b12d4d8423fb9e0ab6ebd68eefad6b",
     ".cargo/audit.toml": "32d8925056470690de2a4e480b9b5d6e6b8cb4780224377c5b777c193cc52ed0",
     ".github/workflows/build-binaries.yml": "28f8de32665a33479f0afb80ec2995da0691fb582db8c53b311ec68a45b46012",
-    ".github/workflows/release.yml": "d55c5771c2abd72ffa90c59df6481b1a10e012fd17315928aba71ca10c088549",
-    ".github/workflows/ci.yml": "1f3bec5ef070972b0eaada3683e3445a56814e1824f887747da82f963c809c7f",
+    ".github/workflows/release.yml": "7b1eb870ab87cbabfb9deb706945f659d881df57edf23c7ed605c460f43cf653",
+    ".github/workflows/ci.yml": "8a469fec6f7c2959f049b60a1765927d27f1dfc77d71fdfc44dd4a51f2721270",
     "npm/README.md": "d213c0ab928cd32c3e52eaef60dd3a44b5f426abc0f0b4ad10e9792f65a8ce7e",
     "CHANGELOG.md": "a3ab7809a41fb7dbb99b04cad7225e9f588ceaea2eb040e6b3c2c2108ec7259c",
     "flake.nix": "62392f7013defe182328edc2637eb485e8c1a542e3bfae5f42f1282b2367706f",
     "src/compile_commands.rs": "14a70bb3f21495954c4004560bf05b546fbaad27a948a48186bb0995105502b3",
     "tests/persistence_tests.rs": "391714583cc986518d09e3b0b5bd93f8a5f6679bfb1f8533ee24473a28f69035",
     "README.md": "245f18f4fc776d5d69dcdd36b57bf8ee61877e24dd416ca03fcb6f6b41c11f97",
-    "docs/wasm.md": "d2eaf423f1ab1cb031dc08c949ebd0e2b680412a9b0e0540c8e4a2eb9eafe451"
+    "docs/wasm.md": "d2eaf423f1ab1cb031dc08c949ebd0e2b680412a9b0e0540c8e4a2eb9eafe451",
+    "tests/ignore_index_tests.rs": "114a61c44b56628d1e3567f2c7851b5472c681910f487b1bc448fd8c0bc27473"
   },
   "retainedLocalEvidenceSha256": {
     "cargo-test-initial.log": "cf10b905cc77c21b7e43e0b93d7536e01822edf2dd2b6fb3059bd66d4ac5a343",
@@ -507,11 +528,15 @@
     "fixture-final-clippy.log": "e94a6abea7dee2bc7c9976942804556ad83d07a669df93bb26a9bfc48aa32276",
     "fixture-precommit-quality-tools.json": "cbbe7cc9b79b48b84854d290d53813539b15b34ae8d2d77996e410225bbbf92c",
     "fixture-precommit-clippy.log": "c340ddd83280db55c244d6e223855dc21910373b74ec9eaa8b1edb03818dc942",
-    "fixture-precommit-persistence-tests.log": "1074491339e1521c40ecd3187fd50e62adc4b79a0a251741f36d66e4767d45ce"
+    "fixture-precommit-persistence-tests.log": "1074491339e1521c40ecd3187fd50e62adc4b79a0a251741f36d66e4767d45ce",
+    "windows-cfd0209-failure.log": "7d18289b116dc5f8d6d0a038c53e208a5974eb698b229c67907c6f769a08d65f",
+    "integration-fixture-tests.log": "e6f6d0cf0a1f9d7596e5673d93663880f52d7420cfc775c64e2a83e5dfbd700d",
+    "integration-fixture-clippy.log": "c3c1da747b769549fc3122b6acb21ff3152a548b1185be20e15742cd46b252dd",
+    "integration-fixture-quality-tools.json": "eed64b47ca6ce49590c215fbad936bff45e66628e3e60c1e96a7baa95fdb12fe"
   },
-  "updatedAtUtc": "2026-10-07T08:03:59.341172+00:00",
+  "updatedAtUtc": "2026-10-07T08:23:20.320381+00:00",
   "sourceSnapshot": {
     "baseCommit": "8d19d5b10207a57468c1f557337b78e8bf241bd2",
-    "followupChanges": "Test fixtures, release notes and documentation only; qualified Linux runtime artifact still identifies exact8d19source."
+    "followupChanges": "Test fixtures, workflow test diagnostics, release notes and documentation; qualified Linux runtime artifact still identifies exact8d19source."
   }
 }
