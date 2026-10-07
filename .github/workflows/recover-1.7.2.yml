@@ -1,0 +1,111 @@
+name: Recover 1.7.2 distributions
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/recover-1.7.2.yml
+      - scripts/recover-release-1.7.2.py
+      - scripts/test-release-recovery-1.7.2.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recover-narsil-1.7.2
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify fixed recovery guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test without network, credentials, binaries, or publication
+        run: python3 scripts/test-release-recovery-1.7.2.py
+
+  recover:
+    name: Complete the already-built 1.7.2 release
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify immutable source, published crate, passed gates, and build artifacts
+        run: python3 scripts/recover-release-1.7.2.py prepare --output "$RUNNER_TEMP/narsil-recovery-1.7.2"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Checkout the immutable npm source
+        uses: actions/checkout@v6
+        with:
+          ref: cf8eac40ce736f3706450e4b256b56f6845af8e5
+          path: release-source
+
+      - name: Verify the tagged npm package command
+        run: npm --prefix release-source/npm test
+
+      - name: Create only missing GitHub release assets
+        run: python3 scripts/recover-release-1.7.2.py github --output "$RUNNER_TEMP/narsil-recovery-1.7.2"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish npm only if the exact version is absent
+        run: python3 scripts/recover-release-1.7.2.py npm --output "$RUNNER_TEMP/narsil-recovery-1.7.2" --source release-source
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v6
+        with:
+          repository: postrv/homebrew-narsil
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Checkout Scoop bucket
+        uses: actions/checkout@v6
+        with:
+          repository: postrv/scoop-narsil
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: scoop-bucket
+
+      - name: Update only the distribution manifests
+        run: python3 scripts/recover-release-1.7.2.py distributions --output "$RUNNER_TEMP/narsil-recovery-1.7.2" --homebrew homebrew-tap --scoop scoop-bucket
+
+      - name: Commit changed distribution manifests
+        run: |
+          for directory in homebrew-tap scoop-bucket; do
+            git -C "$directory" config user.name 'github-actions[bot]'
+            git -C "$directory" config user.email 'github-actions[bot]@users.noreply.github.com'
+          done
+          git -C homebrew-tap add Formula/narsil-mcp.rb
+          git -C scoop-bucket add bucket/narsil-mcp.json
+          for directory in homebrew-tap scoop-bucket; do
+            if ! git -C "$directory" diff --cached --quiet; then
+              git -C "$directory" commit -m 'narsil-mcp 1.7.2'
+              git -C "$directory" push
+            fi
+          done
+
+      - name: Retain provenance and prepared archive checksums
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-1.7.2-recovery-evidence
+          path: |
+            ${{ runner.temp }}/narsil-recovery-1.7.2/*.json
+            ${{ runner.temp }}/narsil-recovery-1.7.2/*.sha256
+          if-no-files-found: warn
