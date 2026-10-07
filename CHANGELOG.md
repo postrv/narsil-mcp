@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated async-trait to avoid its generated-attribute Clippy failure on Rust 1.99.
 - Pull requests build the graph-enabled release binaries after tests and audit pass, before any publication.
 - Release checks and crate publication require the reviewed lockfile and a clean package.
+- Unix release archives restore executable permissions after CI artifact transfer.
 - Compilation-database discovery tests serialize paths correctly on Windows.
 - Rust crate packages omit local `.claude` and `.codex` workspace configuration.
 - Nix packages derive their version from Cargo.toml so release metadata stays aligned.

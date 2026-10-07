@@ -125,7 +125,7 @@ jobs:
         run: cargo test --locked --no-fail-fast --features "native,neural,graph" --verbose -- --test-threads=1
 
       - name: Verify local-only graph queries with unified HTTP feature
-        run: cargo test --locked --features "graph,oxigraph/http-client" test_external_service -- --test-threads=1
+        run: cargo test --locked --lib --features "graph,oxigraph/http-client" test_external_service -- --test-threads=1
 
   # Publish to crates.io (skip for pre-release versions)
   publish:
@@ -196,6 +196,8 @@ jobs:
               (cd release-assets && shasum -a 256 "narsil-mcp-v${VERSION}-${artifact_name#narsil-mcp-}.zip" > "narsil-mcp-v${VERSION}-${artifact_name#narsil-mcp-}.zip.sha256")
             else
               # Unix: Create .tar.gz
+              # Artifact transfer resets file permissions to 0644.
+              chmod 755 "${dir}narsil-mcp"
               (cd "$dir" && tar -czf "${RELEASE_DIR}/narsil-mcp-v${VERSION}-${artifact_name#narsil-mcp-}.tar.gz" narsil-mcp)
               # Generate SHA256
               (cd release-assets && shasum -a 256 "narsil-mcp-v${VERSION}-${artifact_name#narsil-mcp-}.tar.gz" > "narsil-mcp-v${VERSION}-${artifact_name#narsil-mcp-}.tar.gz.sha256")
