@@ -30,6 +30,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Check installer release discovery
+        run: bash scripts/test-installer.sh
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
