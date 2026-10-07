@@ -183,6 +183,9 @@ impl Preset {
             "get_data_flow",
             "get_import_graph",
             "find_circular_imports",
+            "review_change",
+            "impact_of",
+            "security_gate",
         ]);
 
         tools
@@ -236,6 +239,8 @@ impl Preset {
             "infer_types",
             "check_type_errors",
             "get_typed_taint_flow",
+            "review_change",
+            "security_gate",
         ]
         .iter()
         .copied()

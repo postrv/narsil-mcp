@@ -27,13 +27,14 @@ Then start Claude Code in your project directory.
 
 ## Features
 
-- **90 MCP tools** for code intelligence
+- **93 MCP tools** for code intelligence (availability depends on enabled features)
 - **32 languages** supported via tree-sitter
 - **Multi-mode search**: BM25, TF-IDF, hybrid, neural embeddings
 - **Call graph analysis**: callers, callees, paths, hotspots
 - **Security scanning**: OWASP Top 10, CWE Top 25, secrets detection
 - **Git integration**: blame, history, contributors, hotspots
 - **Static analysis**: CFG, DFG, type inference, taint analysis
+- **Workflow summaries**: `review_change`, `impact_of`, and `security_gate`
 
 ## CLI Usage
 

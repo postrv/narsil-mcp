@@ -14,8 +14,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # Minimal feature set that works on CI without external dependencies
-  CI_FEATURES: "native,neural"
+  # Match the release gate so pull requests exercise shipped graph support.
+  CI_FEATURES: "native,neural,graph"
 
 # Minimal permissions
 permissions:
@@ -45,10 +45,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy (default features)
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: Clippy (CI features)
-        run: cargo clippy --all-targets --features "$CI_FEATURES" -- -D warnings
+        run: cargo clippy --locked --all-targets --features "$CI_FEATURES" -- -D warnings
 
   # Main test suite
   test:
@@ -74,7 +74,10 @@ jobs:
           cache-on-failure: true
 
       - name: Run tests
-        run: cargo test --features "${{ env.CI_FEATURES }}" --verbose -- --test-threads=1
+        run: cargo test --locked --no-fail-fast --features "${{ env.CI_FEATURES }}" --verbose -- --test-threads=1
+
+      - name: Verify local-only graph queries with unified HTTP feature
+        run: cargo test --locked --lib --features "graph,oxigraph/http-client" test_external_service -- --test-threads=1
 
   # Security audit
   security:
@@ -95,5 +98,6 @@ jobs:
   build-release:
     name: Build Release Binaries
     needs: [test, security]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/build-binaries.yml
+    with:
+      features: graph

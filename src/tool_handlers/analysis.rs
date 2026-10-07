@@ -228,3 +228,54 @@ impl ToolHandler for FindUnusedExportsHandler {
             .await
     }
 }
+
+/// Handler for review_change tool
+pub struct ReviewChangeHandler;
+
+#[async_trait::async_trait]
+impl ToolHandler for ReviewChangeHandler {
+    fn name(&self) -> &'static str {
+        "review_change"
+    }
+
+    async fn execute(&self, engine: &CodeIntelEngine, args: Value) -> Result<String> {
+        let repo = args.get_str("repo").unwrap_or("");
+        let path = args.get_str("path");
+        let max_files = args.get_u64("max_files").map(|v| v as usize);
+        engine.review_change(repo, path, max_files).await
+    }
+}
+
+/// Handler for impact_of tool
+pub struct ImpactOfHandler;
+
+#[async_trait::async_trait]
+impl ToolHandler for ImpactOfHandler {
+    fn name(&self) -> &'static str {
+        "impact_of"
+    }
+
+    async fn execute(&self, engine: &CodeIntelEngine, args: Value) -> Result<String> {
+        let repo = args.get_str("repo").unwrap_or("");
+        let symbol = args.get_str("symbol").unwrap_or("");
+        let max_depth = args.get_u64("max_depth").map(|v| v as usize);
+        engine.impact_of(repo, symbol, max_depth).await
+    }
+}
+
+/// Handler for security_gate tool
+pub struct SecurityGateHandler;
+
+#[async_trait::async_trait]
+impl ToolHandler for SecurityGateHandler {
+    fn name(&self) -> &'static str {
+        "security_gate"
+    }
+
+    async fn execute(&self, engine: &CodeIntelEngine, args: Value) -> Result<String> {
+        let repo = args.get_str("repo").unwrap_or("");
+        let path = args.get_str("path");
+        let severity_threshold = args.get_str("severity_threshold");
+        engine.security_gate(repo, path, severity_threshold).await
+    }
+}

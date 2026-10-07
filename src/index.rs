@@ -11,19 +11,21 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::cache::query_cache::{QueryCache, QueryCacheKey, QueryCacheStats, SearchOptions};
 use crate::cache::{AnalysisCache, AnalysisCacheKey, CacheStats};
 use crate::callgraph::CallGraph;
 use crate::cfg;
+use crate::compile_commands::CompileCommandsScope;
 use crate::dfg;
 use crate::embeddings::EmbeddingEngine;
 use crate::git::GitRepo;
+use crate::ignore::{IgnoreService, IndexLimits};
 use crate::lsp::{LspConfig, LspManager};
 use crate::metrics::Metrics;
 use crate::neural::{NeuralConfig, NeuralEngine};
-use crate::parser::LanguageParser;
+use crate::parser::{LanguageParser, ParsedFile};
 use crate::persist::{IndexStore, PersistedIndex};
 use crate::remote::RemoteRepoManager;
 use crate::search::ConcurrentSearchIndex;
@@ -40,6 +42,15 @@ pub struct RepoMetadata {
     pub total_lines: usize,
     pub languages: HashMap<String, LanguageStats>,
     pub last_indexed: SystemTime,
+    /// True when the file cap truncated the walk (issue #27).
+    #[serde(default)]
+    pub truncated: bool,
+    /// Files that passed ignore before the cap.
+    #[serde(default)]
+    pub walked_files: usize,
+    /// True when a compile_commands.json allowlist scoped C/C++.
+    #[serde(default)]
+    pub compile_commands_scoped: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -183,6 +194,12 @@ pub struct CodeIntelEngine {
     /// RDF knowledge graph for persistent code intelligence data (when graph is enabled)
     #[cfg(feature = "graph")]
     knowledge_graph: Option<Arc<crate::persistence::KnowledgeGraph>>,
+    /// Index size and watch-burst caps
+    limits: IndexLimits,
+    /// Files finished in the current (or last) indexing pass
+    indexing_files_done: AtomicUsize,
+    /// Files queued in the current indexing pass
+    indexing_files_total: AtomicUsize,
 }
 
 impl CodeIntelEngine {
@@ -342,77 +359,13 @@ impl CodeIntelEngine {
             total_repos_count: AtomicUsize::new(total_repos),
             #[cfg(feature = "graph")]
             knowledge_graph,
+            limits: IndexLimits::from_env(),
+            indexing_files_done: AtomicUsize::new(0),
+            indexing_files_total: AtomicUsize::new(0),
         };
 
-        // Try to load persisted indexes first if persistence is enabled
-        let mut loaded_repos: Vec<String> = Vec::new();
-        if options.persist_enabled {
-            if let Some(ref store) = engine.index_store {
-                for repo_path in &expanded_repos {
-                    if let Ok(persisted) = store.load_or_create(repo_path) {
-                        if !persisted.files.is_empty() {
-                            let repo_name = repo_path
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("unknown")
-                                .to_string();
-
-                            // Load symbols from persisted index
-                            let symbols: Vec<Symbol> = persisted
-                                .files
-                                .values()
-                                .flat_map(|f| f.symbols.clone())
-                                .collect();
-
-                            info!(
-                                "Loaded {} symbols from persisted index for {}",
-                                symbols.len(),
-                                repo_name
-                            );
-
-                            // Calculate metadata from persisted data
-                            let mut languages: HashMap<String, LanguageStats> = HashMap::new();
-                            let mut total_lines = 0;
-
-                            for file_meta in persisted.files.values() {
-                                let ext = file_meta
-                                    .path
-                                    .extension()
-                                    .and_then(|e| e.to_str())
-                                    .unwrap_or("unknown");
-                                let lang = ext_to_language(ext);
-                                let stats = languages.entry(lang).or_default();
-                                stats.file_count += 1;
-                                stats.byte_count += file_meta.size as usize;
-                                // Estimate lines from symbols
-                                let max_line = file_meta
-                                    .symbols
-                                    .iter()
-                                    .map(|s| s.end_line)
-                                    .max()
-                                    .unwrap_or(0);
-                                stats.line_count += max_line;
-                                total_lines += max_line;
-                            }
-
-                            let metadata = RepoMetadata {
-                                name: repo_name.clone(),
-                                path: repo_path.clone(),
-                                file_count: persisted.files.len(),
-                                total_lines,
-                                languages,
-                                last_indexed: SystemTime::UNIX_EPOCH
-                                    + std::time::Duration::from_secs(persisted.updated_at),
-                            };
-
-                            engine.repos.insert(repo_name.clone(), metadata);
-                            engine.symbols.insert(repo_name.clone(), symbols);
-                            loaded_repos.push(repo_name);
-                        }
-                    }
-                }
-            }
-        }
+        // Persistent symbols are loaded and validated inside index_repo during
+        // deferred initialization, together with all transient query indexes.
 
         // Initialize call graphs BEFORE indexing (must exist for index_repo to populate them)
         if options.call_graph_enabled {
@@ -460,19 +413,6 @@ impl CodeIntelEngine {
 
         // Index repos that weren't loaded from persistence
         for repo_path in &self.repo_paths {
-            let repo_name = repo_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown")
-                .to_string();
-
-            // Check if already loaded from persistence
-            if self.repos.contains_key(&repo_name) {
-                info!("Repository {} already loaded from cache", repo_name);
-                self.indexed_repos_count.fetch_add(1, Ordering::Release);
-                continue;
-            }
-
             if repo_path.exists() {
                 info!("Indexing repository: {:?}", repo_path);
                 if let Err(e) = self.index_repo(repo_path).await {
@@ -547,7 +487,38 @@ impl CodeIntelEngine {
                 .into(),
             ),
         );
+        let files_done = self.indexing_files_done.load(Ordering::Acquire);
+        let files_total = self.indexing_files_total.load(Ordering::Acquire);
+        status.insert(
+            "indexing_files_done".to_string(),
+            serde_json::Value::Number(files_done.into()),
+        );
+        status.insert(
+            "indexing_files_total".to_string(),
+            serde_json::Value::Number(files_total.into()),
+        );
         status
+    }
+
+    /// Human-readable indexing progress for MCP clients that raced startup.
+    ///
+    /// Returns `None` when background initialization has finished.
+    #[must_use]
+    pub fn indexing_progress_message(&self) -> Option<String> {
+        if self.is_fully_initialized() {
+            return None;
+        }
+        let files_done = self.indexing_files_done.load(Ordering::Acquire);
+        let files_total = self.indexing_files_total.load(Ordering::Acquire);
+        let repos_done = self.indexed_repos_count.load(Ordering::Acquire);
+        let repos_total = self.total_repos_count.load(Ordering::Acquire);
+        let file_pct = files_done
+            .saturating_mul(100)
+            .checked_div(files_total)
+            .unwrap_or(0);
+        Some(format!(
+            "EAGAIN: indexing in progress — {files_done}/{files_total} files ({file_pct}%), {repos_done}/{repos_total} repos. Retry shortly or call get_index_status."
+        ))
     }
 
     async fn index_repos(&self) -> Result<()> {
@@ -577,31 +548,114 @@ impl CodeIntelEngine {
         let mut neural_docs: Vec<crate::neural::NeuralDocument> = Vec::new();
         let mut file_count = 0;
         let mut total_lines = 0;
+        let ignore = IgnoreService::for_repo(path)
+            .with_extra_patterns(&crate::repo::RepoConfig::default().exclude_patterns);
+        let limits = self.limits;
 
-        // Use ignore crate to respect .gitignore
+        // Use ignore crate to respect .gitignore, plus the hard vendor denylist
         let walker = ignore::WalkBuilder::new(path)
             .hidden(true)
             .git_ignore(true)
             .git_global(true)
             .git_exclude(true)
             .require_git(false)
+            .follow_links(false)
+            .add_custom_ignore_filename(".narsilignore")
+            .filter_entry(|entry| {
+                if entry.path_is_symlink() {
+                    return false;
+                }
+                entry
+                    .file_name()
+                    .to_str()
+                    .map(|name| !crate::ignore::is_denied_dir_name(name))
+                    .unwrap_or(true)
+            })
             .build();
 
-        let files: Vec<PathBuf> = walker
+        let mut files: Vec<PathBuf> = walker
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
             .map(|e| e.path().to_path_buf())
+            .filter(|file_path| ignore.should_index_file(file_path, limits.max_file_size))
             .collect();
 
-        // Parse files in parallel
+        let compile_scope = CompileCommandsScope::discover(path);
+        let compile_commands_scoped = compile_scope.is_some();
+        if let Some(ref scope) = compile_scope {
+            let before = files.len();
+            files.retain(|file_path| !scope.should_skip_c_file(file_path));
+            info!(
+                "compile_commands.json scoped C/C++ in {:?}: {} -> {} files",
+                path,
+                before,
+                files.len()
+            );
+        }
+
+        let walked = files.len();
+        let truncated = files.len() > limits.max_index_files;
+        if truncated {
+            warn!(
+                "INDEX INCOMPLETE: {:?} has {} files after ignore/scope; indexing first {} (NARSIL_MAX_INDEX_FILES). Raise the cap or add compile_commands.json / .narsilignore.",
+                path,
+                files.len(),
+                limits.max_index_files
+            );
+            files.sort();
+            files.truncate(limits.max_index_files);
+        }
+
+        info!(
+            "Indexing repository {:?} — {} files after ignore (walked {}, cap {}, compile_commands={})",
+            path,
+            files.len(),
+            walked,
+            limits.max_index_files,
+            compile_commands_scoped
+        );
+        self.indexing_files_total
+            .store(files.len(), Ordering::Release);
+        self.indexing_files_done.store(0, Ordering::Release);
+
+        // Reuse extracted symbols only when the current bytes match the saved
+        // content hash. Transient indexes still need every current file.
+        let persisted = self
+            .index_store
+            .as_ref()
+            .and_then(|store| store.load_or_create(path).ok());
+
+        // Parse changed files in parallel, rebuilding trees when callers need them.
         let metrics = Arc::clone(&self.metrics);
         let parsed_results: Vec<_> = files
             .par_iter()
             .filter_map(|file_path| {
                 let parse_start = std::time::Instant::now();
                 let content = std::fs::read_to_string(file_path).ok()?;
-                let parsed = self.parser.parse_file(file_path, &content).ok()?;
-                metrics.record_file_parse(parse_start.elapsed());
+                let cached = persisted
+                    .as_ref()
+                    .and_then(|index| index.files.get(file_path));
+                let reusable = cached.filter(|cached| {
+                    use sha2::{Digest, Sha256};
+                    cached.content_hash == format!("{:x}", Sha256::digest(content.as_bytes()))
+                });
+                let parsed = if let Some(cached) = reusable {
+                    ParsedFile {
+                        path: file_path.to_string_lossy().to_string(),
+                        language: self.parser.language_for_path(file_path)?.to_string(),
+                        symbols: cached.symbols.clone(),
+                        tree: if self.options.call_graph_enabled {
+                            Some(self.parser.parse_to_tree(file_path, &content).ok()?)
+                        } else {
+                            None
+                        },
+                    }
+                } else {
+                    self.parser.parse_file(file_path, &content).ok()?
+                };
+                if reusable.is_none() || self.options.call_graph_enabled {
+                    metrics.record_file_parse(parse_start.elapsed());
+                }
                 Some((file_path.clone(), content, parsed))
             })
             .collect();
@@ -609,8 +663,20 @@ impl CodeIntelEngine {
         // Collect parsed trees for call graph construction
         let mut trees_for_callgraph: Vec<(String, String, tree_sitter::Tree)> = Vec::new();
 
+        let parse_total = parsed_results.len();
         for (file_path, content, parsed) in parsed_results {
             file_count += 1;
+            self.indexing_files_done
+                .store(file_count, Ordering::Release);
+            if file_count == 1 || file_count % 500 == 0 || file_count == parse_total {
+                info!(
+                    "Indexing {}: {}/{} files, {} symbols so far",
+                    repo_name,
+                    file_count,
+                    parse_total,
+                    symbols_vec.len()
+                );
+            }
             let lines = content.lines().count();
             total_lines += lines;
 
@@ -657,9 +723,8 @@ impl CodeIntelEngine {
                 symbols_vec.push(symbol);
             }
 
-            // Cache file content
-            self.file_cache
-                .insert(file_path.clone(), Arc::new(content.clone()));
+            // Cache file content (bounded so kernel-scale trees cannot pin tens of GiB)
+            self.cache_file_content(file_path.clone(), Arc::new(content.clone()));
 
             // Index file for semantic search
             self.search_index.index_file(&relative_path, &content);
@@ -679,6 +744,9 @@ impl CodeIntelEngine {
             total_lines,
             languages,
             last_indexed: SystemTime::now(),
+            truncated,
+            walked_files: walked,
+            compile_commands_scoped,
         };
 
         info!(
@@ -714,7 +782,8 @@ impl CodeIntelEngine {
         self.symbols.insert(repo_name.clone(), symbols_vec);
 
         // Build call graph if enabled
-        if self.options.call_graph_enabled && !trees_for_callgraph.is_empty() {
+        if self.options.call_graph_enabled {
+            self.call_graphs.insert(repo_name.clone(), CallGraph::new());
             if let Some(call_graph) = self.call_graphs.get(&repo_name) {
                 if let Err(e) = call_graph.build_from_files(&trees_for_callgraph) {
                     warn!("Failed to build call graph for {}: {}", repo_name, e);
@@ -769,6 +838,15 @@ impl CodeIntelEngine {
             }
         }
 
+        if self.options.persist_enabled {
+            if let Err(e) = self.save_index().await {
+                warn!(
+                    "Failed to persist index after indexing {}: {}",
+                    repo_name, e
+                );
+            }
+        }
+
         Ok(())
     }
 
@@ -787,12 +865,11 @@ impl CodeIntelEngine {
     pub async fn reindex(&self, repo: Option<&str>) -> Result<String> {
         match repo {
             Some(name) => {
-                let path = self.get_repo_path(name)?;
-                self.repos.remove(name);
-                self.symbols.remove(name);
-                // Invalidate caches for this repo only
-                self.query_cache.invalidate_for_repo(name);
-                self.index_repo(&path).await?;
+                self.get_repo_path(name)?;
+                // Search and embedding indexes are shared across repositories.
+                // Rebuild them together to remove obsolete documents without
+                // dropping results from the other repositories.
+                self.reindex_all().await?;
                 Ok(format!("Re-indexed repository: {}", name))
             }
             None => {
@@ -855,6 +932,24 @@ impl CodeIntelEngine {
     /// Get a reference to the engine options
     pub fn options(&self) -> &EngineOptions {
         &self.options
+    }
+
+    /// Indexing and watch-burst caps currently in effect.
+    #[must_use]
+    pub fn index_limits(&self) -> IndexLimits {
+        self.limits
+    }
+
+    fn cache_file_content(&self, path: PathBuf, content: Arc<String>) {
+        if self.file_cache.len() >= self.limits.max_cached_files {
+            return;
+        }
+        self.file_cache.insert(path, content);
+    }
+
+    fn ignore_for_repo(&self, repo_path: &Path) -> IgnoreService {
+        IgnoreService::for_repo(repo_path)
+            .with_extra_patterns(&crate::repo::RepoConfig::default().exclude_patterns)
     }
 
     /// Get a reference to the knowledge graph (if enabled).
@@ -1014,13 +1109,7 @@ impl CodeIntelEngine {
         if current.is_dir() {
             // Skip hidden and common non-essential directories (but not at root level,
             // since the repo itself might be in a hidden directory like ~/.dotfiles)
-            if depth > 0
-                && (name.starts_with('.')
-                    || name == "node_modules"
-                    || name == "target"
-                    || name == "__pycache__"
-                    || name == "venv")
-            {
+            if depth > 0 && (name.starts_with('.') || crate::ignore::is_denied_dir_name(name)) {
                 return Ok(());
             }
 
@@ -1689,7 +1778,12 @@ impl CodeIntelEngine {
                 .unwrap_or("unknown")
                 .to_string();
 
-            // Create a persisted index from current state
+            if !self.repos.contains_key(&repo_name) {
+                continue;
+            }
+
+            // Bind persisted symbols to the bytes that were actually indexed,
+            // not a later disk read that could already contain different code.
             let mut persisted = PersistedIndex::new(repo_path.clone());
 
             // Populate with current symbols
@@ -1714,13 +1808,11 @@ impl CodeIntelEngine {
                             .map(|d| d.as_secs())
                             .unwrap_or(0);
 
-                        let content_hash = if let Ok(content) = std::fs::read(&full_path) {
+                        let content_hash = if let Some(content) = self.file_cache.get(&full_path) {
                             use sha2::{Digest, Sha256};
-                            let mut hasher = Sha256::new();
-                            hasher.update(&content);
-                            format!("{:x}", hasher.finalize())
+                            format!("{:x}", Sha256::digest(content.as_bytes()))
                         } else {
-                            String::new()
+                            continue;
                         };
 
                         persisted.files.insert(
@@ -1837,6 +1929,17 @@ impl CodeIntelEngine {
                 None => continue,
             };
 
+            let ignore = self.ignore_for_repo(repo_path);
+            if ignore.should_skip_watch(&change.path) {
+                debug!("Skipping ignored watch path: {:?}", change.path);
+                continue;
+            }
+            if !ignore.should_index_file(&change.path, self.limits.max_file_size)
+                && change.change_type != crate::persist::ChangeType::Deleted
+            {
+                continue;
+            }
+
             let repo_name = repo_path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -1868,8 +1971,7 @@ impl CodeIntelEngine {
                             }
 
                             // Update file cache
-                            self.file_cache
-                                .insert(change.path.clone(), Arc::new(content.clone()));
+                            self.cache_file_content(change.path.clone(), Arc::new(content.clone()));
 
                             // Update search index
                             self.search_index.index_file(&rel_path, &content);
@@ -2063,6 +2165,168 @@ impl CodeIntelEngine {
             output.push_str("*No changes in working tree*\n");
         }
 
+        Ok(output)
+    }
+
+    /// Review working-tree changes (or a specific path) with a bounded security scan.
+    ///
+    /// Composes git status and `scan_security` without changing those tools.
+    pub async fn review_change(
+        &self,
+        repo: &str,
+        path: Option<&str>,
+        max_files: Option<usize>,
+    ) -> Result<String> {
+        let cap = max_files.unwrap_or(20).clamp(1, 50);
+        let mut output = format!("# Change Review: {}\n\n", repo);
+
+        let files: Vec<String> = if let Some(specific) = path {
+            if specific.is_empty() {
+                Vec::new()
+            } else {
+                vec![specific.to_string()]
+            }
+        } else if let Some(git_repo) = self.git_repos.get(repo) {
+            git_repo.modified_files().unwrap_or_default()
+        } else {
+            output.push_str(
+                "Git is not enabled. Pass `path` to review a file, or start with `--git`.\n",
+            );
+            return Ok(output);
+        };
+
+        let files: Vec<String> = files
+            .into_iter()
+            .filter(|file| !crate::ignore::path_has_denied_component(Path::new(file)))
+            .take(cap)
+            .collect();
+
+        if files.is_empty() {
+            output.push_str("*No first-party modified files to review.*\n");
+            return Ok(output);
+        }
+
+        output.push_str(&format!(
+            "Reviewing {} file(s) (cap {}).\n\n",
+            files.len(),
+            cap
+        ));
+
+        for file in &files {
+            output.push_str(&format!("## `{}`\n\n", file));
+            match self
+                .scan_security(
+                    repo,
+                    SecurityScanOptions {
+                        path: Some(file),
+                        severity_threshold: Some("medium"),
+                        max_findings: Some(15),
+                        exclude_tests: Some(true),
+                        ..Default::default()
+                    },
+                )
+                .await
+            {
+                Ok(scan) => output.push_str(&scan),
+                Err(err) => output.push_str(&format!("Security scan failed: {}\n", err)),
+            }
+            output.push('\n');
+        }
+
+        Ok(output)
+    }
+
+    /// Summarize blast radius for a symbol: definition, references, and callers.
+    pub async fn impact_of(
+        &self,
+        repo: &str,
+        symbol: &str,
+        max_depth: Option<usize>,
+    ) -> Result<String> {
+        if symbol.is_empty() {
+            return Err(anyhow!("Missing required 'symbol' parameter"));
+        }
+        let depth = max_depth.unwrap_or(3).clamp(1, 8);
+        let mut output = format!("# Impact of `{}` in {}\n\n", symbol, repo);
+
+        match self.get_symbol_definition(repo, symbol, 8).await {
+            Ok(definition) => {
+                output.push_str("## Definition\n\n");
+                output.push_str(&definition);
+                output.push('\n');
+            }
+            Err(err) => output.push_str(&format!("## Definition\n\n{}\n\n", err)),
+        }
+
+        match self.find_references(repo, symbol, true, Some(false)).await {
+            Ok(refs) => {
+                output.push_str("## References\n\n");
+                output.push_str(&refs);
+                output.push('\n');
+            }
+            Err(err) => output.push_str(&format!("## References\n\n{}\n\n", err)),
+        }
+
+        if self.options.call_graph_enabled {
+            match self
+                .get_callers(repo, symbol, true, depth, Some(false))
+                .await
+            {
+                Ok(callers) => {
+                    output.push_str("## Callers\n\n");
+                    output.push_str(&callers);
+                }
+                Err(err) => output.push_str(&format!("## Callers\n\n{}\n\n", err)),
+            }
+        } else {
+            output.push_str(
+                "## Callers\n\nCall graph is disabled. Start the server with `--call-graph` for caller impact.\n",
+            );
+        }
+
+        Ok(output)
+    }
+
+    /// Bounded security gate: scan + injection check with a pass/fail verdict.
+    pub async fn security_gate(
+        &self,
+        repo: &str,
+        path: Option<&str>,
+        severity_threshold: Option<&str>,
+    ) -> Result<String> {
+        let threshold = severity_threshold.unwrap_or("high");
+        let scan = self
+            .scan_security(
+                repo,
+                SecurityScanOptions {
+                    path,
+                    severity_threshold: Some(threshold),
+                    max_findings: Some(40),
+                    exclude_tests: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let injections = self
+            .find_injection_vulnerabilities(repo, path, Some(true), &["all".to_string()])
+            .await
+            .unwrap_or_else(|err| format!("Injection scan unavailable: {}\n", err));
+
+        let scan_clean = scan.contains("No security issues found");
+        let injection_clean = injections.contains("No vulnerabilities detected")
+            || injections.contains("Injection scan unavailable");
+        let verdict = if scan_clean && injection_clean {
+            "PASS"
+        } else {
+            "FAIL"
+        };
+
+        let mut output = format!("# Security Gate: {}\n\n", repo);
+        output.push_str(&format!("**Verdict**: {}\n", verdict));
+        output.push_str(&format!("**Threshold**: {}\n\n", threshold));
+        output.push_str(&scan);
+        output.push_str("\n---\n\n");
+        output.push_str(&injections);
         Ok(output)
     }
 
@@ -2333,6 +2597,29 @@ impl CodeIntelEngine {
             }
         ));
 
+        output.push_str("\n## Ignore and Scale Limits\n\n");
+        output.push_str(&format!(
+            "- **Max file size**: {} bytes\n",
+            self.limits.max_file_size
+        ));
+        output.push_str(&format!(
+            "- **Max index files**: {}\n",
+            self.limits.max_index_files
+        ));
+        output.push_str(&format!(
+            "- **File cache**: {} / {}\n",
+            self.file_cache.len(),
+            self.limits.max_cached_files
+        ));
+        output.push_str(&format!(
+            "- **Watch burst limit**: {}\n",
+            self.limits.watch_burst_limit
+        ));
+        output.push_str(
+            "- **Vendor denylist**: node_modules, .pnpm, target, vendor, dist, build, and peers\n",
+        );
+        output.push_str("- **Custom ignore file**: `.narsilignore` (gitignore syntax)\n\n");
+
         output.push_str("## Document Types\n\n");
         for (doc_type, count) in &stats.doc_types {
             output.push_str(&format!("- {:?}: {}\n", doc_type, count));
@@ -2349,13 +2636,25 @@ impl CodeIntelEngine {
                     self.symbols.get(&meta.name).map(|s| s.len()).unwrap_or(0)
                 ));
                 output.push_str(&format!(
-                    "- Git: {}\n\n",
+                    "- Git: {}\n",
                     if self.git_repos.contains_key(&meta.name) {
                         "enabled"
                     } else {
                         "disabled"
                     }
                 ));
+                if meta.compile_commands_scoped {
+                    output.push_str(
+                        "- **compile_commands.json**: C/C++ scoped to the compilation database\n",
+                    );
+                }
+                if meta.truncated {
+                    output.push_str(&format!(
+                        "- **INDEX INCOMPLETE**: walked {} files, indexed {} (cap {}). Raise NARSIL_MAX_INDEX_FILES or add compile_commands.json / .narsilignore.\n",
+                        meta.walked_files, meta.file_count, self.limits.max_index_files
+                    ));
+                }
+                output.push('\n');
             }
         }
 
@@ -8257,22 +8556,6 @@ fn calculate_relevance(line: &str, query: &str) -> f32 {
     score += (100.0 / line.len() as f32).min(1.0);
 
     score
-}
-
-fn ext_to_language(ext: &str) -> String {
-    match ext {
-        "rs" => "Rust",
-        "py" => "Python",
-        "js" | "jsx" => "JavaScript",
-        "ts" | "tsx" => "TypeScript",
-        "go" => "Go",
-        "java" => "Java",
-        "c" | "h" => "C",
-        "cpp" | "hpp" | "cc" | "cxx" => "C++",
-        "cs" => "C#",
-        _ => ext,
-    }
-    .to_string()
 }
 
 fn extract_imports(content: &str, _path: &str) -> Vec<String> {

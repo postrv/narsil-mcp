@@ -147,7 +147,7 @@ curl -fsSL https://raw.githubusercontent.com/postrv/narsil-mcp/main/install.sh |
 ### From Source
 
 **Prerequisites:**
-- Rust 1.70 or later
+- Current stable Rust (this release was verified with Rust 1.98 and 1.99)
 - On Windows: [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) with "Desktop development with C++"
 
 ```bash
@@ -184,8 +184,8 @@ cargo build --release --features frontend
 # Full-featured build with graph + frontend (~40MB)
 cargo build --release --features graph,frontend
 
-# For browser/WASM usage
-cargo build --release --target wasm32-unknown-unknown --features wasm
+# Experimental browser/WASM source build (not release-qualified)
+cargo build --release --target wasm32-unknown-unknown --no-default-features --features wasm
 ```
 
 | Feature | Description | Size |
@@ -195,7 +195,7 @@ cargo build --release --target wasm32-unknown-unknown --features wasm
 | `frontend` | + Embedded visualization web UI | ~31MB |
 | `neural` | + TF-IDF vector search, API embeddings | ~32MB |
 | `neural-onnx` | + Local ONNX model inference | ~50MB |
-| `wasm` | Browser build (no file system, git) | ~3MB |
+| `wasm` | Experimental browser source build (no file system, git) | Not release-qualified |
 
 > **Important:** The `--graph` CLI flag requires the binary to be built with `--features graph`. If you pass `--graph` to a binary built without this feature, you'll see a warning and SPARQL/CCG tools won't be available. See [Troubleshooting](#graph-feature-not-working) below.
 
@@ -691,24 +691,12 @@ Each playbook shows the exact tool chains Claude uses to answer your questions.
 
 ### WebAssembly (Browser) Usage
 
-narsil-mcp can run entirely in the browser via WebAssembly - perfect for browser-based IDEs, code review tools, or educational platforms.
+The repository contains experimental WebAssembly source and a local build script.
+`@narsil-mcp/wasm` is not published on npm and is not a distribution channel for
+the 1.7.1 CLI release. The WASM build and examples are not covered by its release
+qualification. See [docs/wasm.md](docs/wasm.md) for the experimental source workflow.
 
-```bash
-npm install @narsil-mcp/wasm
-```
-
-```typescript
-import { CodeIntelClient } from '@narsil-mcp/wasm';
-
-const client = new CodeIntelClient();
-await client.init();
-client.indexFile('src/main.rs', rustSourceCode);
-const symbols = client.findSymbols('Handler');
-```
-
-> **Full documentation:** See [docs/wasm.md](docs/wasm.md) for build instructions, React examples, and API reference.
-
-## Available Tools (90)
+## Available Tools (93)
 
 ### Repository & File Management
 

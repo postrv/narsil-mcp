@@ -1,5 +1,5 @@
 {
-  description = "MCP server for code intelligence with 90 tools across 32 languages";
+  description = "MCP server for code intelligence with 93 tools across 32 languages";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -10,6 +10,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
 
         nativeBuildInputs = with pkgs; [
           pkg-config
@@ -25,7 +26,7 @@
         # Only evaluated when withFrontend = true.
         frontendDist = pkgs.buildNpmPackage {
           pname = "narsil-mcp-frontend";
-          version = "1.6.1";
+          inherit version;
           src = ./frontend;
           npmDepsHash = "sha256-zwO2ek9o4QMJ9jeTzPVGZzgG46NEpHEnpE5OMiXXixQ=";
           # The build script is "tsc -b && vite build"
@@ -40,7 +41,7 @@
         mkPkg = { buildFeatures, withFrontend ? false, checksEnabled ? true }:
           pkgs.rustPlatform.buildRustPackage {
             pname = "narsil-mcp";
-            version = "1.6.1";
+            inherit version;
 
             src = pkgs.lib.cleanSource ./.;
 

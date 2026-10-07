@@ -181,7 +181,7 @@ fn test_mcp_flow_no_client_info() {
 #[test]
 fn test_all_tools_have_metadata() {
     // This verifies that every tool we might return has metadata
-    for (tool_name, _) in TOOL_METADATA.iter() {
+    for tool_name in TOOL_METADATA.keys() {
         assert!(!tool_name.is_empty(), "Tool name should not be empty");
     }
 
@@ -385,8 +385,8 @@ fn test_cli_preset_all_values() {
     let filter = ToolFilter::new(config, &options, None);
     let balanced_tools = filter.get_enabled_tools();
     assert!(
-        balanced_tools.len() >= 30 && balanced_tools.len() <= 50,
-        "balanced preset should have 30-50 tools, got {}",
+        balanced_tools.len() >= 30 && balanced_tools.len() <= 60,
+        "balanced preset should have 30-60 tools, got {}",
         balanced_tools.len()
     );
 
@@ -398,8 +398,8 @@ fn test_cli_preset_all_values() {
     let filter = ToolFilter::new(config, &options, None);
     let full_tools = filter.get_enabled_tools();
     assert!(
-        full_tools.len() >= 50 && full_tools.len() <= 60,
-        "full preset should have 50-60 tools, got {}",
+        full_tools.len() >= 50 && full_tools.len() <= 70,
+        "full preset should have 50-70 tools, got {}",
         full_tools.len()
     );
 

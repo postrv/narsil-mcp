@@ -5,7 +5,9 @@
 use anyhow::{anyhow, Result};
 use oxigraph::io::{RdfFormat, RdfParser, RdfSerializer};
 use oxigraph::model::{vocab, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
-use oxigraph::sparql::{QueryResults, QuerySolution, SparqlEvaluator};
+use oxigraph::sparql::{
+    DefaultServiceHandler, QueryResults, QuerySolution, QuerySolutionIter, SparqlEvaluator,
+};
 use oxigraph::store::Store;
 use std::io::{BufReader, Cursor};
 use std::path::Path;
@@ -17,6 +19,25 @@ pub const NARSIL_BASE_IRI: &str = "https://narsilmcp.com/ontology/v1#";
 
 /// Base IRI for code entities.
 pub const CODE_BASE_IRI: &str = "https://narsilmcp.com/code/";
+
+/// Keep graph queries local even if a downstream crate enables Oxigraph HTTP.
+struct LocalOnlyServiceHandler;
+
+impl DefaultServiceHandler for LocalOnlyServiceHandler {
+    type Error = std::io::Error;
+
+    fn handle(
+        &self,
+        _service_name: &NamedNode,
+        _pattern: &spargebra::algebra::GraphPattern,
+        _base_iri: Option<&oxiri::Iri<String>>,
+    ) -> std::result::Result<QuerySolutionIter<'static>, Self::Error> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "External SPARQL services are disabled",
+        ))
+    }
+}
 
 /// Knowledge graph backed by Oxigraph for storing code intelligence data.
 ///
@@ -356,6 +377,7 @@ impl KnowledgeGraph {
     /// ```
     pub fn query(&self, sparql: &str) -> Result<Vec<QuerySolution>> {
         let results = SparqlEvaluator::new()
+            .with_default_service_handler(LocalOnlyServiceHandler)
             .parse_query(sparql)
             .map_err(|e| anyhow!("Failed to parse query: {e}"))?
             .on_store(&self.store)
@@ -386,6 +408,7 @@ impl KnowledgeGraph {
     /// Returns an error if the query is invalid or not an ASK query.
     pub fn ask(&self, sparql: &str) -> Result<bool> {
         let results = SparqlEvaluator::new()
+            .with_default_service_handler(LocalOnlyServiceHandler)
             .parse_query(sparql)
             .map_err(|e| anyhow!("Failed to parse query: {e}"))?
             .on_store(&self.store)
@@ -521,6 +544,34 @@ mod tests {
     fn test_in_memory_graph_creation() {
         let graph = KnowledgeGraph::in_memory().unwrap();
         assert!(graph.is_empty());
+    }
+
+    #[test]
+    fn test_external_service_query_is_rejected() {
+        let graph = KnowledgeGraph::in_memory().unwrap();
+        let error = graph
+            .query("SELECT * WHERE { SERVICE <urn:narsil:test-service> { ?s ?p ?o } }")
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("External SPARQL services are disabled"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn test_external_service_ask_is_rejected() {
+        let graph = KnowledgeGraph::in_memory().unwrap();
+        let error = graph
+            .ask("ASK { SERVICE <urn:narsil:test-service> { ?s ?p ?o } }")
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("External SPARQL services are disabled"),
+            "{error}"
+        );
     }
 
     #[test]

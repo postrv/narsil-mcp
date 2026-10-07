@@ -16,12 +16,16 @@ jobs:
   build:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # Use the same userspace on both Linux architectures. Building on
+          # ubuntu-latest/24.04 requires GLIBC 2.39, which excludes Debian 12.
+          - os: ubuntu-22.04
+            container: ubuntu:22.04
             target: x86_64-unknown-linux-gnu
             artifact: narsil-mcp-linux-x86_64
             binary: narsil-mcp
@@ -30,14 +34,17 @@ jobs:
           # for Raspberry Pi, AWS Graviton, and Apple-silicon-via-Docker
           # users who previously had no prebuilt binary.
           - os: ubuntu-24.04-arm
+            container: ubuntu:22.04
             target: aarch64-unknown-linux-gnu
             artifact: narsil-mcp-linux-aarch64
             binary: narsil-mcp
           - os: macos-latest
+            container: ''
             target: x86_64-apple-darwin
             artifact: narsil-mcp-macos-x86_64
             binary: narsil-mcp
           - os: macos-latest
+            container: ''
             target: aarch64-apple-darwin
             artifact: narsil-mcp-macos-aarch64
             binary: narsil-mcp
@@ -45,11 +52,19 @@ jobs:
           # moving windows-latest image has broken rust-cache during hosted
           # image transitions, which can fail the binary job before compile.
           - os: windows-2022
+            container: ''
             target: x86_64-pc-windows-msvc
             artifact: narsil-mcp-windows-x86_64
             binary: narsil-mcp.exe
 
     steps:
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates clang cmake curl git libssl-dev pkg-config
+
       - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
@@ -60,7 +75,7 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v1-rust-release"
+          prefix-key: "v2-rust-release-jammy"
           key: ${{ matrix.target }}
           cache-on-failure: true
 
@@ -80,20 +95,34 @@ jobs:
       - name: Build release binary
         run: |
           if [ -n "${{ inputs.features }}" ]; then
-            cargo build --release --target ${{ matrix.target }} --features "${{ inputs.features }}"
+            cargo build --locked --release --target ${{ matrix.target }} --features "${{ inputs.features }}"
           else
-            cargo build --release --target ${{ matrix.target }}
+            cargo build --locked --release --target ${{ matrix.target }}
           fi
         shell: bash
+
+      - name: Check Linux runtime linkage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          binary="target/${{ matrix.target }}/release/narsil-mcp"
+          "$binary" --version
+          ldd "$binary"
+          # Fail if a future toolchain/cache introduces a newer GLIBC need.
+          required=$(objdump -T "$binary" | sed -n 's/.*(GLIBC_\([0-9.]*\)).*/\1/p' | sort -Vu | tail -1)
+          test -n "$required"
+          test "$(printf '%s\n' "$required" 2.35 | sort -V | tail -1)" = 2.35
 
       - name: Strip binary (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
         run: |
-          if [[ "${{ matrix.target }}" == *"linux"* ]]; then
-            strip target/${{ matrix.target }}/release/narsil-mcp
-          elif [[ "${{ matrix.target }}" == *"darwin"* ]]; then
-            strip -x target/${{ matrix.target }}/release/narsil-mcp
+          if [[ "$BUILD_TARGET" == *"linux"* ]]; then
+            strip "target/$BUILD_TARGET/release/narsil-mcp"
+          elif [[ "$BUILD_TARGET" == *"darwin"* ]]; then
+            strip -x "target/$BUILD_TARGET/release/narsil-mcp"
           fi
 
       - name: Upload artifact

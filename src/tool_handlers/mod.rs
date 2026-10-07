@@ -152,6 +152,9 @@ impl ToolRegistry {
         registry.register(Box::new(analysis::GetImportGraphHandler));
         registry.register(Box::new(analysis::FindCircularImportsHandler));
         registry.register(Box::new(analysis::FindUnusedExportsHandler));
+        registry.register(Box::new(analysis::ReviewChangeHandler));
+        registry.register(Box::new(analysis::ImpactOfHandler));
+        registry.register(Box::new(analysis::SecurityGateHandler));
 
         // Register graph visualization handler
         registry.register(Box::new(graph::GetCodeGraphHandler));
@@ -272,6 +275,9 @@ mod tests {
         assert!(registry.has_tool("list_repos"));
         assert!(registry.has_tool("find_symbols"));
         assert!(registry.has_tool("search_code"));
+        assert!(registry.has_tool("review_change"));
+        assert!(registry.has_tool("impact_of"));
+        assert!(registry.has_tool("security_gate"));
         assert!(!registry.has_tool("nonexistent_tool"));
     }
 

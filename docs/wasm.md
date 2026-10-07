@@ -1,6 +1,9 @@
 # WebAssembly (Browser) Usage
 
-narsil-mcp can run entirely in the browser via WebAssembly. This provides symbol extraction, search, and similarity analysis without a backend server - perfect for browser-based IDEs, code review tools, or educational platforms.
+This is an experimental source-only integration. `@narsil-mcp/wasm` is not
+published on npm, and the native CLI 1.7.1 release does not qualify or publish
+the WASM build. The build script generates a local `pkg/` package with separate
+version metadata; the examples below describe that experimental interface.
 
 ## Features
 
@@ -64,12 +67,9 @@ brew install emscripten  # macOS
 
 ## Installation
 
-**npm:**
-```bash
-npm install @narsil-mcp/wasm
-# or
-yarn add @narsil-mcp/wasm
-```
+After a successful local build, consume the generated `pkg/` directory from
+your application. There is no public npm package to install. Validate the local
+package and its exports for your chosen build target before using the examples.
 
 ## Basic Usage (JavaScript/TypeScript)
 

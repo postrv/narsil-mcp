@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-10-07
+
+### Added
+
+- **Unified ignore service** for index, watch, merkle, and project-tree walks.
+  Hard-denies `node_modules`, `.pnpm`, `target`, `vendor`, and other package
+  stores even when `.gitignore` is missing. Supports `.narsilignore`.
+- **Watch-mode vendor isolation**: poll only first-party roots, drop package
+  symlink events, and circuit-break bursts over `NARSIL_WATCH_BURST_LIMIT`
+  (default 250) so `pnpm install` cannot reindex the store.
+- **Scale caps** via `NARSIL_MAX_FILE_SIZE`, `NARSIL_MAX_INDEX_FILES`, and
+  `NARSIL_MAX_CACHED_FILES`, plus progress logs during indexing.
+- **`compile_commands.json` scoping** for C/C++ (issue #27). Translation
+  units outside the compilation database are skipped; headers stay in-scope
+  via `-I` / `-isystem` and the TU directory. Disable with
+  `NARSIL_COMPILE_COMMANDS=0`.
+- **File-level indexing progress** on `get_index_status`. Other tools return
+  JSON-RPC `-32001` with an `EAGAIN` progress message until initialization
+  finishes.
+- **Persisted symbol reuse**: restart with `--persist` checks current content
+  hashes and reuses unchanged symbols while rebuilding search indexes and,
+  when enabled, call-graph trees from the current files.
+- **Workflow tools**: `review_change`, `impact_of`, `security_gate` (93 tools).
+
+### Fixed
+
+- `--watch` no longer follows pnpm/npm package symlinks or expands
+  `node_modules` directory events into a full third-party reindex.
+- Generated JS bundles (`.bundle.js`, `.chunk.js`, `.min.*`) are not indexed.
+- Truncated large-repo indexes are reported as **INDEX INCOMPLETE** instead
+  of failing silently.
+- Persisted restarts restore searchable content and caller results, discard
+  deleted symbols, and detect edits that preserve file size and timestamps.
+- Manual `reindex` replaces shared search and embedding indexes so repeated
+  calls do not duplicate documents or retain deleted-file context. A request
+  for one repository currently rebuilds all configured repositories to keep
+  these shared indexes consistent.
+- Linux release builds use Ubuntu 22.04 userspace on both supported
+  architectures and verify a GLIBC 2.35 ceiling for older distribution support.
+- Updated vulnerable crossbeam-epoch, quinn-proto, and rustls lockfile entries.
+- Updated async-trait to avoid its generated-attribute Clippy failure on Rust 1.99.
+- Pull requests build the graph-enabled release binaries after tests and audit pass, before any publication.
+- Release checks and crate publication require the reviewed lockfile and a clean package.
+- Unix release archives restore executable permissions after CI artifact transfer.
+- Compilation-database discovery tests serialize paths correctly on Windows.
+- Rust crate packages omit local `.claude` and `.codex` workspace configuration.
+- Nix packages derive their version from Cargo.toml so release metadata stays aligned.
+- Public graph queries explicitly reject external SPARQL services even when
+  another crate enables Oxigraph's HTTP feature. Two quick-xml advisories remain
+  in a transitive dependency and have documented, scoped applicability exceptions
+  for unreachable XML input paths; they are not represented as dependency fixes.
+
 ## [1.7.0] - 2026-05-12
 
 ### Fixed
