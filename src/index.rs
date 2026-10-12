@@ -458,6 +458,9 @@ pub struct CodeIntelEngine {
     /// Registered repository paths. Behind a lock because `reindex` takes
     /// `&self` yet may register a repo the server was never started with.
     repo_paths: parking_lot::RwLock<Vec<RegisteredRepo>>,
+    async_file_watcher: parking_lot::Mutex<
+        std::sync::Weak<parking_lot::Mutex<crate::persist::AsyncFileWatcher>>,
+    >,
     /// Cached repo metadata
     repos: DashMap<String, RepoMetadata>,
     /// Symbol index: repo -> symbols
@@ -706,6 +709,7 @@ impl CodeIntelEngine {
                     .map(|path| RegisteredRepo::new(path.clone(), RepoOrigin::Configured))
                     .collect(),
             ),
+            async_file_watcher: parking_lot::Mutex::new(std::sync::Weak::new()),
             repos: DashMap::new(),
             symbols: DashMap::new(),
             file_cache: DashMap::new(),
@@ -2855,6 +2859,10 @@ impl CodeIntelEngine {
             return false;
         }
         repos.push(RegisteredRepo::new(path, origin));
+        drop(repos);
+        if let Some(watcher) = self.async_file_watcher.lock().upgrade() {
+            self.watch_registered_paths(&mut watcher.lock());
+        }
         true
     }
 
@@ -5099,32 +5107,39 @@ impl CodeIntelEngine {
     pub fn create_async_file_watcher(
         self: Arc<Self>,
     ) -> Option<(
-        crate::persist::AsyncFileWatcher,
+        Arc<parking_lot::Mutex<crate::persist::AsyncFileWatcher>>,
         tokio::sync::mpsc::Receiver<crate::persist::WatchBatch>,
     )> {
         if !self.options.watch_enabled {
             return None;
         }
 
+        // Serialize the initial path snapshot with repository registration.
+        let mut active = self.async_file_watcher.lock();
         match crate::persist::AsyncFileWatcher::new(Arc::clone(&self)) {
             Ok((mut watcher, rx)) => {
-                for repo_path in &self.registered_repo_paths() {
-                    if repo_path.exists() {
-                        if let Err(e) = watcher.watch(repo_path) {
-                            warn!("Failed to watch {:?}: {}", repo_path, e);
-                        }
-                    }
-                }
-                for dir in self.compile_commands_watch_dirs() {
-                    if let Err(e) = watcher.watch(&dir) {
-                        warn!("Failed to watch compile_commands dir {:?}: {}", dir, e);
-                    }
-                }
+                self.watch_registered_paths(&mut watcher);
+                let watcher = Arc::new(parking_lot::Mutex::new(watcher));
+                *active = Arc::downgrade(&watcher);
                 Some((watcher, rx))
             }
             Err(e) => {
                 warn!("Failed to create async file watcher: {}", e);
                 None
+            }
+        }
+    }
+
+    fn watch_registered_paths(&self, watcher: &mut crate::persist::AsyncFileWatcher) {
+        let paths = self
+            .registered_repo_paths()
+            .into_iter()
+            .chain(self.compile_commands_watch_dirs());
+        for path in paths {
+            if path.exists() && !watcher.watched_paths().contains(&path) {
+                if let Err(error) = watcher.watch(&path) {
+                    warn!("Failed to watch {:?}: {}", path, error);
+                }
             }
         }
     }
@@ -10913,6 +10928,60 @@ similarity index 90%
             history.contains("add lib.rs"),
             "history of the adopted repo: {history}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_repo_adopted_after_watch_startup_reports_new_callers() {
+        let temp = TempDir::new().unwrap();
+        let configured = temp.path().join("configured");
+        let adopted = temp.path().join("adopted");
+        for repo in [&configured, &adopted] {
+            std::fs::create_dir_all(repo.join(".git")).unwrap();
+            write_file(
+                &repo.join("lib.rs"),
+                "pub fn target() {}\npub fn caller() {}\n",
+            );
+        }
+        let engine = Arc::new(
+            CodeIntelEngine::with_options(
+                temp.path().join("index"),
+                vec![configured],
+                EngineOptions {
+                    watch_enabled: true,
+                    call_graph_enabled: true,
+                    ..EngineOptions::default()
+                },
+            )
+            .await
+            .unwrap(),
+        );
+        engine.complete_initialization().await.unwrap();
+        let (_watcher, mut changes) = Arc::clone(&engine).create_async_file_watcher().unwrap();
+        let repo = adopted.to_str().unwrap();
+        engine.reindex(Some(repo)).await.unwrap();
+        assert!(engine
+            .call_graphs
+            .get(repo)
+            .unwrap()
+            .get_callers("target")
+            .is_empty());
+
+        let source = adopted.join("lib.rs");
+        write_file(
+            &source,
+            "pub fn target() {}\npub fn caller() { target(); }\n",
+        );
+        let batch = tokio::time::timeout(std::time::Duration::from_secs(5), changes.recv())
+            .await
+            .expect("no file-change event for the adopted repository")
+            .expect("watcher stopped");
+        assert!(batch.changes.iter().any(|change| change.path == source));
+        engine.process_file_changes(&batch.changes).await.unwrap();
+        drop(batch);
+        let graph = engine.call_graphs.get(repo).unwrap();
+        let callers = graph.get_callers("target");
+        assert_eq!(callers.len(), 1);
+        assert_eq!(callers[0].target, "lib.rs::caller");
     }
 
     /// A repo named by a query is stamped, which is what keeps one in active
