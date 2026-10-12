@@ -749,6 +749,30 @@ lazy_static! {
             aliases: vec!["recent_commits", "recent_changes"],
         });
 
+        map.insert("get_commit_range", ToolMetadata {
+            name: "get_commit_range",
+            description: "List commits in base..branch and their merge-base, oldest first. Requires --git flag.",
+            category: ToolCategory::Git,
+            tags: ["git", "commits", "history", "branch"].iter().copied().collect(),
+            stability: StabilityLevel::Stable,
+            performance: PerformanceImpact::Medium,
+            required_flags: [FeatureFlag::Git].iter().copied().collect(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string"},
+                    "base": {"type": "string", "description": "Exclude commits reachable from this revision"},
+                    "branch": {"type": "string", "description": "Branch or revision to list (default: HEAD)"},
+                    "include_body": {"type": "boolean", "description": "Include commit bodies (default: false)"},
+                    "limit": {"type": "integer", "minimum": 0, "description": "Maximum commits to return (default: 50; 0 = all)"},
+                    "offset": {"type": "integer", "minimum": 0, "description": "Index of the first commit to list, oldest first (default: 0)"}
+                },
+                "required": ["repo", "base"]
+            }),
+            requires_api_key: false,
+            aliases: vec![],
+        });
+
         map.insert("get_hotspots", ToolMetadata {
             name: "get_hotspots",
             description: "Find code hotspots - files with high churn and complexity. Requires --git flag.",

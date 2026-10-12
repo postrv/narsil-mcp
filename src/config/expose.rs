@@ -164,6 +164,7 @@ impl ExposeGroup {
             "get_file_history",
             "get_symbol_history",
             "get_recent_changes",
+            "get_commit_range",
             "get_commit_diff",
             "get_branch_info",
             "get_modified_files",

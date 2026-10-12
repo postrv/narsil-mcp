@@ -43,6 +43,13 @@ pub struct FileCommit {
     pub deletions: usize,
 }
 
+#[derive(Debug)]
+pub struct CommitRange {
+    pub merge_base: String,
+    pub total: usize,
+    pub commits: Vec<FileCommit>,
+}
+
 /// Change frequency data for a file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChangeFrequency {
@@ -323,6 +330,108 @@ impl GitRepo {
         }
 
         self.parse_log_output(&String::from_utf8_lossy(&output.stdout))
+    }
+
+    fn git_output(&self, args: &[&str]) -> Result<String> {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(&self.root)
+            .output()
+            .context("Failed to run git")?;
+        if !output.status.success() {
+            return Err(anyhow!(
+                "git {} failed: {}",
+                args[0],
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    pub fn commit_range(
+        &self,
+        base: &str,
+        branch: &str,
+        include_body: bool,
+        window: crate::response_budget::ListWindow,
+    ) -> Result<CommitRange> {
+        Self::validate_input(base, "base")?;
+        Self::validate_input(branch, "branch")?;
+        let base = self.git_output(&[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &format!("{base}^{{commit}}"),
+        ])?;
+        let branch = self.git_output(&[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &format!("{branch}^{{commit}}"),
+        ])?;
+        let base = base.trim();
+        let branch = branch.trim();
+        let merge_base = self.git_output(&["merge-base", base, branch])?;
+        let range = format!("{base}..{branch}");
+        let total: usize = self
+            .git_output(&["rev-list", "--count", &range, "--"])?
+            .trim()
+            .parse()
+            .context("Invalid git commit count")?;
+        let offset = window.offset.min(total);
+        let remaining = total - offset;
+        let count = if window.limit == 0 {
+            remaining
+        } else {
+            remaining.min(window.limit)
+        };
+        let mut result = CommitRange {
+            merge_base: merge_base.trim().to_string(),
+            total,
+            commits: Vec::new(),
+        };
+        if count == 0 {
+            return Ok(result);
+        }
+
+        // Git applies skip and max-count before reversing the commit order.
+        let skip = total - offset - count;
+        let format = if include_body {
+            "--format=%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%b"
+        } else {
+            "--format=%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00"
+        };
+        let output = self.git_output(&[
+            "log",
+            "--topo-order",
+            "--reverse",
+            "-z",
+            format,
+            &format!("--skip={skip}"),
+            &format!("--max-count={count}"),
+            &range,
+            "--",
+        ])?;
+        let fields: Vec<&str> = output.split_terminator('\0').collect();
+        let mut records = fields.chunks_exact(7);
+        for record in &mut records {
+            result.commits.push(FileCommit {
+                hash: record[0].to_string(),
+                short_hash: record[1].to_string(),
+                author: record[2].to_string(),
+                author_email: record[3].to_string(),
+                timestamp: record[4].parse().context("Invalid git commit timestamp")?,
+                subject: record[5].to_string(),
+                body: record[6].trim_end().to_string(),
+                files_changed: 0,
+                insertions: 0,
+                deletions: 0,
+            });
+        }
+        if !records.remainder().is_empty() {
+            return Err(anyhow!("Incomplete git commit record"));
+        }
+        Ok(result)
     }
 
     /// Calculate change frequency metrics for files
@@ -855,6 +964,130 @@ mod tests {
             args,
             String::from_utf8_lossy(&out.stderr)
         );
+    }
+
+    #[tokio::test]
+    async fn commit_range_paginates_oldest_first_and_keeps_bodies() {
+        use crate::response_budget::ListWindow;
+
+        let directory = TempDir::new().unwrap();
+        let path = directory.path();
+        run_git(path, &["init", "-q", "-b", "base"]);
+        run_git(path, &["commit", "-q", "--allow-empty", "-m", "root"]);
+        run_git(path, &["tag", "fork"]);
+        run_git(path, &["checkout", "-q", "-b", "topic"]);
+        run_git(
+            path,
+            &[
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "first | subject",
+                "-m",
+                "First line\nSecond | line",
+            ],
+        );
+        for subject in ["second", "third"] {
+            run_git(path, &["commit", "-q", "--allow-empty", "-m", subject]);
+        }
+        run_git(path, &["checkout", "-q", "base"]);
+        run_git(
+            path,
+            &["commit", "-q", "--allow-empty", "-m", "base advanced"],
+        );
+        let git = GitRepo::new(path).unwrap();
+        let first = git
+            .commit_range("base", "topic", true, ListWindow::new(0, 2))
+            .unwrap();
+        assert_eq!(first.total, 3);
+        assert_eq!(
+            first.merge_base,
+            std::fs::read_to_string(path.join(".git/refs/tags/fork"))
+                .unwrap()
+                .trim()
+        );
+        assert_eq!(first.commits.len(), 2);
+        assert_eq!(first.commits[0].subject, "first | subject");
+        assert_eq!(first.commits[0].body, "First line\nSecond | line");
+        assert_eq!(first.commits[1].subject, "second");
+
+        let last = git
+            .commit_range("base", "topic", false, ListWindow::new(2, 2))
+            .unwrap();
+        assert_eq!(last.total, 3);
+        assert_eq!(last.commits.len(), 1);
+        assert_eq!(last.commits[0].subject, "third");
+        let all = git
+            .commit_range("base", "topic", false, ListWindow::new(0, 0))
+            .unwrap();
+        assert_eq!(all.commits.len(), 3);
+        assert!(all.commits.iter().all(|commit| commit.body.is_empty()));
+        assert_eq!(all.commits[0].hash, first.commits[0].hash);
+        assert_eq!(all.commits[2].hash, last.commits[0].hash);
+        assert!(git
+            .commit_range("base", "topic", false, ListWindow::new(99, 2))
+            .unwrap()
+            .commits
+            .is_empty());
+        let empty = git
+            .commit_range("topic", "topic", false, ListWindow::new(0, 2))
+            .unwrap();
+        assert_eq!(empty.total, 0);
+        assert!(empty.commits.is_empty());
+        for base in ["missing", "--all"] {
+            assert!(git
+                .commit_range(base, "topic", false, ListWindow::new(0, 2))
+                .is_err());
+        }
+        assert!(git
+            .commit_range("base", "missing", false, ListWindow::new(0, 2))
+            .is_err());
+
+        let index = TempDir::new().unwrap();
+        let engine = crate::index::CodeIntelEngine::with_options(
+            index.path().to_path_buf(),
+            vec![path.to_path_buf()],
+            crate::index::EngineOptions {
+                git_enabled: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        engine.complete_initialization().await.unwrap();
+        let output = engine
+            .get_commit_range(
+                path.to_str().unwrap(),
+                "base",
+                "topic",
+                true,
+                ListWindow::new(0, 2),
+            )
+            .await
+            .unwrap();
+        assert!(
+            output.contains(&format!("Merge base: `{}`", first.merge_base)),
+            "{output}"
+        );
+        assert!(output.contains("First line\n  Second | line"), "{output}");
+        assert!(output.contains("get_commit_range(offset=2)"), "{output}");
+        assert!(!output.contains(&last.commits[0].hash), "{output}");
+
+        run_git(path, &["checkout", "-q", "-b", "side", "fork"]);
+        run_git(path, &["commit", "-q", "--allow-empty", "-m", "side"]);
+        run_git(path, &["checkout", "-q", "topic"]);
+        run_git(path, &["merge", "-q", "--no-ff", "-m", "merge side", "side"]);
+        let merged = git
+            .commit_range("base", "topic", false, ListWindow::new(0, 0))
+            .unwrap();
+        assert_eq!(merged.total, 5);
+        for (offset, expected) in merged.commits.iter().enumerate() {
+            let page = git
+                .commit_range("base", "topic", false, ListWindow::new(offset, 1))
+                .unwrap();
+            assert_eq!(page.commits[0].hash, expected.hash);
+        }
     }
 
     /// A submodule's file is absent from the superproject's HEAD, so blame and

@@ -6140,6 +6140,42 @@ impl CodeIntelEngine {
         Ok(output)
     }
 
+    pub async fn get_commit_range(
+        &self,
+        repo: &str,
+        base: &str,
+        branch: &str,
+        include_body: bool,
+        window: response_budget::ListWindow,
+    ) -> Result<String> {
+        let repo_key = self.resolve_repo(repo)?;
+        let git_repo = self.git_repos.get(&repo_key).ok_or_else(|| {
+            anyhow!("Git not available for {}. Enable with --git flag.", repo_key)
+        })?;
+        let range = git_repo.commit_range(base, branch, include_body, window)?;
+        let mut output = format!(
+            "# Commits in `{base}..{branch}`\n\nMerge base: `{}`\n\nFound {} commits (oldest first)\n\n",
+            range.merge_base, range.total
+        );
+        for commit in &range.commits {
+            output.push_str(&format!("- `{}` {}\n", commit.hash, commit.subject));
+            if include_body && !commit.body.is_empty() {
+                for line in commit.body.lines() {
+                    output.push_str(&format!("  {line}\n"));
+                }
+                output.push('\n');
+            }
+        }
+        let page = response_budget::ListCap {
+            tool: "get_commit_range",
+            total: range.total,
+            shown: range.commits.len(),
+            offset: window.offset.min(range.total),
+        };
+        output.push_str(&page.footer());
+        Ok(output)
+    }
+
     /// Get code hotspots (complex + frequently changed)
     pub async fn get_hotspots(
         &self,

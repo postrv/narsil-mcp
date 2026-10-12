@@ -92,6 +92,7 @@ impl ToolRegistry {
         registry.register(Box::new(git::GetBlameHandler));
         registry.register(Box::new(git::GetFileHistoryHandler));
         registry.register(Box::new(git::GetRecentChangesHandler));
+        registry.register(Box::new(git::GetCommitRangeHandler));
         registry.register(Box::new(git::GetHotspotsHandler));
         registry.register(Box::new(git::GetContributorsHandler));
         registry.register(Box::new(git::GetCommitDiffHandler));

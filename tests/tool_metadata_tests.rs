@@ -9,11 +9,11 @@ use std::collections::HashSet;
 
 #[test]
 fn test_tool_metadata_complete() {
-    // All 42 tools should have metadata
+    // All 43 tools should have metadata
     assert_eq!(
         TOOL_METADATA.len(),
-        42,
-        "Expected 42 tools to have metadata"
+        43,
+        "Expected 43 tools to have metadata"
     );
 
     // Each tool should have complete, valid metadata
@@ -75,6 +75,7 @@ fn test_feature_flag_requirements() {
         "get_blame",
         "get_file_history",
         "get_recent_changes",
+        "get_commit_range",
         "get_hotspots",
         "get_contributors",
         "get_commit_diff",
@@ -246,8 +247,8 @@ fn test_category_counts() {
     );
     assert_eq!(
         count_by_category(ToolCategory::Git),
-        9,
-        "Git category should have 9 tools"
+        10,
+        "Git category should have 10 tools"
     );
     assert_eq!(
         count_by_category(ToolCategory::Lsp),
