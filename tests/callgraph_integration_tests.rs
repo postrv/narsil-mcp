@@ -636,44 +636,53 @@ SYSCALL_DEFINE6(io_uring_enter, unsigned int, fd, u32, to_submit,
 
 #[test]
 fn test_c_preprocessor_split_if_is_a_degraded_region() {
-    // Reproduces a real libfuse function: an `if` whose condition and opening
-    // brace are split across #if/#else/#endif, sharing one closing brace.
-    // tree-sitter-c cannot parse this into a function_definition — it folds
-    // the whole body into a single ERROR node — so the function and the call
-    // inside it are silently absent from the call graph unless flagged.
+    // Split opening braces make the parser absorb later definitions into ERROR.
     let parser = LanguageParser::new().unwrap();
     let call_graph = CallGraph::new();
 
     let code = r#"
-int fuse_send_reply_iov_nofree(int req, int error, int count)
+int damaged(int value)
 {
-	int out;
-
-#if __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 32
-	const char *str = strerrordesc_np(error * -1);
-	if ((str == 0 && error != 0) || error > 0) {
+#if FEATURE
+    if (value > 0) {
 #else
-	if (error <= -1000 || error > 0) {
+    if (value > 1) {
 #endif
-		fuse_log(error);
-		error = -1;
-	}
+        record(value);
+    }
 
-	return fuse_send_msg(req, out, count);
+    return external(value);
+}
+
+static int caller(int value)
+{
+    return damaged(value);
+}
+
+static int later_function(int value)
+{
+    return caller(value) + unrelated(value);
 }
 "#;
 
-    let tree = parser.parse_to_tree(Path::new("fuse_lowlevel.c"), code).unwrap();
-    let files = vec![("fuse_lowlevel.c".to_string(), code.to_string(), tree)];
+    let tree = parser.parse_to_tree(Path::new("sample.c"), code).unwrap();
+    let files = vec![("sample.c".to_string(), code.to_string(), tree)];
     call_graph.build_from_files(&files).unwrap();
 
-    // The function is invisible to the call graph — this is the bug being
-    // flagged, not fixed, by this patch.
     assert!(
-        call_graph.get_callees("fuse_send_reply_iov_nofree").is_empty(),
-        "fuse_send_reply_iov_nofree should have no recorded callees — the point \
-         of this test is that tree-sitter cannot see its body at all"
+        call_graph.get_callees("damaged").is_empty(),
+        "the parser cannot identify the damaged function body"
     );
+
+    let callees = call_graph.get_callees("caller");
+    assert_eq!(callees.len(), 1);
+    assert_eq!(callees[0].target, "damaged");
+    let callers = call_graph.get_callers("damaged");
+    assert_eq!(callers.len(), 1);
+    assert_eq!(callers[0].target, "sample.c::caller");
+    let callers = call_graph.get_callers("unrelated");
+    assert_eq!(callers.len(), 1);
+    assert_eq!(callers[0].target, "sample.c::later_function");
 
     let (regions, files) = call_graph
         .degraded_summary()

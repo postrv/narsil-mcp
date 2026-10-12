@@ -585,7 +585,8 @@ impl CallGraph {
                 if let Some(region) = degraded_region_for(node, source) {
                     degraded.push(region);
                 }
-            } else if cursor.goto_first_child() {
+            }
+            if cursor.goto_first_child() {
                 depth += 1;
                 continue;
             }
@@ -1480,7 +1481,23 @@ impl CallGraph {
 
     /// Get direct callers of a function (with fuzzy matching)
     pub fn get_callers(&self, function: &str) -> Vec<CallEdge> {
-        self.edges_of(function, |node| &node.called_by)
+        if !self.keys_for_query(function).is_empty() {
+            return self.edges_of(function, |node| &node.called_by);
+        }
+
+        let mut callers = Vec::new();
+        for node in self.nodes.iter() {
+            for edge in &node.calls {
+                if edge.target == function {
+                    callers.push(CallEdge {
+                        target: node.key().clone(),
+                        scope_hint: None,
+                        ..edge.clone()
+                    });
+                }
+            }
+        }
+        Self::fold_duplicate_sites(callers)
     }
 
     /// Get functions called by a function (with fuzzy matching)
