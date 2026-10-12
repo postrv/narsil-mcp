@@ -248,6 +248,36 @@ impl CallGraph {
 
     /// Remove the definitions and call edges contributed by one file.
     pub fn remove_file(&self, file_path: &str) {
+        self.remove_file_edges(file_path, None);
+    }
+
+    pub(crate) fn replace_file(&self, file: (String, String, Tree)) -> Result<()> {
+        let mut incoming = Vec::new();
+        self.remove_file_edges(&file.0, Some(&mut incoming));
+        self.build_from_files(&[file])?;
+        for (caller_key, edge) in incoming {
+            if !self.nodes.contains_key(&edge.target) {
+                continue;
+            }
+            if let Some(mut caller) = self.nodes.get_mut(&caller_key) {
+                caller.calls.push(edge.clone());
+            }
+            if let Some(mut callee) = self.nodes.get_mut(&edge.target) {
+                callee.called_by.push(CallEdge {
+                    target: caller_key,
+                    scope_hint: None,
+                    ..edge
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn remove_file_edges(
+        &self,
+        file_path: &str,
+        mut incoming: Option<&mut Vec<(String, CallEdge)>>,
+    ) {
         self.degraded.remove(file_path);
 
         let function_names = self
@@ -276,10 +306,20 @@ impl CallGraph {
         }
 
         for mut node in self.nodes.iter_mut() {
+            let caller_key = node.key().clone();
             node.calls.retain(|edge| {
-                edge.file_path != file_path
-                    && !removed_names.contains(&edge.target)
-                    && !removed_bare_names.contains(edge.target.as_str())
+                if edge.file_path == file_path {
+                    return false;
+                }
+                if removed_names.contains(&edge.target)
+                    || removed_bare_names.contains(edge.target.as_str())
+                {
+                    if let Some(saved) = incoming.as_mut() {
+                        saved.push((caller_key.clone(), edge.clone()));
+                    }
+                    return false;
+                }
+                true
             });
             node.called_by.retain(|edge| edge.file_path != file_path);
         }
@@ -2008,6 +2048,48 @@ mod tests {
         let graph = CallGraph::new();
         assert_eq!(graph.nodes.len(), 0);
         assert_eq!(graph.file_functions.len(), 0);
+    }
+
+    #[test]
+    fn replacing_a_callee_file_preserves_unchanged_call_sites() {
+        let parser = crate::parser::LanguageParser::new().unwrap();
+        let graph = CallGraph::new();
+        let mut files = Vec::new();
+        for (path, content) in [
+            ("callee.c", "void kept(void) {}\nvoid removed(void) {}"),
+            (
+                "caller.c",
+                "void caller(void) {\nkept();\nkept();\nremoved();\n}",
+            ),
+        ] {
+            let tree = parser
+                .parse_to_tree(std::path::Path::new(path), content)
+                .unwrap();
+            files.push((path.to_string(), content.to_string(), tree));
+        }
+        graph.build_from_files(&files).unwrap();
+        assert_eq!(graph.get_callers("kept").len(), 2);
+
+        let content = "void kept(void) { kept(); }";
+        let tree = parser
+            .parse_to_tree(std::path::Path::new("callee.c"), content)
+            .unwrap();
+        graph
+            .replace_file(("callee.c".to_string(), content.to_string(), tree))
+            .unwrap();
+        let calls = graph.get_callees("caller");
+        assert_eq!(calls.len(), 2);
+        assert!(calls.iter().all(|edge| edge.target == "callee.c::kept"));
+        assert_eq!(
+            calls.iter().map(|edge| edge.line).collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert_eq!(graph.get_callers("kept").len(), 3);
+        assert_eq!(graph.get_callees("kept").len(), 1);
+        assert!(graph.find_function("removed").is_none());
+
+        graph.remove_file("callee.c");
+        assert!(graph.get_callees("caller").is_empty());
     }
 
     #[test]

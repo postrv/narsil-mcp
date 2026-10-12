@@ -5566,12 +5566,11 @@ impl CodeIntelEngine {
                                 if let (Some(call_graph), Some(tree)) =
                                     (self.call_graphs.get(&repo_name), parsed.tree.clone())
                                 {
-                                    call_graph.remove_file(&rel_path);
-                                    call_graph.build_from_files(&[(
+                                    call_graph.replace_file((
                                         rel_path.clone(),
                                         content.clone(),
                                         tree,
-                                    )])?;
+                                    ))?;
                                 }
                             }
 
