@@ -954,6 +954,12 @@ impl CallGraph {
             .map(|v| v.clone())
             .unwrap_or_default();
 
+        if matches!(caller_file.rsplit('.').next(), Some("py" | "pyi")) {
+            candidates.retain(|key| {
+                matches!(file_of_key(key).rsplit('.').next(), Some("py" | "pyi"))
+            });
+        }
+
         match candidates.len() {
             0 => bare_name.to_string(),
             1 => candidates.remove(0),
@@ -1060,7 +1066,19 @@ impl CallGraph {
                 "field_expression" | "member_expression" | "attribute" => {
                     // Method call: extract the method name
                     if let Some(method) = Self::get_last_identifier(child, source) {
-                        target = Some(method);
+                        target = if kind == "attribute" {
+                            let receiver = child
+                                .child_by_field_name("object")?
+                                .utf8_text(source)
+                                .ok()?;
+                            if matches!(receiver, "self" | "cls") {
+                                Some(method)
+                            } else {
+                                Some(child.utf8_text(source).ok()?.to_string())
+                            }
+                        } else {
+                            Some(method)
+                        };
                         call_type = CallType::Method;
                     }
                 }
@@ -2563,6 +2581,67 @@ class TestRunner:
             .map(|edge| edge.target)
             .collect();
         assert_eq!(callers, vec!["run-tests.py::run_all".to_string()]);
+    }
+
+    #[test]
+    fn python_calls_do_not_resolve_to_unrelated_functions() {
+        let python = "\
+import client
+
+def sample_fn(reader, mapping):
+    def execute():
+        pass
+    reader.fetch()
+    mapping.lookup('key')
+    list(mapping)
+    client.execute()
+    helper()
+";
+        let go = "\
+package other
+func fetch() {}
+func lookup() {}
+func list() {}
+";
+        let parser = crate::parser::LanguageParser::new().unwrap();
+        let mut files = Vec::new();
+        for (path, source) in [
+            ("sample.py", python),
+            ("other.go", go),
+            ("helpers.py", "def helper():\n    pass\n"),
+        ] {
+            let tree = parser
+                .parse_to_tree(std::path::Path::new(path), source)
+                .unwrap();
+            files.push((path.to_string(), source.to_string(), tree));
+        }
+        let graph = CallGraph::new();
+        graph.build_from_files(&files).unwrap();
+
+        let mut targets: Vec<String> = graph
+            .get_callees("sample_fn")
+            .into_iter()
+            .map(|edge| edge.target)
+            .collect();
+        targets.sort();
+        assert_eq!(
+            targets,
+            vec![
+                "client.execute",
+                "helpers.py::helper",
+                "list",
+                "mapping.lookup",
+                "reader.fetch"
+            ]
+        );
+        for name in [
+            "other.go::fetch",
+            "other.go::lookup",
+            "other.go::list",
+            "sample.py::execute",
+        ] {
+            assert!(graph.get_callers(name).is_empty(), "false caller of {name}");
+        }
     }
 
     #[test]
