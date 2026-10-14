@@ -1248,8 +1248,9 @@ impl CodeIntelEngine {
 
     /// Persisted per-file `(content_hash, symbols)` for a repo, keyed by the
     /// repo-relative path, so a fingerprint-triggered rebuild can reuse unchanged
-    /// files' symbols instead of re-augmenting them. None when persistence is off
-    /// or no prior index exists. Files are persisted only when they have at least
+    /// files' symbols instead of re-augmenting them. None when persistence is off,
+    /// no prior index exists, or another [`crate::persist::INDEX_LOGIC_VERSION`]
+    /// built it. Files are persisted only when they have at least
     /// one symbol, whose `file_path` is the repo-relative path.
     fn load_prior_file_symbols(
         &self,
@@ -1257,6 +1258,10 @@ impl CodeIntelEngine {
     ) -> Option<HashMap<String, (String, Vec<Symbol>)>> {
         let store = self.index_store.as_ref()?;
         let persisted = store.load_repo(repo_path).ok()?;
+        // An older indexer would extract or merge the same content differently.
+        if persisted.logic_version != crate::persist::INDEX_LOGIC_VERSION {
+            return None;
+        }
         let mut by_rel: HashMap<String, (String, Vec<Symbol>)> = HashMap::new();
         for file_meta in persisted.files.into_values() {
             if let Some(rel) = file_meta.symbols.first().map(|s| s.file_path.clone()) {
@@ -10851,6 +10856,36 @@ similarity index 90%
         let all = engine.get_index_status(None).await.unwrap();
         assert!(all.contains(&format!("`{}`", key_b)), "{all}");
         assert!(all.contains("## Enabled Features"), "{all}");
+    }
+
+    /// Regression: after an INDEX_LOGIC_VERSION bump, unchanged C/C++ files
+    /// reused the symbols the older indexer had persisted.
+    #[tokio::test]
+    async fn prior_symbols_from_another_logic_version_are_not_reused() {
+        let temp = TempDir::new().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join("lib.rs"), "pub fn f() -> u32 { 1 }\n").unwrap();
+        let engine = CodeIntelEngine::with_options(
+            temp.path().join("index"),
+            vec![repo.clone()],
+            EngineOptions {
+                persist_enabled: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        engine.complete_initialization().await.unwrap();
+
+        let prior = engine.load_prior_file_symbols(&repo).unwrap();
+        assert!(prior.contains_key("lib.rs"), "{:?}", prior.keys());
+
+        let store = engine.index_store.as_ref().unwrap();
+        let mut persisted = store.load_repo(&repo).unwrap();
+        persisted.logic_version = crate::persist::INDEX_LOGIC_VERSION - 1;
+        store.save_full(&persisted).unwrap();
+        assert!(engine.load_prior_file_symbols(&repo).is_none());
     }
 
     /// The sweep exists to bound what stdio delegation adds to a long-running
