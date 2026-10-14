@@ -61,7 +61,7 @@ pub struct FileMetadata {
 /// form — so an already-indexed repo rebuilds on next load even though its git
 /// HEAD, compile_commands.json, and serialization layout are all unchanged. The
 /// value is persisted in the redb header and compared at load time.
-pub const INDEX_LOGIC_VERSION: u32 = 6;
+pub const INDEX_LOGIC_VERSION: u32 = 7;
 
 /// Persisted index structure
 #[derive(Debug, Clone, Serialize, Deserialize)]

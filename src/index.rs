@@ -10022,6 +10022,9 @@ fn merge_symbols(existing: &mut Vec<Symbol>, incoming: Vec<Symbol>, source: Sour
 /// when it outranks the current confirmer and actually carries them.
 fn fold_symbol(existing: &mut Symbol, incoming: Symbol, source: SourceSet) {
     let old_canonical = existing.confirmed_by.highest();
+    // tree-sitter parsed the file as it is now; an LSP server may answer from
+    // its index of an older version, with an end line in unrelated code.
+    let keep_parsed_end = existing.confirmed_by.contains(SourceSet::TREE_SITTER);
     existing.confirmed_by.insert(source);
 
     if source.rank() > old_canonical.rank() {
@@ -10032,7 +10035,9 @@ fn fold_symbol(existing: &mut Symbol, incoming: Symbol, source: SourceSet) {
             });
         }
         existing.start_line = incoming.start_line;
-        existing.end_line = incoming.end_line;
+        if !keep_parsed_end {
+            existing.end_line = incoming.end_line;
+        }
 
         // Metadata follows the highest-priority source that supplies it.
         if incoming.kind != SymbolKind::Unknown {
@@ -11284,6 +11289,40 @@ similarity index 90%
         assert_eq!(foo.line_conflicts.len(), 1);
         assert_eq!(foo.line_conflicts[0].source, SourceSet::TREE_SITTER);
         assert_eq!(foo.line_conflicts[0].line, 10);
+    }
+
+    /// Regression: a function ending at line 20 was reported to end at line
+    /// 90, the end line ccls gave from its index of an older file version.
+    #[test]
+    fn merge_keeps_the_end_line_tree_sitter_parsed() {
+        let mut existing = vec![Symbol {
+            end_line: 20,
+            ..sym("foo", 10, SourceSet::TREE_SITTER)
+        }];
+        merge_symbols(
+            &mut existing,
+            vec![Symbol {
+                end_line: 90,
+                ..sym("foo", 11, SourceSet::CCLS)
+            }],
+            SourceSet::CCLS,
+        );
+
+        assert_eq!(existing.len(), 1);
+        assert_eq!(existing[0].start_line, 11);
+        assert_eq!(existing[0].end_line, 20);
+
+        // Without a tree-sitter parse, the backend's end line is all there is.
+        let mut gtags_only = vec![sym("foo", 10, SourceSet::GTAGS)];
+        merge_symbols(
+            &mut gtags_only,
+            vec![Symbol {
+                end_line: 30,
+                ..sym("foo", 11, SourceSet::CCLS)
+            }],
+            SourceSet::CCLS,
+        );
+        assert_eq!(gtags_only[0].end_line, 30);
     }
 
     #[test]
