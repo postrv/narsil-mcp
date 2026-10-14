@@ -6473,11 +6473,10 @@ impl CodeIntelEngine {
 
     /// Get status of the search index
     pub async fn get_index_status(&self, repo: Option<&str>) -> Result<String> {
-        // Resolve the optional repo filter to a canonical path; an unknown or
-        // empty value is treated as "no filter" rather than an error so the
-        // overall status is always retrievable.
+        // An unknown repo is an error: answering with every other repo's
+        // status read as if the requested one were indexed or absent.
         let repo_filter: Option<String> = match repo {
-            Some(r) if !r.is_empty() => self.resolve_repo(r).ok(),
+            Some(r) if !r.is_empty() => Some(self.resolve_repo(r)?),
             _ => None,
         };
 
@@ -6517,52 +6516,55 @@ impl CodeIntelEngine {
             indexed_repos, total_repos, progress
         ));
 
-        let stats = self.search_index.stats();
-        output.push_str(&format!("**Total Documents**: {}\n", stats.total_documents));
-        output.push_str(&format!("**Total Terms**: {}\n", stats.total_terms));
-        output.push_str(&format!(
-            "**Avg Document Length**: {:.1} tokens\n\n",
-            stats.avg_doc_length
-        ));
+        // Server-wide sections would bury the one repo section asked for.
+        if repo_filter.is_none() {
+            let stats = self.search_index.stats();
+            output.push_str(&format!("**Total Documents**: {}\n", stats.total_documents));
+            output.push_str(&format!("**Total Terms**: {}\n", stats.total_terms));
+            output.push_str(&format!(
+                "**Avg Document Length**: {:.1} tokens\n\n",
+                stats.avg_doc_length
+            ));
 
-        // Feature flags section
-        output.push_str("## Enabled Features\n\n");
-        output.push_str(&format!(
-            "- **Git integration**: {}\n",
-            if self.options.git_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            }
-        ));
-        output.push_str(&format!(
-            "- **Call graph analysis**: {}\n",
-            if self.options.call_graph_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            }
-        ));
-        output.push_str(&format!(
-            "- **Index persistence**: {}\n",
-            if self.options.persist_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            }
-        ));
-        output.push_str(&format!(
-            "- **Watch mode**: {}\n\n",
-            if self.options.watch_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            }
-        ));
+            // Feature flags section
+            output.push_str("## Enabled Features\n\n");
+            output.push_str(&format!(
+                "- **Git integration**: {}\n",
+                if self.options.git_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
+            output.push_str(&format!(
+                "- **Call graph analysis**: {}\n",
+                if self.options.call_graph_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
+            output.push_str(&format!(
+                "- **Index persistence**: {}\n",
+                if self.options.persist_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
+            output.push_str(&format!(
+                "- **Watch mode**: {}\n\n",
+                if self.options.watch_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
 
-        output.push_str("## Document Types\n\n");
-        for (doc_type, count) in &stats.doc_types {
-            output.push_str(&format!("- {:?}: {}\n", doc_type, count));
+            output.push_str("## Document Types\n\n");
+            for (doc_type, count) in &stats.doc_types {
+                output.push_str(&format!("- {:?}: {}\n", doc_type, count));
+            }
         }
 
         output.push_str("\n## Repositories\n\n");
@@ -6617,7 +6619,14 @@ impl CodeIntelEngine {
             }
         }
 
-        output.push_str(&self.memory_report().render_markdown());
+        match &repo_filter {
+            // Registered, but its first index pass has not finished.
+            Some(key) if !self.repos.contains_key(key) => {
+                output.push_str(&format!("### {}\n- Not indexed yet\n\n", key));
+            }
+            Some(_) => {}
+            None => output.push_str(&self.memory_report().render_markdown()),
+        }
 
         Ok(output)
     }
@@ -10805,6 +10814,43 @@ similarity index 90%
         drop(window);
         assert!(engine.try_query_lease(&key_a).await.is_some());
         assert!(engine.try_query_lease(&key_b).await.is_some());
+    }
+
+    /// Regression: a repo the server did not know got the status of every
+    /// other repo, which read as if it were indexed or simply missing.
+    #[tokio::test]
+    async fn index_status_answers_for_the_requested_repo_only() {
+        let temp = TempDir::new().unwrap();
+        let repo_a = temp.path().join("repo_a");
+        let repo_b = temp.path().join("repo_b");
+        let unknown = temp.path().join("unknown");
+        for repo in [&repo_a, &repo_b, &unknown] {
+            std::fs::create_dir_all(repo.join(".git")).unwrap();
+            std::fs::write(repo.join("lib.rs"), "pub fn f() -> u32 { 1 }\n").unwrap();
+        }
+        let engine = CodeIntelEngine::new(
+            temp.path().join("index"),
+            vec![repo_a.clone(), repo_b.clone()],
+        )
+        .await
+        .unwrap();
+        engine.complete_initialization().await.unwrap();
+        let key_a = canonical_repo_key(&repo_a).unwrap();
+        let key_b = canonical_repo_key(&repo_b).unwrap();
+
+        assert!(engine
+            .get_index_status(Some(unknown.to_str().unwrap()))
+            .await
+            .is_err());
+
+        let scoped = engine.get_index_status(Some(&key_a)).await.unwrap();
+        assert!(scoped.contains(&format!("`{}`", key_a)), "{scoped}");
+        assert!(!scoped.contains(&format!("`{}`", key_b)), "{scoped}");
+        assert!(!scoped.contains("## Enabled Features"), "{scoped}");
+
+        let all = engine.get_index_status(None).await.unwrap();
+        assert!(all.contains(&format!("`{}`", key_b)), "{all}");
+        assert!(all.contains("## Enabled Features"), "{all}");
     }
 
     /// The sweep exists to bound what stdio delegation adds to a long-running
