@@ -1565,7 +1565,7 @@ mod git_tests {
         assert!(repo.is_ok());
 
         let repo = repo.unwrap();
-        let blame_result = repo.blame("Cargo.toml");
+        let blame_result = repo.blame("Cargo.toml", None);
 
         // If the file has been committed and we get blame info, validate it
         // Note: File might exist but have no commit history yet (e.g., new repo)
@@ -1617,7 +1617,7 @@ mod git_tests {
         let repo = repo.unwrap();
 
         // Test that file paths starting with '-' are rejected
-        let result = repo.blame("-suspicious-file.txt");
+        let result = repo.blame("-suspicious-file.txt", None);
         assert!(
             result.is_err(),
             "Should reject file paths starting with '-'"
@@ -1630,7 +1630,7 @@ mod git_tests {
         );
 
         // Test null byte rejection
-        let result = repo.blame("file\0with\0null");
+        let result = repo.blame("file\0with\0null", None);
         assert!(result.is_err(), "Should reject file paths with null bytes");
 
         let err_msg = format!("{}", result.unwrap_err());
@@ -1649,7 +1649,7 @@ mod git_tests {
         let repo = repo.unwrap();
 
         // Test blame_range on a subset of lines
-        let result = repo.blame_range("Cargo.toml", 1, 5);
+        let result = repo.blame_range("Cargo.toml", 1, 5, None);
 
         // If successful, verify the range
         if let Ok(blame) = result {

@@ -29,7 +29,10 @@ impl ToolHandler for GetBlameHandler {
         let path = args.get_str("path").unwrap_or("");
         let start_line = args.get_u64("start_line").map(|v| v as usize);
         let end_line = args.get_u64("end_line").map(|v| v as usize);
-        engine.get_blame(repo, path, start_line, end_line).await
+        let revision = args.get_str("revision");
+        engine
+            .get_blame(repo, path, start_line, end_line, revision)
+            .await
     }
 }
 

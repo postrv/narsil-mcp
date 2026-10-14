@@ -5826,11 +5826,18 @@ impl CodeIntelEngine {
         path: &str,
         start_line: Option<usize>,
         end_line: Option<usize>,
+        revision: Option<&str>,
     ) -> Result<String> {
         let repo_key = self.resolve_repo(repo)?;
         let repo_path = PathBuf::from(&repo_key);
-        // Validate path to prevent traversal attacks
-        validate_path(&repo_path, path)?;
+        // Validate path to prevent traversal attacks. At a revision the file
+        // may no longer exist in the working tree.
+        match revision {
+            Some(_) => validate_pathspec(path)?,
+            None => {
+                validate_path(&repo_path, path)?;
+            }
+        }
 
         let git_repo = self.git_repos.get(&repo_key).ok_or_else(|| {
             anyhow!(
@@ -5840,8 +5847,8 @@ impl CodeIntelEngine {
         })?;
 
         let blame = match (start_line, end_line) {
-            (Some(start), Some(end)) => git_repo.blame_range(path, start, end)?,
-            _ => git_repo.blame(path)?,
+            (Some(start), Some(end)) => git_repo.blame_range(path, start, end, revision)?,
+            _ => git_repo.blame(path, revision)?,
         };
 
         Ok(git_repo.blame_markdown(&blame))

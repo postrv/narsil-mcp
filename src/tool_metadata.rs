@@ -700,7 +700,8 @@ lazy_static! {
                     "repo": {"type": "string"},
                     "path": {"type": "string", "description": "File path relative to repository"},
                     "start_line": {"type": "integer", "description": "Start line for blame range"},
-                    "end_line": {"type": "integer", "description": "End line for blame range"}
+                    "end_line": {"type": "integer", "description": "End line for blame range"},
+                    "revision": {"type": "string", "description": "Commit to blame at, e.g. a hash or 'HEAD~1' (default: working tree)"}
                 },
                 "required": ["repo", "path"]
             }),

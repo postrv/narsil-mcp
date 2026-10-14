@@ -146,13 +146,18 @@ impl GitRepo {
         }
     }
 
-    /// Get blame information for a file
-    pub fn blame(&self, file_path: &str) -> Result<Vec<BlameInfo>> {
+    /// Get blame information for a file, at `revision` or in the working tree
+    pub fn blame(&self, file_path: &str, revision: Option<&str>) -> Result<Vec<BlameInfo>> {
         Self::validate_input(file_path, "file_path")?;
+        if let Some(revision) = revision {
+            Self::validate_input(revision, "revision")?;
+        }
         let (work_tree, file_path) = self.work_tree_for(file_path);
 
         let output = Command::new("git")
-            .args(["blame", "--line-porcelain", &file_path])
+            .args(["blame", "--line-porcelain"])
+            .args(revision)
+            .args(["--", &file_path])
             .current_dir(&work_tree)
             .output()
             .context("Failed to run git blame")?;
@@ -214,18 +219,24 @@ impl GitRepo {
         Ok(results)
     }
 
-    /// Get blame for a specific line range
-    pub fn blame_range(&self, file_path: &str, start: usize, end: usize) -> Result<Vec<BlameInfo>> {
+    /// Get blame for a specific line range, at `revision` or in the working tree
+    pub fn blame_range(
+        &self,
+        file_path: &str,
+        start: usize,
+        end: usize,
+        revision: Option<&str>,
+    ) -> Result<Vec<BlameInfo>> {
         Self::validate_input(file_path, "file_path")?;
+        if let Some(revision) = revision {
+            Self::validate_input(revision, "revision")?;
+        }
         let (work_tree, file_path) = self.work_tree_for(file_path);
 
         let output = Command::new("git")
-            .args([
-                "blame",
-                "--line-porcelain",
-                &format!("-L{},{}", start, end),
-                &file_path,
-            ])
+            .args(["blame", "--line-porcelain", &format!("-L{},{}", start, end)])
+            .args(revision)
+            .args(["--", &file_path])
             .current_dir(&work_tree)
             .output()
             .context("Failed to run git blame")?;
@@ -1125,7 +1136,7 @@ mod tests {
         let repo = GitRepo::new(&super_project).unwrap();
 
         let blame = repo
-            .blame("core/Makefile.am")
+            .blame("core/Makefile.am", None)
             .expect("blame of a file under a gitlink");
         assert_eq!(blame.len(), 1);
         assert_eq!(blame[0].summary, "add the submodule makefile");
@@ -1136,7 +1147,54 @@ mod tests {
         assert_eq!(history.len(), 1);
 
         // A path that crosses no gitlink still answers from the repo root.
-        assert_eq!(repo.blame("README").unwrap().len(), 1);
+        assert_eq!(repo.blame("README", None).unwrap().len(), 1);
+    }
+
+    /// A line a later commit removed only exists in blame at an older revision,
+    /// here of a file the working tree no longer has.
+    #[tokio::test]
+    async fn blame_at_a_revision_of_a_removed_file() {
+        let directory = TempDir::new().unwrap();
+        let path = directory.path();
+        run_git(path, &["init", "-q"]);
+        std::fs::write(path.join("gone.c"), "int kept;\nint removed;\n").unwrap();
+        run_git(path, &["add", "gone.c"]);
+        run_git(path, &["commit", "-q", "-m", "add gone.c"]);
+        run_git(path, &["rm", "-q", "gone.c"]);
+        run_git(path, &["commit", "-q", "-m", "remove gone.c"]);
+
+        let index = TempDir::new().unwrap();
+        let engine = crate::index::CodeIntelEngine::with_options(
+            index.path().to_path_buf(),
+            vec![path.to_path_buf()],
+            crate::index::EngineOptions {
+                git_enabled: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        engine.complete_initialization().await.unwrap();
+        let repo = path.to_str().unwrap();
+
+        let output = engine
+            .get_blame(repo, "gone.c", Some(2), Some(2), Some("HEAD~1"))
+            .await
+            .unwrap();
+        assert!(output.contains("add gone.c"), "{output}");
+
+        assert!(engine
+            .get_blame(repo, "gone.c", None, None, None)
+            .await
+            .is_err());
+        assert!(engine
+            .get_blame(repo, "gone.c", None, None, Some("--all"))
+            .await
+            .is_err());
+        assert!(engine
+            .get_blame(repo, "../gone.c", None, None, Some("HEAD~1"))
+            .await
+            .is_err());
     }
 
     #[test]
