@@ -6659,9 +6659,18 @@ impl CodeIntelEngine {
         }
 
         match &repo_filter {
-            // Registered, but its first index pass has not finished.
+            // Registered, but its first index pass has not finished. Both
+            // complete_initialization's startup sweep and reindex() hold this
+            // repo's write lease for index_repo()'s whole run, so a failed
+            // try_write() here means indexing is actively running right now;
+            // succeeding means it is only queued behind another repo.
             Some(key) if !self.repos.contains_key(key) => {
-                output.push_str(&format!("### {}\n- Not indexed yet\n\n", key));
+                let status = if self.index_lease(key).try_write().is_err() {
+                    "Indexing in progress"
+                } else {
+                    "Queued for indexing"
+                };
+                output.push_str(&format!("### {}\n- {}\n\n", key, status));
             }
             Some(_) => {}
             None => output.push_str(&self.memory_report().render_markdown()),
@@ -10843,6 +10852,33 @@ similarity index 90%
             waited.elapsed()
         );
         assert!(err.to_string().contains("EAGAIN"), "{err}");
+        drop(update);
+    }
+
+    /// get_index_status's "Not indexed yet" line must say whether indexing
+    /// is actively running for this repo (its write lease held) or only
+    /// queued (registered, lease not taken yet) — a caller deciding whether
+    /// to wait needs that difference, not a flat "not indexed".
+    #[tokio::test]
+    async fn index_status_distinguishes_active_indexing_from_queued() {
+        let temp = TempDir::new().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        let engine = CodeIntelEngine::new(temp.path().join("index"), vec![])
+            .await
+            .unwrap();
+        let repo_key = engine
+            .register_unknown_repo(&repo.to_string_lossy())
+            .unwrap();
+
+        let status = engine.get_index_status(Some(&repo_key)).await.unwrap();
+        assert!(status.contains("Queued for indexing"), "{status}");
+
+        let update = engine
+            .index_update_leases(std::slice::from_ref(&repo_key))
+            .await;
+        let status = engine.get_index_status(Some(&repo_key)).await.unwrap();
+        assert!(status.contains("Indexing in progress"), "{status}");
         drop(update);
     }
 
