@@ -3521,6 +3521,9 @@ impl CodeIntelEngine {
             // is shown as a friendly label only.
             output.push_str(&format!("## {}\n", repo.name));
             output.push_str(&format!("- **Repo**: `{}`\n", entry.key()));
+            if let Some(parent) = crate::repo::worktree_main_repo(Path::new(entry.key())) {
+                output.push_str(&format!("- **Worktree of**: `{}`\n", parent.display()));
+            }
 
             if detail {
                 output.push_str(&format!("- **Files**: {}\n", repo.file_count));
@@ -6651,6 +6654,9 @@ impl CodeIntelEngine {
             if repo_filter.as_deref().is_none_or(|f| f == key) {
                 output.push_str(&format!("### {}\n", meta.name));
                 output.push_str(&format!("- Repo: `{}`\n", key));
+                if let Some(parent) = crate::repo::worktree_main_repo(Path::new(key)) {
+                    output.push_str(&format!("- Worktree of: `{}`\n", parent.display()));
+                }
                 output.push_str(&format!("- Files: {}\n", meta.file_count));
                 output.push_str(&format!(
                     "- Symbols: {}\n",
@@ -6708,7 +6714,11 @@ impl CodeIntelEngine {
                 } else {
                     "Queued for indexing"
                 };
-                output.push_str(&format!("### {}\n- {}\n\n", key, status));
+                output.push_str(&format!("### {}\n- {}\n", key, status));
+                if let Some(parent) = crate::repo::worktree_main_repo(Path::new(key.as_str())) {
+                    output.push_str(&format!("- Worktree of: `{}`\n", parent.display()));
+                }
+                output.push('\n');
             }
             Some(_) => {}
             None => output.push_str(&self.memory_report().render_markdown()),
@@ -10967,6 +10977,55 @@ similarity index 90%
             "worktree did not inherit the main repo's index_filter"
         );
         assert_eq!(worktree_filter, 1);
+    }
+
+    /// list_repos and get_index_status must say which repo a worktree
+    /// belongs to, not show it as an unrelated repository.
+    #[tokio::test]
+    async fn list_repos_and_index_status_name_a_worktrees_main_repo() {
+        let temp = TempDir::new().unwrap();
+        let main = temp.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        run_git(&main, &["init", "-q"]);
+        run_git(&main, &["commit", "--allow-empty", "-q", "-m", "init"]);
+
+        let worktree = temp.path().join("worktree");
+        run_git(
+            &main,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                worktree.to_str().unwrap(),
+                "-b",
+                "wt",
+            ],
+        );
+
+        let engine = CodeIntelEngine::new(temp.path().join("index"), vec![main.clone()])
+            .await
+            .unwrap();
+        let main_key = canonical_repo_key(&main).unwrap();
+        engine.reindex(Some(&main_key)).await.unwrap();
+        let worktree_key = engine
+            .register_unknown_repo(&worktree.to_string_lossy())
+            .unwrap();
+
+        let status = engine
+            .get_index_status(Some(&worktree_key))
+            .await
+            .unwrap();
+        assert!(
+            status.contains(&format!("Worktree of: `{}`", main_key)),
+            "{status}"
+        );
+
+        engine.reindex(Some(&worktree_key)).await.unwrap();
+        let listing = engine.list_repos_scoped(Some(&worktree_key), false).await.unwrap();
+        assert!(listing.contains("Worktree of") && listing.contains(&main_key), "{listing}");
+
+        let main_listing = engine.list_repos_scoped(Some(&main_key), false).await.unwrap();
+        assert!(!main_listing.contains("Worktree of"), "{main_listing}");
     }
 
     /// The watcher grows one `IndexUpdateLeases` as file-change events for
