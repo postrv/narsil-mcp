@@ -199,6 +199,7 @@ enum ScopeRule {
 /// Per-repo compiled scope rules and gtags overrides. Built once per repo in
 /// `with_options` from the profile entry (falling back to the global
 /// `--index-filter`/`--lsp-scope`/`--gtags*` defaults when the entry omits them).
+#[derive(Clone)]
 struct CompiledRepoSettings {
     /// Effective `--index-filter` rules for this repo (empty = whole repo).
     index_filter: Vec<ScopeRule>,
@@ -603,6 +604,25 @@ impl CodeIntelEngine {
                 };
                 tuning_map.insert(key, tuning);
             }
+            // A linked worktree has no entry of its own above; if its main
+            // checkout does, answer LspConfig::tuning_for() with that one
+            // instead of falling through to default_tuning below.
+            for path in &expanded_repos {
+                let Ok(key) = canonical_repo_key(path).map(PathBuf::from) else {
+                    continue;
+                };
+                if tuning_map.contains_key(&key) {
+                    continue;
+                }
+                if let Some(parent_key) = crate::repo::worktree_main_repo(path)
+                    .and_then(|parent| canonical_repo_key(&parent).ok())
+                    .map(PathBuf::from)
+                {
+                    if let Some(tuning) = tuning_map.get(&parent_key).cloned() {
+                        tuning_map.insert(key, tuning);
+                    }
+                }
+            }
             if !tuning_map.is_empty() {
                 info!(
                     "per-repo clangd/ccls tuning for {} repo(s)",
@@ -698,6 +718,24 @@ impl CodeIntelEngine {
                 }
             };
             repo_settings.insert(key, compile_entry(entry));
+        }
+        // A linked worktree has no entry of its own above; if its main
+        // checkout does, answer repo_settings_for_path() with that one
+        // instead of falling through to unlisted_repo_settings below.
+        for path in &expanded_repos {
+            let Ok(key) = canonical_repo_key(path) else {
+                continue;
+            };
+            if repo_settings.contains_key(&key) {
+                continue;
+            }
+            if let Some(parent_key) = crate::repo::worktree_main_repo(path)
+                .and_then(|parent| canonical_repo_key(&parent).ok())
+            {
+                if let Some(settings) = repo_settings.get(&parent_key).cloned() {
+                    repo_settings.insert(key, settings);
+                }
+            }
         }
         let unlisted_repo_settings = compile_entry(&options.unlisted_repo_settings);
 
@@ -10880,6 +10918,55 @@ similarity index 90%
         let status = engine.get_index_status(Some(&repo_key)).await.unwrap();
         assert!(status.contains("Indexing in progress"), "{status}");
         drop(update);
+    }
+
+    /// A linked worktree has no config.yaml entry of its own; it must
+    /// inherit its main repo's index_filter rather than falling back to
+    /// the group defaults applied to every other unlisted repo.
+    #[tokio::test]
+    async fn worktree_inherits_its_main_repos_index_filter() {
+        let temp = TempDir::new().unwrap();
+        let main = temp.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        run_git(&main, &["init", "-q"]);
+        run_git(&main, &["commit", "--allow-empty", "-q", "-m", "init"]);
+
+        let worktree = temp.path().join("worktree");
+        run_git(
+            &main,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                worktree.to_str().unwrap(),
+                "-b",
+                "wt",
+            ],
+        );
+
+        let options = EngineOptions {
+            repo_settings: vec![crate::config::schema::RepoEntrySettings {
+                path: main.clone(),
+                index_filter: vec!["only-this".to_string()],
+                ..Default::default()
+            }],
+            ..EngineOptions::default()
+        };
+        let engine = CodeIntelEngine::with_options(
+            temp.path().join("index"),
+            vec![main.clone(), worktree.clone()],
+            options,
+        )
+        .await
+        .unwrap();
+
+        let main_filter = engine.repo_settings_for_path(&main).index_filter.len();
+        let worktree_filter = engine.repo_settings_for_path(&worktree).index_filter.len();
+        assert_eq!(
+            worktree_filter, main_filter,
+            "worktree did not inherit the main repo's index_filter"
+        );
+        assert_eq!(worktree_filter, 1);
     }
 
     /// The watcher grows one `IndexUpdateLeases` as file-change events for

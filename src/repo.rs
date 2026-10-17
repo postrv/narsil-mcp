@@ -146,6 +146,32 @@ pub fn repo_name_from_path(path: &Path) -> String {
         .to_string()
 }
 
+/// The main checkout's root `path` is a linked worktree of, or `None` when
+/// `path` is not a linked worktree (a plain checkout, not a git repo at
+/// all, or a `git` too old for `--path-format`).
+///
+/// A plain checkout's `git-common-dir` is its own `.git`; a linked
+/// worktree's points at the main checkout's `.git` instead, which is what
+/// distinguishes the two here.
+pub fn worktree_main_repo(path: &Path) -> Option<PathBuf> {
+    let canonical_path = path.canonicalize().ok()?;
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .current_dir(&canonical_path)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let common_dir = String::from_utf8(output.stdout).ok()?;
+    let root = PathBuf::from(common_dir.trim()).parent()?.canonicalize().ok()?;
+    if root == canonical_path {
+        None
+    } else {
+        Some(root)
+    }
+}
+
 /// Validate a repository path
 pub fn validate_repo_path(path: &Path) -> Result<()> {
     if !path.exists() {
@@ -186,5 +212,46 @@ mod tests {
     fn test_is_not_repository() {
         let dir = tempdir().unwrap();
         assert!(!is_repository(dir.path()));
+    }
+
+    fn run_git(dir: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {:?} failed in {:?}", args, dir);
+    }
+
+    #[test]
+    fn worktree_main_repo_is_none_for_a_plain_checkout() {
+        let dir = tempdir().unwrap();
+        run_git(dir.path(), &["init", "-q"]);
+        run_git(dir.path(), &["commit", "--allow-empty", "-q", "-m", "init"]);
+        assert!(worktree_main_repo(dir.path()).is_none());
+    }
+
+    #[test]
+    fn worktree_main_repo_finds_the_main_checkout_of_a_linked_worktree() {
+        let main = tempdir().unwrap();
+        run_git(main.path(), &["init", "-q"]);
+        run_git(main.path(), &["commit", "--allow-empty", "-q", "-m", "init"]);
+
+        let worktree_parent = tempdir().unwrap();
+        let worktree_path = worktree_parent.path().join("wt");
+        run_git(
+            main.path(),
+            &[
+                "worktree",
+                "add",
+                "-q",
+                worktree_path.to_str().unwrap(),
+                "-b",
+                "wt-branch",
+            ],
+        );
+
+        let resolved = worktree_main_repo(&worktree_path).unwrap();
+        assert_eq!(resolved, main.path().canonicalize().unwrap());
     }
 }
