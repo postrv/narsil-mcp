@@ -6555,7 +6555,7 @@ impl CodeIntelEngine {
         output.push_str("## Initialization Status\n\n");
         output.push_str(&format!(
             "- **Status**: {}\n",
-            if is_initialized {
+            if is_initialized && indexed_repos >= total_repos {
                 "✓ Complete"
             } else {
                 "⏳ In Progress"
@@ -10568,6 +10568,31 @@ similarity index 90%
         assert_eq!(engine.indexing_progress(), (1, 1));
         engine.forget_repo(&key).await.unwrap();
         assert_eq!(engine.indexing_progress(), (0, 0));
+    }
+
+    /// get_index_status printed "Complete" next to "20/21 repositories" while
+    /// a repo adopted after startup was still indexing.
+    #[tokio::test]
+    async fn index_status_is_not_complete_while_an_adopted_repo_is_unindexed() {
+        let temp = TempDir::new().unwrap();
+        let repo = temp.path().join("adopted");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        write_file(&repo.join("main.c"), "int main(void) { return 0; }\n");
+        let engine = CodeIntelEngine::new(temp.path().join("index"), vec![])
+            .await
+            .unwrap();
+        engine.complete_initialization().await.unwrap();
+        let key = engine
+            .register_unknown_repo(&repo.to_string_lossy())
+            .unwrap();
+
+        let status = engine.get_index_status(Some(&key)).await.unwrap();
+        assert!(status.contains("In Progress"), "{status}");
+        assert!(!status.contains("✓ Complete"), "{status}");
+
+        engine.reindex(Some(&key)).await.unwrap();
+        let status = engine.get_index_status(Some(&key)).await.unwrap();
+        assert!(status.contains("✓ Complete"), "{status}");
     }
 
     /// With one indexed repo, naming it adds nothing the engine doesn't know.
