@@ -2845,6 +2845,28 @@ impl CodeIntelEngine {
         leases
     }
 
+    /// Like `index_update_leases`, but gives up on each lock after `timeout`
+    /// instead of queuing — `reindex` needs this so a call that collides
+    /// with an update already running for the same repo returns EAGAIN
+    /// instead of blocking for however long that other update takes.
+    pub async fn try_index_update_leases(
+        &self,
+        repo_keys: &[String],
+        timeout: std::time::Duration,
+    ) -> Option<IndexUpdateLeases> {
+        let gate = tokio::time::timeout(timeout, Arc::clone(&self.update_gate).lock_owned())
+            .await
+            .ok()?;
+        let mut leases = IndexUpdateLeases {
+            _gate: gate,
+            leases: HashMap::new(),
+        };
+        for key in repo_keys {
+            tokio::time::timeout(timeout, leases.add(self, key)).await.ok()?;
+        }
+        Some(leases)
+    }
+
     /// Snapshot of the registered repository paths. A snapshot rather than a
     /// borrow: callers iterate across `.await` points, and holding the lock
     /// there would block a concurrent registration for the whole pass.
@@ -2971,10 +2993,22 @@ impl CodeIntelEngine {
                 let path = PathBuf::from(&repo_key);
                 // Held across the clears below: without it a query lands
                 // between "symbols removed" and "symbols rebuilt" and is
-                // answered from an empty index.
-                let _leases = self
-                    .index_update_leases(std::slice::from_ref(&repo_key))
-                    .await;
+                // answered from an empty index. Bounded: a reindex that
+                // collides with one already running for this repo must
+                // return EAGAIN, not queue behind however long that one takes.
+                let Some(_leases) = self
+                    .try_index_update_leases(std::slice::from_ref(&repo_key), INDEX_LEASE_GRACE)
+                    .await
+                else {
+                    let (indexed_repos, total_repos) = self.indexing_progress();
+                    return Err(IndexBusy {
+                        first_pass: !self.repos.contains_key(&repo_key),
+                        repo: repo_key,
+                        indexed_repos,
+                        total_repos,
+                    }
+                    .into());
+                };
                 let was_indexed = self.repos.remove(&repo_key).is_some();
                 self.symbols.remove(&repo_key);
                 // Drop this repo's cached contents; index_repo only inserts, so a
@@ -10780,6 +10814,36 @@ similarity index 90%
 
         drop(update);
         assert!(engine.try_query_lease(&repo_key).await.is_some());
+    }
+
+    /// A second `reindex` colliding with an update already running for the
+    /// same repo must return EAGAIN within the lease grace, not queue
+    /// behind however long that update takes.
+    #[tokio::test]
+    async fn reindex_returns_eagain_when_colliding_with_a_running_update() {
+        let temp = TempDir::new().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        let engine = CodeIntelEngine::new(temp.path().join("index"), vec![repo.clone()])
+            .await
+            .unwrap();
+        let repo_key = canonical_repo_key(&repo).unwrap();
+        // First pass already completed, so the collision below exercises the
+        // "update in progress" message, not the first-pass one.
+        engine.reindex(Some(&repo_key)).await.unwrap();
+
+        let update = engine
+            .index_update_leases(std::slice::from_ref(&repo_key))
+            .await;
+        let waited = std::time::Instant::now();
+        let err = engine.reindex(Some(&repo_key)).await.unwrap_err();
+        assert!(
+            waited.elapsed() < std::time::Duration::from_secs(10),
+            "blocked instead of returning EAGAIN: {:?}",
+            waited.elapsed()
+        );
+        assert!(err.to_string().contains("EAGAIN"), "{err}");
+        drop(update);
     }
 
     /// The watcher grows one `IndexUpdateLeases` as file-change events for
