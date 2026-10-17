@@ -172,6 +172,24 @@ pub fn worktree_main_repo(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// `worktree_main_repo`, run once per path; per-query settings lookups call
+/// this and would otherwise spawn `git` each time.
+pub fn worktree_main_repo_cached(path: &Path) -> Option<PathBuf> {
+    static ANSWERS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<PathBuf, Option<PathBuf>>>,
+    > = std::sync::OnceLock::new();
+    let answers = ANSWERS.get_or_init(Default::default);
+    if let Some(answer) = answers.lock().unwrap().get(path) {
+        return answer.clone();
+    }
+    let answer = worktree_main_repo(path);
+    answers
+        .lock()
+        .unwrap()
+        .insert(path.to_path_buf(), answer.clone());
+    answer
+}
+
 /// Validate a repository path
 pub fn validate_repo_path(path: &Path) -> Result<()> {
     if !path.exists() {

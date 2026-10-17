@@ -115,8 +115,16 @@ pub struct LspConfig {
 }
 
 impl LspConfig {
+    /// A linked worktree without an entry of its own uses its main repo's.
     fn tuning_for(&self, repo: &Path) -> Option<&RepoLspTuning> {
-        self.lsp_tuning.get(repo).or(self.default_tuning.as_ref())
+        let main_repo_tuning = || {
+            let main_repo = crate::repo::worktree_main_repo_cached(repo)?;
+            self.lsp_tuning.get(&main_repo)
+        };
+        self.lsp_tuning
+            .get(repo)
+            .or_else(main_repo_tuning)
+            .or(self.default_tuning.as_ref())
     }
 }
 
@@ -1898,6 +1906,54 @@ mod tests {
             vec![SourceSet::CLANGD, SourceSet::CCLS],
             "a repo's own entry still wins over the default"
         );
+    }
+
+    /// A linked worktree has no `lsp_tuning` entry; it must take its main
+    /// repo's, not the group default.
+    #[test]
+    fn test_worktree_uses_main_repo_tuning() {
+        fn run_git(dir: &Path, args: &[&str]) {
+            let status = std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .status()
+                .unwrap();
+            assert!(status.success(), "git {:?} failed in {:?}", args, dir);
+        }
+        let temp = tempfile::TempDir::new().unwrap();
+        let main = temp.path().canonicalize().unwrap().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        run_git(&main, &["init", "-q"]);
+        run_git(&main, &["commit", "--allow-empty", "-q", "-m", "init"]);
+        let worktree = temp.path().canonicalize().unwrap().join("worktree");
+        run_git(
+            &main,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                worktree.to_str().unwrap(),
+                "-b",
+                "wt",
+            ],
+        );
+
+        let config = LspConfig {
+            enabled: true,
+            cxx_lsp_backends: vec![CxxLspBackend::Clangd, CxxLspBackend::Ccls],
+            lsp_tuning: HashMap::from([(
+                main.clone(),
+                RepoLspTuning {
+                    clangd_enabled: false,
+                    ccls_enabled: false,
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        };
+        let manager = LspManager::new(config, vec![]);
+
+        assert!(manager.active_cxx_backends_for(&worktree).is_empty());
     }
 
     #[test]

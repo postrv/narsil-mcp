@@ -604,25 +604,6 @@ impl CodeIntelEngine {
                 };
                 tuning_map.insert(key, tuning);
             }
-            // A linked worktree has no entry of its own above; if its main
-            // checkout does, answer LspConfig::tuning_for() with that one
-            // instead of falling through to default_tuning below.
-            for path in &expanded_repos {
-                let Ok(key) = canonical_repo_key(path).map(PathBuf::from) else {
-                    continue;
-                };
-                if tuning_map.contains_key(&key) {
-                    continue;
-                }
-                if let Some(parent_key) = crate::repo::worktree_main_repo(path)
-                    .and_then(|parent| canonical_repo_key(&parent).ok())
-                    .map(PathBuf::from)
-                {
-                    if let Some(tuning) = tuning_map.get(&parent_key).cloned() {
-                        tuning_map.insert(key, tuning);
-                    }
-                }
-            }
             if !tuning_map.is_empty() {
                 info!(
                     "per-repo clangd/ccls tuning for {} repo(s)",
@@ -718,24 +699,6 @@ impl CodeIntelEngine {
                 }
             };
             repo_settings.insert(key, compile_entry(entry));
-        }
-        // A linked worktree has no entry of its own above; if its main
-        // checkout does, answer repo_settings_for_path() with that one
-        // instead of falling through to unlisted_repo_settings below.
-        for path in &expanded_repos {
-            let Ok(key) = canonical_repo_key(path) else {
-                continue;
-            };
-            if repo_settings.contains_key(&key) {
-                continue;
-            }
-            if let Some(parent_key) = crate::repo::worktree_main_repo(path)
-                .and_then(|parent| canonical_repo_key(&parent).ok())
-            {
-                if let Some(settings) = repo_settings.get(&parent_key).cloned() {
-                    repo_settings.insert(key, settings);
-                }
-            }
         }
         let unlisted_repo_settings = compile_entry(&options.unlisted_repo_settings);
 
@@ -1343,8 +1306,17 @@ impl CodeIntelEngine {
     fn repo_settings_for_path(&self, repo_path: &Path) -> &CompiledRepoSettings {
         canonical_repo_key(repo_path)
             .ok()
-            .and_then(|key| self.repo_settings.get(&key))
+            .and_then(|key| self.repo_settings_entry(&key))
             .unwrap_or(&self.unlisted_repo_settings)
+    }
+
+    /// Profile entry for `repo_key`; a linked worktree without one of its
+    /// own gets its main repo's, also when registered after startup.
+    fn repo_settings_entry(&self, repo_key: &str) -> Option<&CompiledRepoSettings> {
+        self.repo_settings.get(repo_key).or_else(|| {
+            let main_repo = crate::repo::worktree_main_repo_cached(Path::new(repo_key))?;
+            self.repo_settings.get(main_repo.to_str()?)
+        })
     }
 
     /// Effective compile_commands coverage threshold (percent) for `repo_path`:
@@ -1429,8 +1401,7 @@ impl CodeIntelEngine {
     /// Effective `--index-filter` rules for a repo: its per-repo override if it
     /// has one, else the global default.
     fn repo_index_filter_rules(&self, repo_name: &str) -> &[ScopeRule] {
-        self.repo_settings
-            .get(repo_name)
+        self.repo_settings_entry(repo_name)
             .map(|s| s.index_filter.as_slice())
             .unwrap_or(&self.default_index_filter)
     }
@@ -1438,8 +1409,7 @@ impl CodeIntelEngine {
     /// Effective `--lsp-scope` rules for a repo: its per-repo override if it has
     /// one, else the global default.
     fn repo_lsp_scope_rules(&self, repo_name: &str) -> &[ScopeRule] {
-        self.repo_settings
-            .get(repo_name)
+        self.repo_settings_entry(repo_name)
             .map(|s| s.lsp_scope.as_slice())
             .unwrap_or(&self.default_lsp_scope)
     }
@@ -10977,6 +10947,55 @@ similarity index 90%
             "worktree did not inherit the main repo's index_filter"
         );
         assert_eq!(worktree_filter, 1);
+    }
+
+    /// A worktree first seen by reindex, after the engine was built, must
+    /// get its main repo's settings in index_filter lookups too.
+    #[tokio::test]
+    async fn worktree_registered_after_startup_inherits_index_filter() {
+        let temp = TempDir::new().unwrap();
+        let main = temp.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        run_git(&main, &["init", "-q"]);
+        run_git(&main, &["commit", "--allow-empty", "-q", "-m", "init"]);
+
+        let worktree = temp.path().join("worktree");
+        run_git(
+            &main,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                worktree.to_str().unwrap(),
+                "-b",
+                "wt",
+            ],
+        );
+
+        let options = EngineOptions {
+            repo_settings: vec![crate::config::schema::RepoEntrySettings {
+                path: main.clone(),
+                index_filter: vec!["only-this".to_string()],
+                ..Default::default()
+            }],
+            ..EngineOptions::default()
+        };
+        let engine =
+            CodeIntelEngine::with_options(temp.path().join("index"), vec![main.clone()], options)
+                .await
+                .unwrap();
+        let worktree_key = engine
+            .register_unknown_repo(&worktree.to_string_lossy())
+            .unwrap();
+
+        assert_eq!(engine.repo_index_filter_rules(&worktree_key).len(), 1);
+        assert_eq!(
+            engine
+                .repo_settings_for_path(Path::new(&worktree_key))
+                .index_filter
+                .len(),
+            1
+        );
     }
 
     /// list_repos and get_index_status must say which repo a worktree
