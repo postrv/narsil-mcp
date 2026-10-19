@@ -116,6 +116,23 @@ Add `--persist` to save the index to disk so restarts are fast:
 narsil-mcp --transport sse --repos /path/to/project --persist --git --call-graph
 ```
 
+## Running as a systemd user unit
+
+`bash setup.sh --systemd` installs the template unit `narsil-mcp@.service`,
+whose instance name is a profile from `~/.config/narsil-mcp/config.yaml`:
+
+```bash
+systemctl --user enable --now narsil-mcp@dev
+loginctl enable-linger $USER   # optional: start at boot, not at first login
+```
+
+The server logs to `~/.local/state/log/narsil-mcp/<profile>.log`
+(`--log-file`). It moves the file to `<profile>.log.1` at every start and when
+the file passes `--log-max-size` (default `10M`), and keeps `--log-keep`
+(default 5) old files. systemd restarts the server when it exits with an
+error. Change the command line with `systemctl --user edit narsil-mcp@dev`;
+set `Environment=NARSIL_LOG_MAX_SIZE=...` there for one instance only.
+
 ## Endpoints
 
 | Method | Path | Description |
