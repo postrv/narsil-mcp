@@ -1784,10 +1784,34 @@ impl MemoryReport {
             rss
         )
     }
+
+    /// Per-subsystem change since `earlier`, largest growth first.
+    pub fn growth_line(&self, earlier: &MemoryReport) -> String {
+        let mut rows = vec![
+            ("embeddings", earlier.embeddings, self.embeddings),
+            ("search", earlier.search_index, self.search_index),
+            ("file_cache", earlier.file_cache, self.file_cache),
+            ("symbols", earlier.symbols, self.symbols),
+            ("call_graphs", earlier.call_graphs, self.call_graphs),
+            ("repos", earlier.repos, self.repos),
+            ("git_repos", earlier.git_repos, self.git_repos),
+        ];
+        rows.sort_by_key(|&(_, before, now)| std::cmp::Reverse(now as i128 - before as i128));
+        let mut parts = Vec::new();
+        for (name, before, now) in rows {
+            let change = if now >= before {
+                format!("+{}", format_bytes(now - before))
+            } else {
+                format!("-{}", format_bytes(before - now))
+            };
+            parts.push(format!("{}={} ({})", name, format_bytes(now), change));
+        }
+        format!("memory growth: {}", parts.join(", "))
+    }
 }
 
 /// Render a byte count with a binary unit suffix (KiB/MiB/GiB).
-fn format_bytes(bytes: usize) -> String {
+pub fn format_bytes(bytes: usize) -> String {
     const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
     let mut value = bytes as f64;
     let mut unit = 0;

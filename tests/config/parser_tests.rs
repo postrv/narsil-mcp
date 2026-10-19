@@ -19,6 +19,22 @@ tools:
     assert!(config.tools.overrides.is_empty());
 }
 
+/// A YAML 1.1 parser would read a bare `off` as false and reject the whole file.
+#[test]
+fn test_parse_memory_limits() {
+    let yaml = r#"
+version: "1.0"
+memory_soft_limit: off
+memory_hard_limit: 64G
+memory_soft_limit_interval_secs: 60
+"#;
+
+    let config: ToolConfig = serde_saphyr::from_str(yaml).expect("Should parse memory limits");
+    assert_eq!(config.memory_soft_limit.as_deref(), Some("off"));
+    assert_eq!(config.memory_hard_limit.as_deref(), Some("64G"));
+    assert_eq!(config.memory_soft_limit_interval_secs, Some(60));
+}
+
 #[test]
 fn test_parse_full_config() {
     let yaml = r#"
@@ -110,6 +126,9 @@ fn test_config_roundtrip() {
         version: "1.0".to_string(),
         expose: vec!["code".to_string()],
         adopted_repo_ttl_days: None,
+        memory_soft_limit: None,
+        memory_hard_limit: None,
+        memory_soft_limit_interval_secs: None,
         profiles: HashMap::new(),
         tools: ToolsConfig { overrides },
     };

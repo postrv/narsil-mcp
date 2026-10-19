@@ -34,6 +34,19 @@ pub struct ToolConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adopted_repo_ttl_days: Option<u64>,
 
+    /// SSE server memory limits: `off`, `<N>x` (times the RSS after the last
+    /// full index pass), `<N>M` or `<N>G`. Overridden by `--memory-soft-limit`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_soft_limit: Option<String>,
+
+    /// As `memory_soft_limit`; above it the server exits. Overridden by `--memory-hard-limit`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_hard_limit: Option<String>,
+
+    /// Seconds between memory summaries while RSS stays above the soft limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_soft_limit_interval_secs: Option<u64>,
+
     /// Named repository profiles for reusable workspace path sets.
     #[serde(default)]
     pub profiles: HashMap<String, RepoProfile>,
@@ -49,6 +62,9 @@ impl Default for ToolConfig {
             version: default_version(),
             expose: Vec::new(),
             adopted_repo_ttl_days: None,
+            memory_soft_limit: None,
+            memory_hard_limit: None,
+            memory_soft_limit_interval_secs: None,
             profiles: HashMap::new(),
             tools: ToolsConfig::default(),
         }

@@ -15,6 +15,7 @@ use tracing_subscriber::FmtSubscriber;
 
 mod byte_size;
 mod log_file;
+mod memory_watchdog;
 
 /// Transport for the MCP server.
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]
@@ -256,6 +257,25 @@ struct ServerArgs {
     #[arg(long, env = "NARSIL_ADOPTED_REPO_TTL_DAYS")]
     adopted_repo_ttl_days: Option<u64>,
 
+    /// SSE server only: above this RSS the server writes a memory-<pid>-<time>.diag
+    /// file and logs a memory summary every --memory-soft-limit-interval-secs.
+    /// `off`, `<N>x` (times the RSS after the last full index pass), `<N>M`, `<N>G`.
+    /// Default 1.5x; falls back to `memory_soft_limit` in config.yaml.
+    #[arg(long, env = "NARSIL_MEMORY_SOFT_LIMIT")]
+    memory_soft_limit: Option<memory_watchdog::MemoryLimit>,
+
+    /// SSE server only: above this RSS the server writes the diagnostics, shuts
+    /// down and exits with code 75, for systemd to restart it. Same forms as
+    /// --memory-soft-limit. Default 2x, or half of MemTotal before the first full
+    /// index pass; falls back to `memory_hard_limit` in config.yaml.
+    #[arg(long, env = "NARSIL_MEMORY_HARD_LIMIT")]
+    memory_hard_limit: Option<memory_watchdog::MemoryLimit>,
+
+    /// Seconds between memory summaries while RSS stays above the soft limit
+    /// (default 300); falls back to `memory_soft_limit_interval_secs` in config.yaml.
+    #[arg(long, env = "NARSIL_MEMORY_SOFT_LIMIT_INTERVAL_SECS")]
+    memory_soft_limit_interval_secs: Option<u64>,
+
     /// Use compile_commands.json to restrict which C/C++ source files are indexed.
     /// Headers are always indexed regardless.
     #[arg(long, env = "NARSIL_USE_COMPILE_COMMANDS")]
@@ -354,6 +374,25 @@ async fn main() -> Result<()> {
 
     apply_named_profile(&mut server_args)?;
     apply_machine_wide_defaults(&mut server_args);
+
+    let memory_watchdog_settings = memory_watchdog::WatchdogSettings {
+        soft_limit: server_args
+            .memory_soft_limit
+            .unwrap_or(memory_watchdog::DEFAULT_SOFT_LIMIT),
+        hard_limit: server_args
+            .memory_hard_limit
+            .unwrap_or(memory_watchdog::DEFAULT_HARD_LIMIT),
+        soft_limit_interval: Duration::from_secs(
+            server_args
+                .memory_soft_limit_interval_secs
+                .unwrap_or(memory_watchdog::DEFAULT_SOFT_LIMIT_INTERVAL_SECS),
+        ),
+        diagnostics_dir: memory_watchdog::diagnostics_dir(server_args.log_file.as_deref()),
+    };
+    memory_watchdog::check_soft_below_hard(
+        memory_watchdog_settings.soft_limit,
+        memory_watchdog_settings.hard_limit,
+    )?;
 
     // --sse-host / --sse-port are SSE-specific flags; passing either one
     // implicitly activates SSE transport so `narsil-mcp --sse-host localhost`
@@ -653,6 +692,7 @@ async fn main() -> Result<()> {
         // A scoped repo's definition map lands after the index that started it,
         // so give the pull-in the pass it could not have on the way through.
         init_engine.catch_up_on_definition_maps().await;
+        init_engine.rebase_memory_baseline();
         write_counts("the definition-map catch-up");
     });
 
@@ -741,12 +781,25 @@ async fn main() -> Result<()> {
                 .map_err(|e| warn!("SSE discovery: could not register: {}", e))
                 .ok();
 
-            run_http_with_shutdown(http_server).await
+            let hard_limit_exit = Arc::new(tokio::sync::Notify::new());
+            memory_watchdog::spawn_memory_watchdog(
+                Arc::clone(&engine),
+                memory_watchdog_settings,
+                Arc::clone(&hard_limit_exit),
+            );
+            run_http_with_shutdown(http_server, &hard_limit_exit).await
         }
     };
 
     shutdown_engine.shutdown().await;
 
+    if let Err(e) = &server_result {
+        if e.is::<memory_watchdog::HardLimitExceeded>() {
+            // process::exit skips destructors.
+            drop(_pid_status_entry);
+            std::process::exit(memory_watchdog::EXIT_CODE);
+        }
+    }
     server_result?;
     Ok(())
 }
@@ -803,7 +856,10 @@ async fn run_stdio_with_shutdown(server: mcp::McpServer) -> Result<()> {
     }
 }
 
-async fn run_http_with_shutdown(server: http_server::HttpServer) -> Result<()> {
+async fn run_http_with_shutdown(
+    server: http_server::HttpServer,
+    hard_limit_exit: &tokio::sync::Notify,
+) -> Result<()> {
     tokio::select! {
         result = server.run() => result,
         _ = tokio::signal::ctrl_c() => {
@@ -814,6 +870,7 @@ async fn run_http_with_shutdown(server: http_server::HttpServer) -> Result<()> {
             info!("Received SIGTERM, shutting down");
             Ok(())
         }
+        _ = hard_limit_exit.notified() => Err(memory_watchdog::HardLimitExceeded.into()),
     }
 }
 
@@ -930,12 +987,46 @@ fn apply_named_profile(server_args: &mut ServerArgs) -> Result<()> {
 /// the file when no profile is named. An unreadable config leaves the built-in
 /// defaults rather than stopping the server: nothing here was asked for by name.
 fn apply_machine_wide_defaults(server_args: &mut ServerArgs) {
-    if server_args.adopted_repo_ttl_days.is_some() {
+    let all_set = server_args.adopted_repo_ttl_days.is_some()
+        && server_args.memory_soft_limit.is_some()
+        && server_args.memory_hard_limit.is_some()
+        && server_args.memory_soft_limit_interval_secs.is_some();
+    if all_set {
         return;
     }
-    match config::ConfigLoader::new().load() {
-        Ok(config) => server_args.adopted_repo_ttl_days = config.adopted_repo_ttl_days,
-        Err(e) => warn!("Ignoring unreadable configuration: {}", e),
+    let config = match config::ConfigLoader::new().load() {
+        Ok(config) => config,
+        Err(e) => {
+            warn!("Ignoring unreadable configuration: {}", e);
+            return;
+        }
+    };
+    if server_args.adopted_repo_ttl_days.is_none() {
+        server_args.adopted_repo_ttl_days = config.adopted_repo_ttl_days;
+    }
+    if server_args.memory_soft_limit.is_none() {
+        server_args.memory_soft_limit =
+            parse_config_memory_limit("memory_soft_limit", config.memory_soft_limit.as_deref());
+    }
+    if server_args.memory_hard_limit.is_none() {
+        server_args.memory_hard_limit =
+            parse_config_memory_limit("memory_hard_limit", config.memory_hard_limit.as_deref());
+    }
+    if server_args.memory_soft_limit_interval_secs.is_none() {
+        server_args.memory_soft_limit_interval_secs = config.memory_soft_limit_interval_secs;
+    }
+}
+
+fn parse_config_memory_limit(
+    key: &str,
+    value: Option<&str>,
+) -> Option<memory_watchdog::MemoryLimit> {
+    match value?.parse() {
+        Ok(limit) => Some(limit),
+        Err(e) => {
+            warn!("Ignoring config.yaml {}: {}", key, e);
+            None
+        }
     }
 }
 

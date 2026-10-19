@@ -499,6 +499,9 @@ pub struct CodeIntelEngine {
     initialization_complete: AtomicBool,
     /// Number of repositories that have been fully indexed
     indexed_repos_count: AtomicUsize,
+    /// RSS after the last full index pass, reindex or forget_repo; 0 before the
+    /// first. Not after watch-mode updates: a leak there would raise it too.
+    memory_baseline: AtomicUsize,
     /// Total number of repositories to index
     total_repos_count: AtomicUsize,
     /// Background task that periodically flushes lifetime metrics to disk.
@@ -728,6 +731,7 @@ impl CodeIntelEngine {
             query_cache,
             initialization_complete: AtomicBool::new(false),
             indexed_repos_count: AtomicUsize::new(0),
+            memory_baseline: AtomicUsize::new(0),
             total_repos_count: AtomicUsize::new(total_repos),
             metrics_flush_task: parking_lot::Mutex::new(Some(flush_task)),
             definition_builds: DashMap::new(),
@@ -2981,7 +2985,7 @@ impl CodeIntelEngine {
         self.analysis_cache.clear();
         self.query_cache.clear();
         let result = self.index_repos().await;
-        self.refresh_memory_snapshot();
+        self.rebase_memory_baseline();
         result
     }
 
@@ -3052,7 +3056,7 @@ impl CodeIntelEngine {
                 if adopted && !was_indexed {
                     self.indexed_repos_count.fetch_add(1, Ordering::Release);
                 }
-                self.refresh_memory_snapshot();
+                self.rebase_memory_baseline();
                 if newly_registered {
                     Ok(format!("Registered and indexed repository: {}", repo_key))
                 } else {
@@ -3134,7 +3138,7 @@ impl CodeIntelEngine {
         if was_indexed {
             decrement(&self.indexed_repos_count);
         }
-        self.refresh_memory_snapshot();
+        self.rebase_memory_baseline();
 
         // After the guard, so a task already holding this lease keeps it alive;
         // one arriving later makes a fresh lease for a repo that no longer
@@ -6481,7 +6485,7 @@ impl CodeIntelEngine {
     /// Resident set size in bytes from the `VmRSS:` line of /proc/self/status
     /// (already in kB, so no page-size lookup is needed). None when the file is
     /// unavailable (non-Linux).
-    fn process_rss_bytes() -> Option<usize> {
+    pub fn process_rss_bytes() -> Option<usize> {
         let status = std::fs::read_to_string("/proc/self/status").ok()?;
         for line in status.lines() {
             if let Some(rest) = line.strip_prefix("VmRSS:") {
@@ -6497,7 +6501,7 @@ impl CodeIntelEngine {
     /// RSS tracks the live working set. glibc/Linux only — a no-op on
     /// musl/macOS/wasm, which lack malloc_trim.
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
-    fn return_freed_heap_to_os() {
+    pub fn return_freed_heap_to_os() {
         extern "C" {
             fn malloc_trim(pad: usize) -> std::os::raw::c_int;
         }
@@ -6509,7 +6513,7 @@ impl CodeIntelEngine {
     }
 
     #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
-    fn return_freed_heap_to_os() {}
+    pub fn return_freed_heap_to_os() {}
 
     /// Re-measure the live heap and hand it to metrics so the next flush
     /// persists an up-to-date snapshot. Called after a runtime re-index changes
@@ -6519,6 +6523,19 @@ impl CodeIntelEngine {
     fn refresh_memory_snapshot(&self) {
         Self::return_freed_heap_to_os();
         self.metrics.set_memory_report(self.memory_report());
+    }
+
+    /// RSS after the last full index pass; 0 before the first.
+    pub fn memory_baseline(&self) -> usize {
+        self.memory_baseline.load(Ordering::Relaxed)
+    }
+
+    /// Trim the heap, refresh the metrics memory snapshot, take the RSS as baseline.
+    pub fn rebase_memory_baseline(&self) {
+        self.refresh_memory_snapshot();
+        if let Some(rss) = Self::process_rss_bytes() {
+            self.memory_baseline.store(rss, Ordering::Relaxed);
+        }
     }
 
     /// Get status of the search index

@@ -133,6 +133,28 @@ the file passes `--log-max-size` (default `10M`), and keeps `--log-keep`
 error. Change the command line with `systemctl --user edit narsil-mcp@dev`;
 set `Environment=NARSIL_LOG_MAX_SIZE=...` there for one instance only.
 
+## Memory watchdog
+
+An SSE server checks its RSS every 10 s against two limits:
+
+- `--memory-soft-limit` (default `1.5x`): writes a `memory-<pid>-<time>.diag`
+  file next to `--log-file` (else `~/.local/state/narsil-mcp/`), then logs a
+  per-subsystem memory summary every `--memory-soft-limit-interval-secs`
+  (default 300) while RSS stays above it.
+- `--memory-hard-limit` (default `2x`): writes the `.diag` file, shuts the
+  server down and exits with code 75; the systemd unit restarts it.
+
+A limit is `off`, `<N>x` (times the RSS after the last full index pass),
+`<N>M` or `<N>G`. Before the first full index pass an `<N>x` soft limit is not
+checked and an `<N>x` hard limit is half of MemTotal. Set machine-wide values in
+`~/.config/narsil-mcp/config.yaml`:
+
+```yaml
+memory_soft_limit: 48G
+memory_hard_limit: 64G
+memory_soft_limit_interval_secs: 300
+```
+
 ## Endpoints
 
 | Method | Path | Description |

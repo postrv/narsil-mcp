@@ -169,6 +169,15 @@ impl ConfigLoader {
         if overlay.adopted_repo_ttl_days.is_some() {
             base.adopted_repo_ttl_days = overlay.adopted_repo_ttl_days;
         }
+        if overlay.memory_soft_limit.is_some() {
+            base.memory_soft_limit = overlay.memory_soft_limit;
+        }
+        if overlay.memory_hard_limit.is_some() {
+            base.memory_hard_limit = overlay.memory_hard_limit;
+        }
+        if overlay.memory_soft_limit_interval_secs.is_some() {
+            base.memory_soft_limit_interval_secs = overlay.memory_soft_limit_interval_secs;
+        }
 
         // Overlay expose groups if specified. Replaced wholesale rather than
         // appended: "expose these groups" is an absolute statement, and a

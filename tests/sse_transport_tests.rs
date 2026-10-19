@@ -810,3 +810,100 @@ fn test_sse_log_file_rotated_at_startup() -> Result<()> {
     );
     Ok(())
 }
+
+/// The memory watchdog's `.diag` files go next to `--log-file`.
+fn diag_files(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "diag")
+        {
+            found.push(path);
+        }
+    }
+    Ok(found)
+}
+
+fn assert_full_diagnostics(diag_path: &Path) -> Result<()> {
+    let diag = std::fs::read_to_string(diag_path)?;
+    for section in [
+        "VmRSS:",
+        "== /proc/self/smaps_rollup",
+        "== threads by name",
+        "== memory_report",
+        "== malloc_info",
+    ] {
+        assert!(
+            diag.contains(section),
+            "{} lacks {}",
+            diag_path.display(),
+            section
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn test_sse_memory_hard_limit_exits_with_diagnostics() -> Result<()> {
+    let xdg = TempDir::new()?;
+    let repo = TempDir::new()?;
+    let logs = TempDir::new()?;
+    let log_path = logs.path().join("narsil.log");
+    let port = ephemeral_port()?;
+    let limits = ["--memory-soft-limit", "off", "--memory-hard-limit", "1M"];
+
+    let mut server = spawn_sse_with_log_file(port, repo.path(), xdg.path(), &log_path, &limits)?;
+    let deadline = Instant::now() + STARTUP_TIMEOUT;
+    let mut exit_status = None;
+    while Instant::now() < deadline {
+        exit_status = server.try_wait()?;
+        if exit_status.is_some() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    let Some(exit_status) = exit_status else {
+        let _ = server.kill();
+        let _ = server.wait();
+        bail!("server still running above a 1M hard limit");
+    };
+
+    assert_eq!(exit_status.code(), Some(75), "hard limit exit code");
+    let log = std::fs::read_to_string(&log_path)?;
+    assert!(log.contains("above the memory hard limit"), "{}", log);
+    assert!(
+        !log.contains("Shutdown did not finish"),
+        "the graceful shutdown did not end the server: {}",
+        log
+    );
+    let diags = diag_files(logs.path())?;
+    assert_eq!(diags.len(), 1, "one .diag file: {:?}", diags);
+    assert_full_diagnostics(&diags[0])
+}
+
+#[test]
+fn test_sse_memory_soft_limit_keeps_serving() -> Result<()> {
+    let xdg = TempDir::new()?;
+    let repo = TempDir::new()?;
+    let logs = TempDir::new()?;
+    let log_path = logs.path().join("narsil.log");
+    let port = ephemeral_port()?;
+    let limits = ["--memory-soft-limit", "1M", "--memory-hard-limit", "off"];
+
+    let mut server = spawn_sse_with_log_file(port, repo.path(), xdg.path(), &log_path, &limits)?;
+    let reported =
+        wait_for_file_contains(&log_path, "above the memory soft limit", STARTUP_TIMEOUT);
+    let answered = wait_until_mcp_ready(port);
+    let still_running = server.try_wait()?.is_none();
+    let _ = server.kill();
+    let _ = server.wait();
+
+    assert!(reported, "no soft limit line in {}", log_path.display());
+    answered?;
+    assert!(still_running, "the soft limit must not end the server");
+    let diags = diag_files(logs.path())?;
+    assert_eq!(diags.len(), 1, "one .diag file: {:?}", diags);
+    assert_full_diagnostics(&diags[0])
+}
