@@ -158,7 +158,8 @@ struct ServerArgs {
 
     /// Build a GTAGS database (via the `gtags` binary) for C/C++ repos that lack
     /// one, so index-time gtags augmentation has data. Writes GTAGS/GRTAGS/GPATH
-    /// into the repo and is skipped on very large trees.
+    /// into narsil-mcp's cache directory (~/.cache/narsil-mcp/gtags-db on
+    /// Linux), not into the repo, and is skipped on very large trees.
     #[arg(long, env = "NARSIL_GTAGS_GENERATE")]
     gtags_generate: bool,
 
