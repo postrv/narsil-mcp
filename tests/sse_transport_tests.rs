@@ -727,3 +727,86 @@ fn test_stdio_proxy_translates_dot_repo() -> Result<()> {
     let _ = server.wait();
     Ok(())
 }
+
+fn spawn_sse_with_log_file(
+    port: u16,
+    repo: &Path,
+    xdg_runtime: &Path,
+    log_path: &Path,
+    extra_args: &[&str],
+) -> Result<Child> {
+    let port_text = port.to_string();
+    let mut args = vec![
+        "--transport",
+        "sse",
+        "--sse-host",
+        "127.0.0.1",
+        "--sse-port",
+        &port_text,
+        "--repos",
+        repo.to_str().expect("temp path is utf-8"),
+        "--log-file",
+        log_path.to_str().expect("temp path is utf-8"),
+    ];
+    args.extend_from_slice(extra_args);
+    Command::new(binary_path())
+        .args(&args)
+        .env("XDG_RUNTIME_DIR", xdg_runtime)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("failed to spawn SSE narsil-mcp; run `cargo build` first")
+}
+
+fn wait_for_file_contains(path: &Path, needle: &str, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            if text.contains(needle) {
+                return true;
+            }
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    false
+}
+
+fn sse_start_line(port: u16) -> String {
+    format!("Starting MCP SSE transport on http://127.0.0.1:{}/", port)
+}
+
+/// A second start with the same --log-file moves the first run's log to <log>.1.
+#[test]
+fn test_sse_log_file_rotated_at_startup() -> Result<()> {
+    let xdg = TempDir::new()?;
+    let repo = TempDir::new()?;
+    let logs = TempDir::new()?;
+    let log_path = logs.path().join("narsil.log");
+    let rotated_path = logs.path().join("narsil.log.1");
+    // Different ports tell the two runs' log lines apart.
+    let first_port = ephemeral_port()?;
+    let second_port = ephemeral_port()?;
+
+    let mut first = spawn_sse_with_log_file(first_port, repo.path(), xdg.path(), &log_path, &[])?;
+    let first_ready = wait_until_mcp_ready(first_port);
+    let _ = first.kill();
+    let _ = first.wait();
+    first_ready?;
+
+    let mut second = spawn_sse_with_log_file(second_port, repo.path(), xdg.path(), &log_path, &[])?;
+    let second_logged =
+        wait_for_file_contains(&log_path, &sse_start_line(second_port), STARTUP_TIMEOUT);
+    let _ = second.kill();
+    let _ = second.wait();
+
+    assert!(second_logged, "no start line in {}", log_path.display());
+    let rotated = std::fs::read_to_string(&rotated_path)?;
+    assert!(
+        rotated.contains(&sse_start_line(first_port)),
+        "{} lacks the first run's start line: {}",
+        rotated_path.display(),
+        rotated
+    );
+    Ok(())
+}

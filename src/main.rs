@@ -13,6 +13,9 @@ use std::time::Duration;
 use tracing::{info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
+mod byte_size;
+mod log_file;
+
 /// Transport for the MCP server.
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]
 enum Transport {
@@ -73,9 +76,27 @@ struct ServerArgs {
     )]
     index_path: PathBuf,
 
-    /// Enable verbose logging (to stderr)
+    /// Enable verbose logging (to stderr, or to --log-file)
     #[arg(short, long, env = "NARSIL_VERBOSE")]
     verbose: bool,
+
+    /// Write the log to this file instead of stderr. The file is rotated at
+    /// startup and above --log-max-size; <file>.1 is the newest old file.
+    #[arg(long, env = "NARSIL_LOG_FILE")]
+    log_file: Option<PathBuf>,
+
+    /// Rotate --log-file above this size: <N>, <N>K, <N>M or <N>G.
+    #[arg(
+        long,
+        env = "NARSIL_LOG_MAX_SIZE",
+        default_value = "10M",
+        value_parser = byte_size::parse_byte_size
+    )]
+    log_max_size: usize,
+
+    /// Old --log-file files to keep; 0 deletes the file at rotation.
+    #[arg(long, env = "NARSIL_LOG_KEEP", default_value = "5")]
+    log_keep: usize,
 
     /// Re-index all repositories on startup
     #[arg(long, env = "NARSIL_REINDEX")]
@@ -301,17 +322,29 @@ async fn main() -> Result<()> {
     // Default: run MCP server
     let mut server_args = args.server;
 
-    // Initialize logging to stderr (stdout is for MCP protocol)
+    // Initialize logging to stderr or --log-file (stdout is for MCP protocol)
     let level = if server_args.verbose {
         Level::DEBUG
     } else {
         Level::INFO
     };
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(level)
-        .with_writer(std::io::stderr)
-        .finish();
-    tracing::subscriber::set_global_default(subscriber)?;
+    let subscriber_builder = FmtSubscriber::builder().with_max_level(level);
+    match &server_args.log_file {
+        Some(path) => {
+            let log_file =
+                log_file::LogFile::open(path, server_args.log_max_size, server_args.log_keep)
+                    .with_context(|| format!("Failed to open --log-file {}", path.display()))?;
+            let subscriber = subscriber_builder
+                .with_writer(Arc::new(log_file))
+                .with_ansi(false)
+                .finish();
+            tracing::subscriber::set_global_default(subscriber)?;
+        }
+        None => {
+            let subscriber = subscriber_builder.with_writer(std::io::stderr).finish();
+            tracing::subscriber::set_global_default(subscriber)?;
+        }
+    }
 
     info!(
         "Starting narsil-mcp v{} ({})",
