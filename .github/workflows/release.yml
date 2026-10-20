@@ -74,7 +74,7 @@ jobs:
       - name: Verify binary version matches
         run: |
           CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          BINARY_VERSION=$(./target/release/narsil-mcp --version | sed 's/narsil-mcp //')
+          BINARY_VERSION=$(./target/release/narsil-mcp --version | awk '{print $2}')
 
           echo "Cargo.toml version: $CARGO_VERSION"
           echo "Binary --version:   $BINARY_VERSION"

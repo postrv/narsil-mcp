@@ -20,7 +20,7 @@ echo "Cargo.toml version: $CARGO_VERSION"
 
 # If binary exists, check its --version output
 if [ -f "target/release/narsil-mcp" ]; then
-    BINARY_VERSION=$(./target/release/narsil-mcp --version 2>/dev/null | sed 's/narsil-mcp //')
+    BINARY_VERSION=$(./target/release/narsil-mcp --version 2>/dev/null | awk '{print $2}')
     echo "Binary --version output: $BINARY_VERSION"
     if [ "$BINARY_VERSION" != "$CARGO_VERSION" ]; then
         echo -e "${RED}ERROR: Binary version ($BINARY_VERSION) != Cargo version ($CARGO_VERSION)${NC}"
