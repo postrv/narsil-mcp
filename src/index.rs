@@ -3079,7 +3079,7 @@ impl CodeIntelEngine {
     /// whole or reports it unknown, never half-emptied.
     pub async fn forget_repo(&self, repo: &str) -> Result<String> {
         fn decrement(counter: &AtomicUsize) {
-            let _ = counter.fetch_update(Ordering::Release, Ordering::Acquire, |count| {
+            let _ = counter.try_update(Ordering::Release, Ordering::Acquire, |count| {
                 Some(count.saturating_sub(1))
             });
         }
