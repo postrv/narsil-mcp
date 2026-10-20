@@ -6498,8 +6498,8 @@ impl CodeIntelEngine {
 
     /// Release freed heap back to the kernel. glibc keeps the indexing
     /// high-water mark in its arenas; malloc_trim(0) returns the unused top so
-    /// RSS tracks the live working set. glibc/Linux only — a no-op on
-    /// musl/macOS/wasm, which lack malloc_trim.
+    /// RSS tracks the live working set. On musl the allocator is mimalloc, and
+    /// mi_collect(true) returns its freed pages. A no-op on other targets.
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     pub fn return_freed_heap_to_os() {
         extern "C" {
@@ -6512,7 +6512,19 @@ impl CodeIntelEngine {
         }
     }
 
-    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    #[cfg(target_env = "musl")]
+    pub fn return_freed_heap_to_os() {
+        extern "C" {
+            fn mi_collect(force: bool);
+        }
+        // SAFETY: mi_collect is safe to call at any point; it only returns
+        // pages that hold no live allocation.
+        unsafe {
+            mi_collect(true);
+        }
+    }
+
+    #[cfg(not(any(all(target_os = "linux", target_env = "gnu"), target_env = "musl")))]
     pub fn return_freed_heap_to_os() {}
 
     /// Re-measure the live heap and hand it to metrics so the next flush
@@ -12095,5 +12107,36 @@ similarity index 90%
             !output.contains("compile_commands.json"),
             "a listed file must not carry the exclusion note:\n{output}"
         );
+    }
+
+    #[test]
+    fn return_freed_heap_to_os_lowers_rss() {
+        const BLOCK_BYTES: usize = 4 * 1024;
+        const TOTAL_BYTES: usize = 256 * 1024 * 1024;
+        // One live block per 1 MiB keeps the heap top in use, so free() alone
+        // returns almost nothing to the kernel.
+        const KEEP_EVERY: usize = 256;
+
+        let mut blocks = Vec::new();
+        for _ in 0..TOTAL_BYTES / BLOCK_BYTES {
+            blocks.push(vec![1u8; BLOCK_BYTES]);
+        }
+        let peak = CodeIntelEngine::process_rss_bytes().expect("VmRSS");
+
+        let mut kept = Vec::new();
+        for (block_idx, block) in blocks.into_iter().enumerate() {
+            if block_idx % KEEP_EVERY == 0 {
+                kept.push(block);
+            }
+        }
+        CodeIntelEngine::return_freed_heap_to_os();
+        let after = CodeIntelEngine::process_rss_bytes().expect("VmRSS");
+
+        let released = peak.saturating_sub(after);
+        assert!(
+            released >= TOTAL_BYTES / 2,
+            "RSS went from {peak} to {after} bytes, only {released} returned"
+        );
+        drop(kept);
     }
 }

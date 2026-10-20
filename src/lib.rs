@@ -4,6 +4,33 @@
 /// Program name; also names the config, cache, state and runtime directories.
 pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+/// Make tree-sitter's C code allocate from mimalloc. musl's malloc serializes
+/// all threads on one lock.
+///
+/// # Safety
+/// No tree-sitter object may exist yet: mi_free on a block from musl's malloc
+/// corrupts the heap.
+#[cfg(target_env = "musl")]
+pub unsafe fn route_tree_sitter_allocations_to_mimalloc() {
+    use std::ffi::c_void;
+    extern "C" {
+        fn mi_malloc(size: usize) -> *mut c_void;
+        fn mi_calloc(count: usize, size: usize) -> *mut c_void;
+        fn mi_realloc(ptr: *mut c_void, size: usize) -> *mut c_void;
+        fn mi_free(ptr: *mut c_void);
+    }
+    tree_sitter::set_allocator(
+        Some(mi_malloc),
+        Some(mi_calloc),
+        Some(mi_realloc),
+        Some(mi_free),
+    );
+}
+
 // Core modules (always available)
 pub mod cache;
 pub mod callgraph;

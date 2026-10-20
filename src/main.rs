@@ -334,6 +334,12 @@ struct ServerArgs {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // SAFETY: no tree-sitter object exists before the first statement of main.
+    #[cfg(target_env = "musl")]
+    unsafe {
+        narsil_xref::route_tree_sitter_allocations_to_mimalloc();
+    }
+
     let args = Args::parse();
 
     // Handle subcommands (config, tools)

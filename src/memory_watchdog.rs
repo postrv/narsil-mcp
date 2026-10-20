@@ -183,7 +183,7 @@ fn watch_memory(
                 CodeIntelEngine::return_freed_heap_to_os();
                 rss = CodeIntelEngine::process_rss_bytes().unwrap_or(measured_rss);
                 debug!(
-                    "Memory watchdog: malloc_trim took RSS from {} to {}",
+                    "Memory watchdog: returning freed heap took RSS from {} to {}",
                     format_bytes(measured_rss),
                     format_bytes(rss)
                 );

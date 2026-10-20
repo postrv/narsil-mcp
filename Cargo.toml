@@ -115,6 +115,9 @@ tempfile = { version = "3.8", optional = true }
 lsp-types = { version = "0.95", optional = true }  # LSP protocol types
 lsp-server = { version = "0.7", optional = true }  # LSP server utilities
 
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = "0.1"  # musl malloc serializes all threads on one global lock
+
 [dev-dependencies]
 tempfile = "3"
 proptest = "1.4"          # Property-based testing
