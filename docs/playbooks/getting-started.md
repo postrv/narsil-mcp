@@ -4,19 +4,14 @@ Get code intelligence working in 5 minutes.
 
 ## 1. Install
 
-Choose one:
+Linux only. Choose one:
 
 ```bash
-# Homebrew (macOS/Linux)
-brew install postrv/narsil/narsil-mcp
+# Install script, downloads the latest release
+curl -fsSL https://raw.githubusercontent.com/postrv/narsil-mcp/main/install.sh | bash
 
-# npm (all platforms)
-npm install -g narsil-mcp
-
-# Cargo (Rust users)
-cargo install narsil-mcp
-
-# Or download binary from GitHub releases
+# From a clone of the repository
+bash setup.sh
 ```
 
 Verify installation:

@@ -94,6 +94,6 @@ narsil-mcp gives Claude **semantic understanding**:
 
 ## Next Steps
 
-1. **[Install narsil-mcp](../INSTALL.md)** - via Homebrew, npm, cargo, or binary
+1. **[Install narsil-mcp](../INSTALL.md)** - install script or from source (Linux)
 2. **[Configure for your editor](getting-started.md)** - Claude Desktop, VS Code, Cursor
 3. **Try a workflow** - start with [Understand a Codebase](workflows/understand-codebase.md)

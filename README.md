@@ -71,83 +71,21 @@ A Rust-powered MCP (Model Context Protocol) server providing AI assistants with 
 
 ## Installation
 
-### Via Package Managers (Recommended)
+Prebuilt binaries are released for Linux only, on x86_64 and aarch64.
 
-**macOS / Linux (Homebrew):**
-```bash
-brew tap postrv/narsil
-brew install narsil-mcp
-```
+### Install Script
 
-**Windows (Scoop):**
-```powershell
-scoop bucket add narsil https://github.com/postrv/scoop-narsil
-scoop install narsil-mcp
-```
-
-**Rust/Cargo (all platforms):**
-```bash
-cargo install narsil-mcp
-```
-
-**Node.js/npm (all platforms):**
-```bash
-npm install -g narsil-mcp
-# or
-yarn global add narsil-mcp
-# or
-pnpm add -g narsil-mcp
-```
-
-**Nix:**
-```bash
-# Run directly without installing
-nix run github:postrv/narsil-mcp -- --repos ./my-project
-
-# Install to profile
-nix profile install github:postrv/narsil-mcp
-
-# With web visualization frontend
-nix profile install github:postrv/narsil-mcp#with-frontend
-
-# Development shell
-nix develop github:postrv/narsil-mcp
-```
-
-### One-Click Install Script
-
-**macOS / Linux:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/postrv/narsil-mcp/main/install.sh | bash
 ```
-
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/postrv/narsil-mcp/main/install.ps1 | iex
-```
-
-**Windows (Git Bash / MSYS2):**
-```bash
-curl -fsSL https://raw.githubusercontent.com/postrv/narsil-mcp/main/install.sh | bash
-```
-
-> **Note for Windows users:** The PowerShell installer provides better error messages and native Windows integration. It will automatically configure your PATH and check for required build tools if building from source.
 
 ### From Source
 
-**Prerequisites:**
-- Rust 1.70 or later
-- On Windows: [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) with "Desktop development with C++"
-
 ```bash
-# Clone and build
+# Clone, build and install to ~/.local/bin
 git clone git@github.com:postrv/narsil-mcp.git
 cd narsil-mcp
-cargo build --release
-
-# Binary will be at:
-# - macOS/Linux: target/release/narsil-mcp
-# - Windows: target/release/narsil-mcp.exe
+bash setup.sh
 ```
 
 ### Feature Builds
@@ -173,7 +111,6 @@ cargo build --release --features frontend
 
 ### Basic Usage
 
-**macOS / Linux:**
 ```bash
 # Index a single repository
 narsil-mcp --repos /path/to/your/project
@@ -186,21 +123,6 @@ narsil-mcp --repos /path/to/project --verbose
 
 # Force re-index on startup
 narsil-mcp --repos /path/to/project --reindex
-```
-
-**Windows (PowerShell / CMD):**
-```powershell
-# Index a single repository
-narsil-mcp --repos C:\Users\YourName\Projects\my-project
-
-# Index multiple repositories
-narsil-mcp --repos C:\Projects\project1 --repos C:\Projects\project2
-
-# Enable verbose logging
-narsil-mcp --repos C:\Projects\my-project --verbose
-
-# Force re-index on startup
-narsil-mcp --repos C:\Projects\my-project --reindex
 ```
 
 ### Full Feature Set
@@ -471,36 +393,6 @@ For global configuration, edit `~/.claude/settings.json` instead. See [Claude Co
 > **Note for Zed**: narsil-mcp starts immediately and indexes in the background, preventing initialization timeouts.
 
 ---
-
-### Claude Code Plugin
-
-For **Claude Code** users, we provide a plugin with slash commands and a skill for effective tool usage.
-
-**Install via Marketplace (Recommended):**
-```shell
-# Add the narsil-mcp marketplace
-/plugin marketplace add postrv/narsil-mcp
-
-# Install the plugin
-/plugin install narsil@narsil-mcp
-```
-
-**Or install directly from GitHub:**
-```shell
-/plugin install github:postrv/narsil-mcp/narsil-plugin
-```
-
-**What's included:**
-
-| Component | Description |
-|-----------|-------------|
-| `/narsil:explore` | Explore unfamiliar codebases |
-| `/narsil:analyze-function` | Deep dive on specific functions |
-| `/narsil:find-feature` | Find where features are implemented |
-| **Skill** | Guides Claude on using the tools effectively |
-| **MCP Config** | Auto-starts narsil-mcp with sensible defaults |
-
-See [narsil-plugin/README.md](narsil-plugin/README.md) for full documentation.
 
 ### Playbooks & Tutorials
 

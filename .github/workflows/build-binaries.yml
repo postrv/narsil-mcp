@@ -33,21 +33,6 @@ jobs:
             target: aarch64-unknown-linux-gnu
             artifact: narsil-mcp-linux-aarch64
             binary: narsil-mcp
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact: narsil-mcp-macos-x86_64
-            binary: narsil-mcp
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: narsil-mcp-macos-aarch64
-            binary: narsil-mcp
-          # Pin Windows release builds to the stable VS2022 image. The
-          # moving windows-latest image has broken rust-cache during hosted
-          # image transitions, which can fail the binary job before compile.
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-            artifact: narsil-mcp-windows-x86_64
-            binary: narsil-mcp.exe
 
     steps:
       - uses: actions/checkout@v6
@@ -64,19 +49,6 @@ jobs:
           key: ${{ matrix.target }}
           cache-on-failure: true
 
-      - name: Install NASM (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          choco install nasm -y --no-progress
-          $nasm = Get-ChildItem -Path "$env:ProgramFiles\NASM", "$env:ChocolateyInstall\lib\nasm" -Filter nasm.exe -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-          if (-not $nasm) {
-            throw "nasm.exe was not found after Chocolatey installation"
-          }
-          $nasm.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $nasm.FullName -v
-
       - name: Build release binary
         run: |
           if [ -n "${{ inputs.features }}" ]; then
@@ -86,15 +58,9 @@ jobs:
           fi
         shell: bash
 
-      - name: Strip binary (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Strip binary
         shell: bash
-        run: |
-          if [[ "${{ matrix.target }}" == *"linux"* ]]; then
-            strip target/${{ matrix.target }}/release/narsil-mcp
-          elif [[ "${{ matrix.target }}" == *"darwin"* ]]; then
-            strip -x target/${{ matrix.target }}/release/narsil-mcp
-          fi
+        run: strip target/${{ matrix.target }}/release/narsil-mcp
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
