@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Renamed to narsil-xref**, a fork of narsil-mcp 1.7.0, at version 2.0.0.
+  The package, the binary and the config, cache, state and runtime
+  directories are `narsil-xref`. `NARSIL_*` variables and `.narsil.yaml`
+  keep their names. Move `~/.config/narsil-mcp` to `~/.config/narsil-xref`
+  by hand. `setup.sh` prints the commands.
+
 ### Removed
+
+- **Every release channel except Linux binaries.** The macOS and Windows
+  builds, `install.ps1`, the npm package, crates.io publishing, Homebrew,
+  Scoop, the Nix flake and the Claude Code plugin are gone.
 
 - **Everything outside the code, git and analysis tool groups.** This branch
   is a plain code-indexing server: the security scanner and taint analysis,

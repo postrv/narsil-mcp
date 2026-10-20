@@ -1,6 +1,6 @@
 [package]
 name = "narsil-xref"
-version = "1.7.0"
+version = "2.0.0"
 edition = "2021"
 authors = ["postrv", "Bernd Schubert"]
 description = "MCP server for code indexing: symbols, call graphs and git history; C and C++ cross-checked between tree-sitter, clangd/ccls and gtags"
