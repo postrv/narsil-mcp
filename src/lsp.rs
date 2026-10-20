@@ -837,7 +837,7 @@ impl LspManager {
             trace: Some(TraceValue::Off),
             workspace_folders: Some(vec![workspace_folder]),
             client_info: Some(ClientInfo {
-                name: "narsil-mcp".to_string(),
+                name: crate::APP_NAME.to_string(),
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
             }),
             ..Default::default()
@@ -962,7 +962,7 @@ impl LspManager {
         let base = directories::BaseDirs::new()
             .map(|dirs| dirs.cache_dir().to_path_buf())
             .unwrap_or_else(|| PathBuf::from("/tmp"));
-        base.join("narsil-mcp").join("ccls").join(hash)
+        base.join(crate::APP_NAME).join("ccls").join(hash)
     }
 
     /// Get hover information

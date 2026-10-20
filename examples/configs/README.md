@@ -23,10 +23,10 @@ per repository.
 **Usage:**
 ```bash
 # Copy to user config, then edit the repo paths
-cp examples/configs/backend-tuning.yaml ~/.config/narsil-mcp/config.yaml
+cp examples/configs/backend-tuning.yaml ~/.config/narsil-xref/config.yaml
 
 # Select the profile at startup
-narsil-mcp --profile dev
+narsil-xref --profile dev
 ```
 
 See [Per-repo and per-group backend tuning](../../docs/configuration.md#per-repo-and-per-group-backend-tuning)
@@ -41,7 +41,7 @@ Configurations are loaded with the following priority (highest to lowest):
 1. **CLI flags** (`--git`, `--call-graph`, etc.)
 2. **Environment variables** (`NARSIL_EXPOSE`, `NARSIL_DISABLED_TOOLS`, etc.)
 3. **Project config** (`.narsil.yaml` in repository root)
-4. **User config** (`~/.config/narsil-mcp/config.yaml`)
+4. **User config** (`~/.config/narsil-xref/config.yaml`)
 5. **Default config** (built-in)
 
 ## See Also

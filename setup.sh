@@ -1,5 +1,5 @@
 #!/bin/bash
-# Setup script for narsil-mcp
+# Setup script for narsil-xref
 set -e
 
 INSTALL_SYSTEMD=no
@@ -12,28 +12,47 @@ if [ "$#" -gt 0 ]; then
     fi
 fi
 
+CONFIG_HOME="$HOME/.config"
+if [ -n "${XDG_CONFIG_HOME}" ]; then
+    CONFIG_HOME="${XDG_CONFIG_HOME}"
+fi
+
 install_systemd_units()
 {
-    config_home="$HOME/.config"
-    if [ -n "${XDG_CONFIG_HOME}" ]; then
-        config_home="${XDG_CONFIG_HOME}"
-    fi
-    unit_dir="${config_home}/systemd/user"
+    unit_dir="${CONFIG_HOME}/systemd/user"
 
     mkdir -p "${unit_dir}"
-    cp contrib/systemd/narsil-mcp@.service contrib/systemd/narsil-mcp@.socket "${unit_dir}/"
+    cp contrib/systemd/narsil-xref@.service contrib/systemd/narsil-xref@.socket "${unit_dir}/"
     systemctl --user daemon-reload
 
     echo "✅ Installed the systemd user units to ${unit_dir}"
     echo "  # Start the SSE server for a config.yaml profile, e.g. dev, on the first connection:"
-    echo "  systemctl --user enable --now narsil-mcp@dev.socket"
+    echo "  systemctl --user enable --now narsil-xref@dev.socket"
     echo "  # Or start it at once:"
-    echo "  systemctl --user enable --now narsil-mcp@dev"
+    echo "  systemctl --user enable --now narsil-xref@dev"
     echo "  # Start it at boot instead of at your first login:"
     echo "  loginctl enable-linger $USER"
 }
 
-echo "🦀 Setting up narsil-mcp..."
+print_rename_hints()
+{
+    if [ -d "${CONFIG_HOME}/narsil-mcp" ] && [ ! -e "${CONFIG_HOME}/narsil-xref" ]; then
+        echo "⚠️  Move the old config directory:"
+        echo "  mv ${CONFIG_HOME}/narsil-mcp ${CONFIG_HOME}/narsil-xref"
+    fi
+
+    old_unit_dir="${CONFIG_HOME}/systemd/user"
+    if [ -f "${old_unit_dir}/narsil-mcp@.service" ]; then
+        echo "⚠️  The narsil-mcp systemd units are still installed. Disable each instance listed here:"
+        if ! systemctl --user list-units --all --plain --no-legend 'narsil-mcp@*'; then
+            echo "  (systemctl --user cannot list the instances)"
+        fi
+        echo "  systemctl --user disable --now <instance>"
+        echo "  rm ${old_unit_dir}/narsil-mcp@.service ${old_unit_dir}/narsil-mcp@.socket"
+    fi
+}
+
+echo "🦀 Setting up narsil-xref..."
 
 # Check for Rust
 if ! command -v cargo &> /dev/null; then
@@ -57,28 +76,30 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
 fi
 
-# delete first to avoid ETXTBSY if narsil-mcp is running
-rm -f "$INSTALL_DIR/narsil-mcp" 
-cp target/release/narsil-mcp "$INSTALL_DIR/"
-echo "✅ Installed to $INSTALL_DIR/narsil-mcp"
+# delete first to avoid ETXTBSY if narsil-xref is running
+rm -f "$INSTALL_DIR/narsil-xref" 
+cp target/release/narsil-xref "$INSTALL_DIR/"
+echo "✅ Installed to $INSTALL_DIR/narsil-xref"
 
 if [ "${INSTALL_SYSTEMD}" = yes ]; then
     install_systemd_units
 fi
+
+print_rename_hints
 
 # Print usage
 echo ""
 echo "🎉 Setup complete! Usage:"
 echo ""
 echo "  # Index a repository"
-echo "  narsil-mcp --repos /path/to/your/project"
+echo "  narsil-xref --repos /path/to/your/project"
 echo ""
 echo "  # Add to Claude Desktop config:"
 cat << EOF
   {
     "mcpServers": {
-      "narsil-mcp": {
-        "command": "${INSTALL_DIR}/narsil-mcp",
+      "narsil-xref": {
+        "command": "${INSTALL_DIR}/narsil-xref",
         "args": ["--repos", "/path/to/your/projects"]
       }
     }

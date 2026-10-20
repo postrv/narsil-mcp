@@ -143,7 +143,7 @@ impl ExposeGroup {
     /// Derived analysis, as opposed to retrieval. The distinction that puts a
     /// tool here: its answer is something a caller holding the source can work
     /// out unaided, so paying schema bytes on every request to offer it is a
-    /// bad trade. Useful to a human reading `narsil-mcp tools list` or driving
+    /// bad trade. Useful to a human reading `narsil-xref tools list` or driving
     /// the HTTP frontend, which is why these stay registered.
     fn analysis_tools() -> HashSet<&'static str> {
         [

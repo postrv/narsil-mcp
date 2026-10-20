@@ -1,6 +1,6 @@
 # Configuration Guide
 
-narsil-mcp supports flexible configuration through multiple layers, allowing you to customize tool availability and behavior at different levels.
+narsil-xref supports flexible configuration through multiple layers, allowing you to customize tool availability and behavior at different levels.
 
 ## Table of Contents
 
@@ -21,14 +21,14 @@ For persistent configuration:
 
 ```bash
 # Create default user config
-mkdir -p ~/.config/narsil-mcp
-cp examples/configs/balanced.yaml ~/.config/narsil-mcp/config.yaml
+mkdir -p ~/.config/narsil-xref
+cp examples/configs/balanced.yaml ~/.config/narsil-xref/config.yaml
 
 # Edit to your preferences
-vim ~/.config/narsil-mcp/config.yaml
+vim ~/.config/narsil-xref/config.yaml
 
 # Start server (config is automatically loaded)
-narsil-mcp --repos ~/project
+narsil-xref --repos ~/project
 ```
 
 ### Named Repository Profiles
@@ -52,11 +52,11 @@ profiles:
 Start with a profile:
 
 ```bash
-narsil-mcp --profile platform
-narsil-mcp config profiles
+narsil-xref --profile platform
+narsil-xref config profiles
 ```
 
-CLI flags still win, so `narsil-mcp --profile platform --repos ~/src/one-off`
+CLI flags still win, so `narsil-xref --profile platform --repos ~/src/one-off`
 uses the explicit `--repos` value while keeping profile feature defaults.
 
 #### Per-repo and per-group backend tuning
@@ -141,13 +141,13 @@ Configurations are loaded and merged with the following priority (highest to low
    - Overrides user config
    - Useful for team-shared settings
 
-4. **User config** (`~/.config/narsil-mcp/config.yaml`)
+4. **User config** (`~/.config/narsil-xref/config.yaml`)
    - Your personal preferences
    - Persists across all projects
    - Platform-specific paths:
-     - Linux: `~/.config/narsil-mcp/config.yaml`
-     - macOS: `~/Library/Application Support/narsil-mcp/config.yaml` or `~/.config/narsil-mcp/config.yaml`
-     - Windows: `%APPDATA%\narsil-mcp\config.yaml`
+     - Linux: `~/.config/narsil-xref/config.yaml`
+     - macOS: `~/Library/Application Support/narsil-xref/config.yaml` or `~/.config/narsil-xref/config.yaml`
+     - Windows: `%APPDATA%\narsil-xref\config.yaml`
 
 5. **Default config** (built-in)
    - Lowest priority
@@ -209,7 +209,7 @@ Use a custom config file location:
 
 ```bash
 export NARSIL_CONFIG_PATH=/path/to/my-config.yaml
-narsil-mcp --repos ~/project
+narsil-xref --repos ~/project
 ```
 
 ### NARSIL_REPOS and NARSIL_PROFILE
@@ -218,10 +218,10 @@ Select repositories without command-line arguments:
 
 ```bash
 export NARSIL_REPOS=~/src/api,~/src/web
-narsil-mcp --git
+narsil-xref --git
 
 export NARSIL_PROFILE=platform
-narsil-mcp
+narsil-xref
 ```
 
 ### NARSIL_DISABLED_TOOLS
@@ -231,7 +231,7 @@ Disable specific tools (comma-separated):
 ```bash
 # Disable slow tools
 export NARSIL_DISABLED_TOOLS=semantic_search,get_call_graph
-narsil-mcp --repos ~/project
+narsil-xref --repos ~/project
 ```
 
 This will:
@@ -241,20 +241,20 @@ This will:
 
 ## CLI Commands
 
-narsil-mcp provides CLI commands for managing configuration:
+narsil-xref provides CLI commands for managing configuration:
 
 ### Show Current Configuration
 
 Display the effective configuration after merging all sources:
 
 ```bash
-narsil-mcp config show
+narsil-xref config show
 
 # Show as JSON
-narsil-mcp config show --format json
+narsil-xref config show --format json
 
 # Show configuration for specific repo
-narsil-mcp config show --repo ~/project
+narsil-xref config show --repo ~/project
 ```
 
 ### Validate Configuration
@@ -263,13 +263,13 @@ Validate a config file without starting the server:
 
 ```bash
 # Validate user config
-narsil-mcp config validate ~/.config/narsil-mcp/config.yaml
+narsil-xref config validate ~/.config/narsil-xref/config.yaml
 
 # Validate project config
-narsil-mcp config validate .narsil.yaml
+narsil-xref config validate .narsil.yaml
 
 # Validate and show errors
-narsil-mcp config validate my-config.yaml --verbose
+narsil-xref config validate my-config.yaml --verbose
 ```
 
 ### List Tools
@@ -278,16 +278,16 @@ List available tools with filtering:
 
 ```bash
 # List all tools
-narsil-mcp tools list
+narsil-xref tools list
 
 # List tools in a category
-narsil-mcp tools list --category Search
+narsil-xref tools list --category Search
 
 # Search for tools
-narsil-mcp tools search "git"
+narsil-xref tools search "git"
 
 # Show tool details
-narsil-mcp tools show get_blame
+narsil-xref tools show get_blame
 ```
 
 ### Export Configuration
@@ -296,7 +296,7 @@ Export the current effective configuration:
 
 ```bash
 # Export to file
-narsil-mcp config export > my-config.yaml
+narsil-xref config export > my-config.yaml
 ```
 
 ## Tool Overrides
@@ -330,16 +330,16 @@ tools:
 1. Check if required CLI flags are present:
    ```bash
    # Git tools require --git flag
-   narsil-mcp --repos ~/project --git
+   narsil-xref --repos ~/project --git
 
    # Call graph tools require --call-graph flag
-   narsil-mcp --repos ~/project --call-graph
+   narsil-xref --repos ~/project --call-graph
    ```
 
 2. Check the exposed groups:
    ```bash
    # Show current config
-   narsil-mcp config show
+   narsil-xref config show
 
    # Look for the expose: line
    ```
@@ -372,18 +372,18 @@ tools:
 1. Verify config file location:
    ```bash
    # Linux/macOS
-   ls -la ~/.config/narsil-mcp/config.yaml
+   ls -la ~/.config/narsil-xref/config.yaml
 
    # macOS (alternative)
-   ls -la ~/Library/Application\ Support/narsil-mcp/config.yaml
+   ls -la ~/Library/Application\ Support/narsil-xref/config.yaml
 
    # Windows
-   dir %APPDATA%\narsil-mcp\config.yaml
+   dir %APPDATA%\narsil-xref\config.yaml
    ```
 
 2. Validate config syntax:
    ```bash
-   narsil-mcp config validate ~/.config/narsil-mcp/config.yaml
+   narsil-xref config validate ~/.config/narsil-xref/config.yaml
    ```
 
 3. Check for YAML errors:
@@ -394,7 +394,7 @@ tools:
 4. Check config priority:
    - Environment variables override config files
    - CLI flags override everything
-   - Use `narsil-mcp config show` to see effective configuration
+   - Use `narsil-xref config show` to see effective configuration
 
 ### Config File Validation Errors
 
@@ -418,7 +418,7 @@ tools:
 3. Invalid YAML syntax:
    ```bash
    # Use a YAML validator
-   yamllint ~/.config/narsil-mcp/config.yaml
+   yamllint ~/.config/narsil-xref/config.yaml
    ```
 
 ## See Also

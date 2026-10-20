@@ -1,6 +1,6 @@
-//! `narsil-mcp stats` CLI subcommand.
+//! `narsil-xref stats` CLI subcommand.
 //!
-//! Reads persistent metrics from `~/.cache/narsil-mcp/stats/` without
+//! Reads persistent metrics from `~/.cache/narsil-xref/stats/` without
 //! starting an engine, and prints either aggregate or per-`index_path`
 //! views. Designed so users can check "how much has narsil helped me?"
 //! from a plain shell.
@@ -62,7 +62,7 @@ fn handle_single(index_path: &std::path::Path, format: StatsFormat) -> Result<()
     if !file.exists() {
         anyhow::bail!(
             "No stats found for index path {:?} (looked for {:?}). \
-             Has narsil-mcp ever been started with --index-path {:?}?",
+             Has narsil-xref ever been started with --index-path {:?}?",
             index_path,
             file,
             index_path,
@@ -79,7 +79,7 @@ fn handle_aggregate(format: StatsFormat) -> Result<()> {
     emit(&snapshots, format)
 }
 
-/// Print the live "Running narsil-mcp processes" view: one block per process
+/// Print the live "Running narsil-xref processes" view: one block per process
 /// found in the pid-status directories, showing its role, SSE URL, and the
 /// per-repo symbol counts. Dead-pid files are pruned by `read_all`.
 fn emit_live_processes(format: StatsFormat) -> Result<()> {
@@ -95,9 +95,9 @@ fn emit_live_processes(format: StatsFormat) -> Result<()> {
 }
 
 fn render_live_processes_markdown(procs: &[PidStatus]) -> String {
-    let mut out = String::from("# Running narsil-mcp processes\n\n");
+    let mut out = String::from("# Running narsil-xref processes\n\n");
     if procs.is_empty() {
-        out.push_str("*No running narsil-mcp processes found.*\n\n");
+        out.push_str("*No running narsil-xref processes found.*\n\n");
         return out;
     }
     for proc in procs {
@@ -111,7 +111,7 @@ fn render_live_processes_markdown(procs: &[PidStatus]) -> String {
         out.push_str(&format!("## PID {} — {}\n", proc.pid, role));
 
         // For an SSE listener, "connected instances" are the live stdio
-        // narsil-mcp processes delegating to its URL. There is no persistent
+        // narsil-xref processes delegating to its URL. There is no persistent
         // SSE connection to count server-side; each proxy is a stateless POST
         // client, so its status record is the authoritative signal.
         if let ProcessRole::Sse { url } = &proc.role {

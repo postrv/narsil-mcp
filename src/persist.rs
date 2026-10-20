@@ -437,7 +437,7 @@ impl IndexStore {
         Ok(())
     }
 
-    /// Which running narsil-mcp holds `repo_root`, from the status files every
+    /// Which running narsil-xref holds `repo_root`, from the status files every
     /// instance writes. The flock names no owner, and the status files are the
     /// only record of who is serving what.
     fn holder(repo_root: &Path) -> String {
@@ -460,7 +460,7 @@ impl IndexStore {
 
         match holder {
             Some(status) => format!(
-                "another narsil-mcp: pid {} ({}, {:?})",
+                "another narsil-xref: pid {} ({}, {:?})",
                 status.pid, status.transport, status.role
             ),
             None => "another process".to_string(),

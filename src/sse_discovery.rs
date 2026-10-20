@@ -1,13 +1,13 @@
-//! Auto-discovery of running SSE narsil-mcp servers.
+//! Auto-discovery of running SSE narsil-xref servers.
 //!
-//! When an editor spawns narsil-mcp in stdio mode and another long-running
-//! SSE narsil-mcp already covers the requested repositories, the stdio
+//! When an editor spawns narsil-xref in stdio mode and another long-running
+//! SSE narsil-xref already covers the requested repositories, the stdio
 //! process delegates to it instead of building a duplicate index. This
 //! module owns the on-disk registry that lets stdio find SSE.
 //!
 //! The registry is a JSON array of [`SseServerRecord`] under either
-//! `$XDG_RUNTIME_DIR/narsil-mcp/servers.json` (Linux, tmpfs, per-user) or
-//! `<cache_dir>/narsil-mcp/servers.json` (macOS / unset XDG). The
+//! `$XDG_RUNTIME_DIR/narsil-xref/servers.json` (Linux, tmpfs, per-user) or
+//! `<cache_dir>/narsil-xref/servers.json` (macOS / unset XDG). The
 //! directory is chmod'd to `0700` on Unix so other users on a shared host
 //! cannot read URLs or repo paths.
 //!
@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
-/// On-disk record of a running SSE narsil-mcp.
+/// On-disk record of a running SSE narsil-xref.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SseServerRecord {
     /// Base URL with no trailing slash, e.g. `http://127.0.0.1:7557`.
@@ -67,22 +67,22 @@ impl Drop for DiscoveryEntry {
 
 /// Resolve the path of the discovery registry file.
 ///
-/// Linux/BSD: `$XDG_RUNTIME_DIR/narsil-mcp/servers.json` when XDG is set
+/// Linux/BSD: `$XDG_RUNTIME_DIR/narsil-xref/servers.json` when XDG is set
 /// to an absolute path (tmpfs, per-user, cleaned on logout).
 ///
 /// Fallback (macOS, Windows, or unset XDG): the user's cache directory
-/// joined with `narsil-mcp/servers.json`. Both locations are already
+/// joined with `narsil-xref/servers.json`. Both locations are already
 /// user-scoped — no shared `/tmp` involved.
 pub fn discovery_file_path() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
         let dir = PathBuf::from(dir);
         if dir.is_absolute() {
-            return Ok(dir.join("narsil-mcp").join("servers.json"));
+            return Ok(dir.join(crate::APP_NAME).join("servers.json"));
         }
     }
     let base = directories::BaseDirs::new()
         .context("Cannot determine a per-user cache directory for the SSE discovery file")?;
-    Ok(base.cache_dir().join("narsil-mcp").join("servers.json"))
+    Ok(base.cache_dir().join(crate::APP_NAME).join("servers.json"))
 }
 
 /// Write (or refresh) a record for the SSE server running on `url`.

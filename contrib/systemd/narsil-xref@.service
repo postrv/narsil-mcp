@@ -1,0 +1,13 @@
+# narsil-xref SSE server for one config.yaml profile: the instance name is the
+# profile, e.g. `systemctl --user enable --now narsil-xref@dev`.
+[Unit]
+Description=narsil-xref SSE server (profile %i)
+
+[Service]
+ExecStart=%h/.local/bin/narsil-xref --profile %i --transport sse --http --gtags-generate --log-file %L/narsil-xref/%i.log
+LogsDirectory=narsil-xref
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,10 +1,10 @@
-# Default configuration for narsil-mcp
+# Default configuration for narsil-xref
 #
 # Every registered tool is exposed unless `expose:` narrows the groups.
 # Individual tools can be disabled using the 'overrides' section.
 #
 # To customize, copy this file to:
-# - ~/.config/narsil-mcp/config.yaml (user config)
+# - ~/.config/narsil-xref/config.yaml (user config)
 # - .narsil.yaml (project config)
 
 version: "1.0"

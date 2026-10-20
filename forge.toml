@@ -1,12 +1,12 @@
-# Forgemax — narsil-mcp development config
+# Forgemax — narsil-xref development config
 #
-# Wraps narsil-mcp in Forgemax's Code Mode gateway.
+# Wraps narsil-xref in Forgemax's Code Mode gateway.
 # 90 tools → 2 tools (~1,000 tokens in LLM context).
 
 # ─── Code Intelligence ────────────────────────────────────────────────
 
 [servers.narsil]
-command   = "narsil-mcp"
+command   = "narsil-xref"
 args      = ["--repos", ".", "--git", "--call-graph", "--persist", "--watch"]
 transport = "stdio"
 timeout_secs = 30

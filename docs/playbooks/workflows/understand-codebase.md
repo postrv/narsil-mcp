@@ -1,6 +1,6 @@
 # Workflow: Understand a Codebase
 
-You've cloned an unfamiliar repository. Here's how Claude uses narsil-mcp to help you understand it.
+You've cloned an unfamiliar repository. Here's how Claude uses narsil-xref to help you understand it.
 
 ## The Scenario
 

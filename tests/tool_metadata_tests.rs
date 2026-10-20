@@ -2,7 +2,7 @@
 ///
 /// These tests verify that all 91 tools have complete metadata
 /// and that the metadata system works correctly.
-use narsil_mcp::tool_metadata::{
+use narsil_xref::tool_metadata::{
     FeatureFlag, PerformanceImpact, StabilityLevel, ToolCategory, TOOL_METADATA,
 };
 use std::collections::HashSet;

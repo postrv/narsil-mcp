@@ -213,7 +213,7 @@ export class Class{i} implements Interface{i} {{
 }
 
 // Stub functions - these would call the actual parser
-// In real implementation, these would use the narsil_mcp library
+// In real implementation, these would use the narsil_xref library
 
 fn parse_rust_code(code: &str) -> usize {
     // Placeholder - would use tree-sitter-rust

@@ -1,6 +1,6 @@
 /// Configuration schema structures
 ///
-/// These structures define the YAML configuration format for narsil-mcp.
+/// These structures define the YAML configuration format for narsil-xref.
 /// They are designed to be serialized/deserialized with serde.
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

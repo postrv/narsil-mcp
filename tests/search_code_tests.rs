@@ -2,7 +2,7 @@
 //! owning repo, and multi-word queries match non-adjacent terms.
 
 use anyhow::Result;
-use narsil_mcp::index::{CodeIntelEngine, EngineOptions};
+use narsil_xref::index::{CodeIntelEngine, EngineOptions};
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 

@@ -5,7 +5,7 @@
 //! - Smart invalidation works correctly
 //! - Cache integration with CodeIntelEngine works
 
-use narsil_mcp::cache::query_cache::{QueryCache, QueryCacheKey, SearchOptions};
+use narsil_xref::cache::query_cache::{QueryCache, QueryCacheKey, SearchOptions};
 use std::time::{Duration, Instant};
 
 #[test]

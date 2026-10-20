@@ -1,6 +1,6 @@
 //! Stdio ↔ HTTP proxy for the SSE auto-discovery feature.
 //!
-//! When the stdio entry-point finds a running SSE narsil-mcp that already
+//! When the stdio entry-point finds a running SSE narsil-xref that already
 //! covers the requested repositories, it skips engine construction and
 //! runs this proxy instead. The proxy reads newline-delimited JSON-RPC from
 //! stdin, forwards each line as a POST to the streamable HTTP `/mcp`
@@ -9,7 +9,7 @@
 //!
 //! Requests are serialised — one stdin line, one POST, one response
 //! written, repeat. The MCP stdio framing technically allows pipelining
-//! but the editors that drive narsil-mcp do not exercise it, and
+//! but the editors that drive narsil-xref do not exercise it, and
 //! localhost RTT keeps the latency cost bounded. If a real workload
 //! regresses, revisit.
 
@@ -464,7 +464,7 @@ fn timeout_reply(line: &str) -> Forward {
             // Not -32001: that is the daemon's "index busy, retry" code.
             "code": -32002,
             "message": format!(
-                "narsil-mcp server did not answer within {}s; the request may \
+                "narsil-xref server did not answer within {}s; the request may \
                  still be running there",
                 UPSTREAM_TIMEOUT.as_secs()
             ),

@@ -2,8 +2,8 @@
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser as ClapParser, Subcommand, ValueEnum};
-use narsil_mcp::lsp::CxxLspBackend;
-use narsil_mcp::{
+use narsil_xref::lsp::CxxLspBackend;
+use narsil_xref::{
     config, http_server, index, lsp, mcp, persist, pid_status, repo, sse_discovery, stats_cli,
     stdio_proxy, streaming,
 };
@@ -21,17 +21,17 @@ mod memory_watchdog;
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]
 enum Transport {
     /// Read JSON-RPC from stdin, write responses to stdout. The
-    /// historical narsil-mcp transport; suitable when an editor spawns a
+    /// historical narsil-xref transport; suitable when an editor spawns a
     /// fresh subprocess per session.
     #[default]
     Stdio,
     /// MCP HTTP+SSE transport (spec 2024-11-05). Serves one persistent
-    /// narsil-mcp to many editor sessions over a shared HTTP listener.
+    /// narsil-xref to many editor sessions over a shared HTTP listener.
     Sse,
 }
 
 #[derive(ClapParser, Debug)]
-#[command(name = "narsil-mcp")]
+#[command(name = "narsil-xref")]
 #[command(version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("NARSIL_BUILD_ID"), ")"))]
 #[command(about = "Blazingly fast MCP server for code intelligence")]
 struct Args {
@@ -73,7 +73,7 @@ struct ServerArgs {
         short,
         long,
         env = "NARSIL_INDEX_PATH",
-        default_value = "~/.cache/narsil-mcp"
+        default_value = "~/.cache/narsil-xref"
     )]
     index_path: PathBuf,
 
@@ -158,7 +158,7 @@ struct ServerArgs {
 
     /// Build a GTAGS database (via the `gtags` binary) for C/C++ repos that lack
     /// one, so index-time gtags augmentation has data. Writes GTAGS/GRTAGS/GPATH
-    /// into narsil-mcp's cache directory (~/.cache/narsil-mcp/gtags-db on
+    /// into narsil-xref's cache directory (~/.cache/narsil-xref/gtags-db on
     /// Linux), not into the repo, and is skipped on very large trees.
     #[arg(long, env = "NARSIL_GTAGS_GENERATE")]
     gtags_generate: bool,
@@ -177,7 +177,7 @@ struct ServerArgs {
 
     /// MCP transport to expose: `stdio` (default) or `sse`.
     /// SSE binds an HTTP listener (see --sse-host / --sse-port) and lets
-    /// multiple editor sessions share one persistent narsil-mcp process.
+    /// multiple editor sessions share one persistent narsil-xref process.
     #[arg(long, env = "NARSIL_TRANSPORT", value_enum, default_value = "stdio")]
     transport: Transport,
 
@@ -374,7 +374,7 @@ async fn main() -> Result<()> {
     }
 
     info!(
-        "Starting narsil-mcp v{} ({})",
+        "Starting narsil-xref v{} ({})",
         env!("CARGO_PKG_VERSION"),
         env!("NARSIL_BUILD_ID")
     );
@@ -402,7 +402,7 @@ async fn main() -> Result<()> {
     )?;
 
     // --sse-host / --sse-port are SSE-specific flags; passing either one
-    // implicitly activates SSE transport so `narsil-mcp --sse-host localhost`
+    // implicitly activates SSE transport so `narsil-xref --sse-host localhost`
     // does the right thing without also requiring --transport sse.
     if matches!(server_args.transport, Transport::Stdio)
         && (server_args.sse_host.is_some() || server_args.sse_port.is_some())
@@ -437,7 +437,7 @@ async fn main() -> Result<()> {
 
     // Resolve the final list of repository paths from CLI args, env, and
     // discovery. For stdio transport, fall back to cwd when nothing is
-    // specified so bare `narsil-mcp` "just works" inside a project.
+    // specified so bare `narsil-xref` "just works" inside a project.
     // SSE transport requires explicit --repos to avoid silently indexing
     // whatever directory the server process was started in.
     let cwd_fallback = matches!(server_args.transport, Transport::Stdio);
@@ -457,7 +457,7 @@ async fn main() -> Result<()> {
         warn!("--preset is ignored; tool selection is --expose");
     }
 
-    // Stdio auto-discovery: if a long-running SSE narsil-mcp is already
+    // Stdio auto-discovery: if a long-running SSE narsil-xref is already
     // indexing a superset of these repos, delegate to it and skip local
     // engine construction entirely. The probe is a single MCP `ping`;
     // anything that fails (no registry file, no matching repos, transport
@@ -500,7 +500,7 @@ async fn main() -> Result<()> {
                     proxy_url
                 );
             }
-            // Record this delegating process so `narsil-mcp stats` can show the
+            // Record this delegating process so `narsil-xref stats` can show the
             // stdio→SSE link; the guard removes the file on a clean return.
             let _pid_status_entry = pid_status::write_status(&pid_status::PidStatus::new(
                 "stdio",
@@ -528,7 +528,7 @@ async fn main() -> Result<()> {
     let gtags_enabled = match gtags_intent {
         index::BackendIntent::Off => false,
         index::BackendIntent::On => true,
-        index::BackendIntent::Auto => narsil_mcp::gtags::gtags_available(),
+        index::BackendIntent::Auto => narsil_xref::gtags::gtags_available(),
     };
 
     // LSP intent: --lsp forces on, --no-lsp forces off, else Auto (enable when a
@@ -664,7 +664,7 @@ async fn main() -> Result<()> {
             .await?,
     );
 
-    // Publish this process's status so `narsil-mcp stats` (and a human
+    // Publish this process's status so `narsil-xref stats` (and a human
     // diagnosing the stdio↔SSE path) can see its role, URL, and repos. The
     // guard removes the file on a clean return; the background task below
     // refreshes it with real symbol counts once indexing finishes.
@@ -864,7 +864,7 @@ fn systemd_listener() -> Result<Option<std::net::TcpListener>> {
     };
     if listen_fds != "1" {
         bail!(
-            "socket activation passed LISTEN_FDS={}; narsil-mcp takes exactly one socket",
+            "socket activation passed LISTEN_FDS={}; narsil-xref takes exactly one socket",
             listen_fds
         );
     }
@@ -1132,7 +1132,7 @@ fn resolve_repo_paths(
     }
 
     // Fall back to the current working directory when no repos are specified
-    // anywhere — bare `narsil-mcp` should "just work" inside a project.
+    // anywhere — bare `narsil-xref` should "just work" inside a project.
     // This fallback is intentionally disabled for SSE transport, where the
     // server is a persistent process not tied to any project directory.
     if repos.is_empty() {
@@ -1258,7 +1258,7 @@ mod tests {
             std::env::remove_var(var);
         }
         setup();
-        Args::try_parse_from(["narsil-mcp"]).expect("CLI parse should succeed")
+        Args::try_parse_from(["narsil-xref"]).expect("CLI parse should succeed")
     }
 
     #[test]
@@ -1315,7 +1315,7 @@ mod tests {
     fn cli_args_override_env_vars() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("NARSIL_HTTP_PORT", "4444");
-        let args = Args::try_parse_from(["narsil-mcp", "--http-port", "5555"]).unwrap();
+        let args = Args::try_parse_from(["narsil-xref", "--http-port", "5555"]).unwrap();
         std::env::remove_var("NARSIL_HTTP_PORT");
         assert_eq!(args.server.http_port, 5555);
     }
@@ -1323,7 +1323,7 @@ mod tests {
     #[test]
     fn preset_flag_is_accepted_and_ignored() {
         let args =
-            Args::try_parse_from(["narsil-mcp", "--preset", "balanced"]).expect("should parse");
+            Args::try_parse_from(["narsil-xref", "--preset", "balanced"]).expect("should parse");
         assert_eq!(args.server.preset.as_deref(), Some("balanced"));
         assert!(args.server.expose.is_empty());
     }
@@ -1400,20 +1400,20 @@ profiles:
             args.server.adopted_repo_ttl_days
         };
 
-        assert_eq!(resolve(&["narsil-mcp"]), Some(30), "machine-wide value");
+        assert_eq!(resolve(&["narsil-xref"]), Some(30), "machine-wide value");
         assert_eq!(
-            resolve(&["narsil-mcp", "--profile", "work"]),
+            resolve(&["narsil-xref", "--profile", "work"]),
             Some(3),
             "a profile's own value beats the machine-wide one"
         );
         assert_eq!(
-            resolve(&["narsil-mcp", "--profile", "bare"]),
+            resolve(&["narsil-xref", "--profile", "bare"]),
             Some(30),
             "a profile that sets nothing falls back to the machine-wide value"
         );
         assert_eq!(
             resolve(&[
-                "narsil-mcp",
+                "narsil-xref",
                 "--profile",
                 "work",
                 "--adopted-repo-ttl-days",
@@ -1451,7 +1451,7 @@ profiles:
         .unwrap();
 
         std::env::set_var("NARSIL_CONFIG_PATH", &config_path);
-        let mut args = Args::try_parse_from(["narsil-mcp", "--profile", "work"]).unwrap();
+        let mut args = Args::try_parse_from(["narsil-xref", "--profile", "work"]).unwrap();
         apply_named_profile(&mut args.server).unwrap();
         std::env::remove_var("NARSIL_CONFIG_PATH");
 

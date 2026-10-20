@@ -1,8 +1,8 @@
 //! SSE server memory watchdog: diagnostics above the soft limit, exit above the hard limit.
 
 use crate::byte_size::parse_byte_size;
-use narsil_mcp::index::CodeIntelEngine;
-use narsil_mcp::metrics::{format_bytes, MemoryReport};
+use narsil_xref::index::CodeIntelEngine;
+use narsil_xref::metrics::{format_bytes, MemoryReport};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;
@@ -131,8 +131,8 @@ pub fn diagnostics_dir(log_file: Option<&Path>) -> PathBuf {
     }
     let base_dirs = directories::BaseDirs::new();
     match base_dirs.as_ref().and_then(|dirs| dirs.state_dir()) {
-        Some(state_dir) => state_dir.join("narsil-mcp"),
-        None => std::env::temp_dir().join("narsil-mcp"),
+        Some(state_dir) => state_dir.join(narsil_xref::APP_NAME),
+        None => std::env::temp_dir().join(narsil_xref::APP_NAME),
     }
 }
 
@@ -362,7 +362,7 @@ fn write_diagnostics_file(
     let mut file = File::create(path)?;
     writeln!(
         file,
-        "narsil-mcp {} ({}) pid {}",
+        "narsil-xref {} ({}) pid {}",
         env!("CARGO_PKG_VERSION"),
         env!("NARSIL_BUILD_ID"),
         std::process::id()

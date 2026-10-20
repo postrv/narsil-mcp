@@ -63,8 +63,8 @@ For maximum capability, use this configuration:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", "${workspaceFolder}",
         "--git",
@@ -84,20 +84,20 @@ For maximum capability, use this configuration:
 
 ## Troubleshooting
 
-### "narsil-mcp not found"
+### "narsil-xref not found"
 
 Ensure the binary is in your PATH:
 
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
-export PATH="$PATH:/path/to/narsil-mcp/target/release"
+export PATH="$PATH:/path/to/narsil-xref/target/release"
 ```
 
 Or use the full path in your config:
 
 ```json
 {
-  "command": "/path/to/narsil-mcp/target/release/narsil-mcp"
+  "command": "/path/to/narsil-xref/target/release/narsil-xref"
 }
 ```
 
@@ -110,6 +110,6 @@ For large repositories (>10k files):
 
 ### Memory usage
 
-narsil-mcp is designed to be memory-efficient, but for very large codebases:
+narsil-xref is designed to be memory-efficient, but for very large codebases:
 - Use `--streaming` to avoid loading all results at once
 - Index only the directories you need with specific `--repos` paths

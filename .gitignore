@@ -38,7 +38,7 @@ logs/
 
 # Index and cache files (project-specific)
 *.index
-.narsil-mcp-cache/
+.narsil-xref-cache/
 .persist/
 
 # Local MCP config (contains absolute paths)

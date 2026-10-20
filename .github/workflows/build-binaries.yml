@@ -23,16 +23,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: narsil-mcp-linux-x86_64
-            binary: narsil-mcp
+            artifact: narsil-xref-linux-x86_64
+            binary: narsil-xref
           # Native ARM64 Linux build via GitHub-hosted Graviton runners.
           # No cross-compile toolchain required — addresses issue #20
           # for Raspberry Pi, AWS Graviton, and Apple-silicon-via-Docker
           # users who previously had no prebuilt binary.
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            artifact: narsil-mcp-linux-aarch64
-            binary: narsil-mcp
+            artifact: narsil-xref-linux-aarch64
+            binary: narsil-xref
 
     steps:
       - uses: actions/checkout@v6
@@ -60,7 +60,7 @@ jobs:
 
       - name: Strip binary
         shell: bash
-        run: strip target/${{ matrix.target }}/release/narsil-mcp
+        run: strip target/${{ matrix.target }}/release/narsil-xref
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

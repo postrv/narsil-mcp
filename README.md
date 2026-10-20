@@ -1,17 +1,17 @@
-# narsil-mcp
+# narsil-xref
 
 > The blazing-fast, privacy-first MCP server for deep code intelligence
 
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/postrv/narsil-mcp)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/bsbernd/narsil-xref)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue.svg)](https://modelcontextprotocol.io)
 
 A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 90 specialized tools.
 
-## Why narsil-mcp?
+## Why narsil-xref?
 
-| Feature | narsil-mcp | XRAY | Serena | GitHub MCP |
+| Feature | narsil-xref | XRAY | Serena | GitHub MCP |
 |---------|------------|------|--------|------------|
 | **Languages** | 32 | 4 | 30+ (LSP) | N/A |
 | **Offline/Local** | Yes | Yes | Yes | No |
@@ -22,7 +22,7 @@ A Rust-powered MCP (Model Context Protocol) server providing AI assistants with 
 - **Code Intelligence** - Symbol extraction, semantic search, call graph analysis
 - **Analysis** - Control flow graphs, data flow analysis, complexity and hotspots
 
-### Why Choose narsil-mcp?
+### Why Choose narsil-xref?
 
 - **Written in Rust** - Blazingly fast, memory-safe, single binary (~30MB)
 - **Tree-sitter powered** - Accurate, incremental parsing for 32 languages
@@ -76,21 +76,21 @@ Prebuilt binaries are released for Linux only, on x86_64 and aarch64.
 ### Install Script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/postrv/narsil-mcp/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bsbernd/narsil-xref/main/install.sh | bash
 ```
 
 ### From Source
 
 ```bash
 # Clone, build and install to ~/.local/bin
-git clone git@github.com:postrv/narsil-mcp.git
-cd narsil-mcp
+git clone git@github.com:bsbernd/narsil-xref.git
+cd narsil-xref
 bash setup.sh
 ```
 
 ### Feature Builds
 
-narsil-mcp supports different feature sets for different use cases:
+narsil-xref supports different feature sets for different use cases:
 
 ```bash
 # Default build - native MCP server (~30MB)
@@ -113,22 +113,22 @@ cargo build --release --features frontend
 
 ```bash
 # Index a single repository
-narsil-mcp --repos /path/to/your/project
+narsil-xref --repos /path/to/your/project
 
 # Index multiple repositories
-narsil-mcp --repos ~/projects/project1 --repos ~/projects/project2
+narsil-xref --repos ~/projects/project1 --repos ~/projects/project2
 
 # Enable verbose logging
-narsil-mcp --repos /path/to/project --verbose
+narsil-xref --repos /path/to/project --verbose
 
 # Force re-index on startup
-narsil-mcp --repos /path/to/project --reindex
+narsil-xref --repos /path/to/project --reindex
 ```
 
 ### Full Feature Set
 
 ```bash
-narsil-mcp \
+narsil-xref \
   --repos ~/projects/my-app \
   --git \           # Enable git blame, history, contributors
   --call-graph \    # Enable function call analysis
@@ -146,15 +146,15 @@ narsil-mcp \
 
 ```bash
 # List available tools
-narsil-mcp tools list
+narsil-xref tools list
 
 # Expose only the code and git tool groups
-narsil-mcp --repos ~/project --expose code,git
+narsil-xref --repos ~/project --expose code,git
 ```
 
 #### Configuration Files
 
-**User config** (`~/.config/narsil-mcp/config.yaml`):
+**User config** (`~/.config/narsil-xref/config.yaml`):
 
 ```yaml
 version: "1.0"
@@ -191,8 +191,8 @@ profiles:
 ```
 
 ```bash
-narsil-mcp --profile platform
-narsil-mcp config profiles
+narsil-xref --profile platform
+narsil-xref config profiles
 ```
 
 **Priority:** CLI flags > Environment vars > Project config > User config > Defaults
@@ -215,22 +215,22 @@ export NARSIL_DISABLED_TOOLS=semantic_search,get_call_graph
 
 ```bash
 # View effective config
-narsil-mcp config show
+narsil-xref config show
 
 # Validate config file
-narsil-mcp config validate ~/.config/narsil-mcp/config.yaml
+narsil-xref config validate ~/.config/narsil-xref/config.yaml
 
 # List tools by category
-narsil-mcp tools list --category Search
+narsil-xref tools list --category Search
 
 # Search for tools
-narsil-mcp tools search "git"
+narsil-xref tools search "git"
 
 # Export config
-narsil-mcp config export > my-config.yaml
+narsil-xref config export > my-config.yaml
 
 # List named repository profiles
-narsil-mcp config profiles
+narsil-xref config profiles
 ```
 
 **Learn More:**
@@ -247,7 +247,7 @@ Explore call graphs, imports, symbol references, and control flow interactively 
 cargo build --release --features frontend
 
 # Run with HTTP server
-narsil-mcp --repos ~/project --http --call-graph
+narsil-xref --repos ~/project --http --call-graph
 # Open http://localhost:3000
 ```
 
@@ -274,21 +274,21 @@ narsil-mcp --repos ~/project --http --call-graph
 
 ### Forgemax Integration (Experimental)
 
-For large-scale agentic workflows, narsil-mcp can be used through [Forgemax](https://github.com/postrv/forgemax) — a Code Mode MCP gateway that collapses all 90 tools into just 2 (`search` + `execute`), reducing tool schema overhead from ~12,000 tokens to ~1,000.
+For large-scale agentic workflows, narsil-xref can be used through [Forgemax](https://github.com/postrv/forgemax) — a Code Mode MCP gateway that collapses all 90 tools into just 2 (`search` + `execute`), reducing tool schema overhead from ~12,000 tokens to ~1,000.
 
 ```bash
 # Install Forgemax
 cargo install forgemax
 
-# Run narsil-mcp through Forgemax (uses forge.toml in repo root)
+# Run narsil-xref through Forgemax (uses forge.toml in repo root)
 forgemax
 ```
 
-The included `forge.toml` configures narsil-mcp with sensible defaults:
+The included `forge.toml` configures narsil-xref with sensible defaults:
 
 ```toml
 [servers.narsil]
-command = "narsil-mcp"
+command = "narsil-xref"
 args = ["--repos", ".", "--git", "--call-graph", "--persist", "--watch"]
 transport = "stdio"
 
@@ -302,7 +302,7 @@ The LLM writes JavaScript that calls through typed proxy objects inside a sandbo
 
 ### MCP Configuration
 
-Add narsil-mcp to your AI assistant by creating a configuration file. Here are the recommended setups:
+Add narsil-xref to your AI assistant by creating a configuration file. Here are the recommended setups:
 
 ---
 
@@ -312,8 +312,8 @@ Create `.mcp.json` in your project directory for per-project configuration:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", ".", "--git", "--call-graph"]
     }
   }
@@ -338,8 +338,8 @@ For global configuration, edit `~/.claude/settings.json` instead. See [Claude Co
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", ".", "--git", "--call-graph"]
     }
   }
@@ -352,8 +352,8 @@ For global configuration, edit `~/.claude/settings.json` instead. See [Claude Co
 ```json
 {
   "servers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", ".", "--git", "--call-graph"]
     }
   }
@@ -368,8 +368,8 @@ For global configuration, edit `~/.claude/settings.json` instead. See [Claude Co
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", "/path/to/your/projects", "--git"]
     }
   }
@@ -382,15 +382,15 @@ For global configuration, edit `~/.claude/settings.json` instead. See [Claude Co
 ```json
 {
   "context_servers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", ".", "--git"]
     }
   }
 }
 ```
 
-> **Note for Zed**: narsil-mcp starts immediately and indexes in the background, preventing initialization timeouts.
+> **Note for Zed**: narsil-xref starts immediately and indexes in the background, preventing initialization timeouts.
 
 ---
 
@@ -558,7 +558,7 @@ Benchmarked on Apple M1 (criterion.rs):
 
 | Repository | Files | Symbols | Time | Memory |
 |------------|-------|---------|------|--------|
-| narsil-mcp (this repo) | 53 | 1,733 | 220 ms | ~50 MB |
+| narsil-xref (this repo) | 53 | 1,733 | 220 ms | ~50 MB |
 | rust-analyzer | 2,847 | ~50K | 2.1s | 89 MB |
 | linux kernel | 78,000+ | ~500K | 45s | 2.1 GB |
 
@@ -587,7 +587,7 @@ cargo fmt
 cargo clippy
 
 # Test with MCP Inspector
-npx @modelcontextprotocol/inspector ./target/release/narsil-mcp --repos ./path/to/repo
+npx @modelcontextprotocol/inspector ./target/release/narsil-xref --repos ./path/to/repo
 ```
 
 ## Troubleshooting
@@ -608,20 +608,20 @@ sudo apt install build-essential
 
 ```bash
 # Check .gitignore isn't excluding files
-narsil-mcp --repos /path --verbose  # Shows skipped files
+narsil-xref --repos /path --verbose  # Shows skipped files
 
 # Force reindex
-narsil-mcp --repos /path --reindex
+narsil-xref --repos /path --reindex
 ```
 
 ### Memory Issues with Large Repos
 
 ```bash
 # For very large repos (>50K files), increase stack size
-RUST_MIN_STACK=8388608 narsil-mcp --repos /path/to/huge-repo
+RUST_MIN_STACK=8388608 narsil-xref --repos /path/to/huge-repo
 
 # Or index specific subdirectories
-narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
+narsil-xref --repos /path/to/repo/src --repos /path/to/repo/lib
 ```
 
 ## Roadmap
@@ -658,7 +658,7 @@ narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
 - **Rust security rules** - 18 new rules (RUST-004 to RUST-021) covering command injection, transmute, FFI boundaries, TOCTOU, ReDoS, static mut, SSRF, and more
 - **Elixir security rules** - 18 new rules (EX-001 to EX-018) covering atom exhaustion, binary_to_term deserialization, Code.eval injection, Ecto SQL injection, Phoenix XSS, Erlang distribution security
 - **Migrated from `serde_yaml` to `serde-saphyr`** - Deprecated `serde_yaml` replaced with actively maintained, panic-free YAML library
-- **Custom favicon** - Frontend now uses narsil-mcp branding icon instead of default Vite logo
+- **Custom favicon** - Frontend now uses narsil-xref branding icon instead of default Vite logo
 - **Dependency security** - Updated `time` to 0.3.47 (RUSTSEC-2026-0009), `bytes` to 1.11.1 (RUSTSEC-2026-0007)
 - **Test count** increased from 1,611 to 1,763 (+152 tests)
 
@@ -682,14 +682,14 @@ narsil-mcp --repos /path/to/repo/src --repos /path/to/repo/lib
 ### v1.2.x
 
 - **`exclude_tests` parameter** - 22 tools support filtering out test files
-- **npm package** - Install via `npm install -g narsil-mcp`
+- **npm package** - Install via `npm install -g narsil-xref`
 
 ### v1.1.x
 
 - **Multi-platform distribution** - Install via Homebrew, Scoop, npm, Cargo, or direct download
 - **Configurable tool presets** - Minimal, balanced, full, and security-focused presets
 - **Automatic editor detection** - Optimal defaults for Zed, VS Code, Claude Desktop
-- **Interactive setup wizard** - `narsil-mcp config init` for easy configuration
+- **Interactive setup wizard** - `narsil-xref config init` for easy configuration
 - **32 language support** - Added Dart, Julia, R, Perl, Zig, and more
 - **Improved performance** - Faster startup with background indexing
 

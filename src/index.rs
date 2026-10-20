@@ -1037,7 +1037,7 @@ impl CodeIntelEngine {
         Self::return_freed_heap_to_os();
         let memory = self.memory_report();
         info!("{}", memory.summary_line());
-        // Persist the snapshot so the offline `narsil-mcp stats` command can
+        // Persist the snapshot so the offline `narsil-xref stats` command can
         // report it; written by the next periodic/shutdown/Drop flush.
         self.metrics.set_memory_report(memory);
 

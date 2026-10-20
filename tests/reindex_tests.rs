@@ -5,8 +5,8 @@
 //! `forget_repo` is its counterpart: it unregisters a repository and drops
 //! everything the engine held for it.
 
-use narsil_mcp::index::{CodeIntelEngine, EngineOptions};
-use narsil_mcp::response_budget::ListWindow;
+use narsil_xref::index::{CodeIntelEngine, EngineOptions};
+use narsil_xref::response_budget::ListWindow;
 use std::path::Path;
 
 fn write_repo(root: &Path, function: &str) -> std::io::Result<()> {

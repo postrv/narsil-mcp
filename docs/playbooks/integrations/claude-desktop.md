@@ -1,11 +1,11 @@
 # Claude Desktop Integration
 
-Set up narsil-mcp with Claude Desktop for code-aware conversations.
+Set up narsil-xref with Claude Desktop for code-aware conversations.
 
 ## Prerequisites
 
 - Claude Desktop installed ([download](https://claude.ai/download))
-- narsil-mcp installed (see [INSTALL.md](../../INSTALL.md))
+- narsil-xref installed (see [INSTALL.md](../../INSTALL.md))
 
 ## Configuration
 
@@ -16,8 +16,8 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", "/Users/yourname/projects/myproject",
         "--git",
@@ -36,8 +36,8 @@ Edit `%APPDATA%\Claude\claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", "C:\\Users\\yourname\\projects\\myproject",
         "--git",
@@ -56,8 +56,8 @@ Edit `~/.config/Claude/claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", "/home/yourname/projects/myproject",
         "--git",
@@ -76,8 +76,8 @@ Index multiple projects:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", "/path/to/project1",
         "--repos", "/path/to/project2",
@@ -95,8 +95,8 @@ Or auto-discover repositories:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--discover", "/path/to/all/my/projects",
         "--git",
@@ -122,7 +122,7 @@ Or auto-discover repositories:
 After restarting Claude Desktop:
 
 1. Start a new conversation
-2. Ask: "List the repositories that narsil-mcp has indexed"
+2. Ask: "List the repositories that narsil-xref has indexed"
 3. You should see your project(s) listed
 
 ## Example Session
@@ -142,14 +142,14 @@ Claude: [Calls get_project_structure, find_symbols, search_code]
 
 ### "Server not found"
 
-1. Verify narsil-mcp is in your PATH:
+1. Verify narsil-xref is in your PATH:
    ```bash
-   which narsil-mcp
+   which narsil-xref
    ```
 
 2. Try using absolute path in config:
    ```json
-   "command": "/usr/local/bin/narsil-mcp"
+   "command": "/usr/local/bin/narsil-xref"
    ```
 
 ### "Repository not indexed"

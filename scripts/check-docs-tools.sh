@@ -16,7 +16,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 DOC="docs/tools.md"
-BEGIN='<!-- BEGIN GENERATED: narsil-mcp tools list --format markdown -->'
+BEGIN='<!-- BEGIN GENERATED: narsil-xref tools list --format markdown -->'
 END='<!-- END GENERATED -->'
 
 RED='\033[0;31m'
@@ -29,9 +29,9 @@ WRITE=0
 
 BIN="${NARSIL_BIN:-}"
 if [ -z "$BIN" ]; then
-    echo -e "${YELLOW}Building narsil-mcp...${NC}"
+    echo -e "${YELLOW}Building narsil-xref...${NC}"
     cargo build --quiet
-    BIN="target/debug/narsil-mcp"
+    BIN="target/debug/narsil-xref"
 fi
 
 generated=$("$BIN" tools list --format markdown)

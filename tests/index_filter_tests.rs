@@ -4,8 +4,8 @@
 //! in-scope code calls or includes directly falls outside it and reads as
 //! "not indexed" — the failure these tests pin down.
 
-use narsil_mcp::index::{CodeIntelEngine, EngineOptions};
-use narsil_mcp::persist::{ChangeType, FileChange};
+use narsil_xref::index::{CodeIntelEngine, EngineOptions};
+use narsil_xref::persist::{ChangeType, FileChange};
 use std::path::Path;
 
 /// `src/` is the scoped-in directory; the callee and the header it includes
@@ -139,7 +139,7 @@ async fn referenced_files_outside_the_filter_are_indexed() {
 
     // The callee half needs the whole-repo gtags database to say where the
     // definition lives; without the binary there is nothing to ask.
-    if narsil_mcp::gtags::gtags_binary_present() {
+    if narsil_xref::gtags::gtags_binary_present() {
         let callee = symbols_matching(&engine, repo.path(), "out_of_scope_helper").await;
         assert!(callee.contains("lib/helper.c"), "{}", callee);
     }

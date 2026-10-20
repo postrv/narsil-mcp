@@ -25,9 +25,9 @@ impl TestMcpServer {
     fn start_with_repos(repo_paths: &[&Path]) -> Result<Self> {
         let temp_dir = TempDir::new()?;
         let binary_path = if cfg!(debug_assertions) {
-            "target/debug/narsil-mcp"
+            "target/debug/narsil-xref"
         } else {
-            "target/release/narsil-mcp"
+            "target/release/narsil-xref"
         };
 
         // --repos takes a comma-separated list (main.rs: value_delimiter = ',').
@@ -238,7 +238,7 @@ fn test_initialize_protocol() -> Result<()> {
     assert_eq!(response["jsonrpc"], "2.0");
     assert!(response["result"].is_object());
     assert_eq!(response["result"]["protocolVersion"], "2024-11-05");
-    assert_eq!(response["result"]["serverInfo"]["name"], "narsil-mcp");
+    assert_eq!(response["result"]["serverInfo"]["name"], "narsil-xref");
     assert!(response["result"]["capabilities"].is_object());
 
     Ok(())
@@ -1534,7 +1534,7 @@ fn test_symbol_filtering_by_file_pattern() -> Result<()> {
 
 mod git_tests {
     use super::*;
-    use narsil_mcp::git::GitRepo;
+    use narsil_xref::git::GitRepo;
 
     #[test]
     fn test_git_available() {

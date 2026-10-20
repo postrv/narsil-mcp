@@ -1,6 +1,6 @@
 //! Integration tests for the MCP HTTP+SSE transport.
 //!
-//! These tests spawn the narsil-mcp binary with `--transport sse`, drive
+//! These tests spawn the narsil-xref binary with `--transport sse`, drive
 //! the JSON-RPC protocol over HTTP, and observe responses on the SSE
 //! stream. The smoke test covers the spec-required `endpoint` event and
 //! one full request/response cycle. The isolation test exercises the
@@ -23,9 +23,9 @@ const EVENT_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn binary_path() -> PathBuf {
     let name = if cfg!(debug_assertions) {
-        "target/debug/narsil-mcp"
+        "target/debug/narsil-xref"
     } else {
-        "target/release/narsil-mcp"
+        "target/release/narsil-xref"
     };
     PathBuf::from(name)
 }
@@ -40,7 +40,7 @@ fn ephemeral_port() -> Result<u16> {
     Ok(port)
 }
 
-/// A spawned narsil-mcp subprocess in SSE mode. The temp directory is
+/// A spawned narsil-xref subprocess in SSE mode. The temp directory is
 /// kept alive for the process lifetime; both are dropped together.
 struct SseServer {
     process: Child,
@@ -67,7 +67,7 @@ impl SseServer {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .context("failed to spawn narsil-mcp; run `cargo build` first")?;
+            .context("failed to spawn narsil-xref; run `cargo build` first")?;
 
         let server = Self {
             process,
@@ -492,7 +492,7 @@ fn spawn_sse_on_port(port: u16, repo: &Path, xdg_runtime: &Path) -> Result<Child
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .context("failed to spawn SSE narsil-mcp; run `cargo build` first")
+        .context("failed to spawn SSE narsil-xref; run `cargo build` first")
 }
 
 /// Poll the streamable `/mcp` endpoint with a `ping` until it answers 2xx. A
@@ -522,7 +522,7 @@ fn wait_until_mcp_ready(port: u16) -> Result<()> {
     bail!("/mcp did not become ready within {:?}", STARTUP_TIMEOUT);
 }
 
-/// A stdio narsil-mcp child driven as an MCP client. Its stdout (responses)
+/// A stdio narsil-xref child driven as an MCP client. Its stdout (responses)
 /// and stderr (logs) are drained on background threads into channels so the
 /// test can read responses with a timeout and watch for log markers without
 /// risking a full pipe blocking the child.
@@ -536,7 +536,7 @@ struct StdioProxy {
 }
 
 impl StdioProxy {
-    /// Spawn `narsil-mcp --repos <repo>` in stdio mode (the default), sharing
+    /// Spawn `narsil-xref --repos <repo>` in stdio mode (the default), sharing
     /// `xdg_runtime` so it discovers the SSE server registered there.
     fn spawn(repo: &Path, xdg_runtime: &Path) -> Result<Self> {
         Self::spawn_with_args(repo, xdg_runtime, &[])
@@ -551,7 +551,7 @@ impl StdioProxy {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .context("failed to spawn stdio narsil-mcp")?;
+            .context("failed to spawn stdio narsil-xref")?;
 
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = child.stdout.take().expect("piped stdout");
@@ -663,7 +663,7 @@ impl Drop for StdioProxy {
 #[test]
 fn test_stdio_proxy_reconnects_after_server_restart() -> Result<()> {
     // Isolated discovery registry shared by both subprocesses, so the test
-    // never touches the developer's real $XDG_RUNTIME_DIR/narsil-mcp.
+    // never touches the developer's real $XDG_RUNTIME_DIR/narsil-xref.
     let xdg = TempDir::new()?;
     let repo = TempDir::new()?;
     let repo_path = repo.path().canonicalize()?;
@@ -786,7 +786,7 @@ fn spawn_sse_with_log_file(
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .context("failed to spawn SSE narsil-mcp; run `cargo build` first")
+        .context("failed to spawn SSE narsil-xref; run `cargo build` first")
 }
 
 fn wait_for_file_contains(path: &Path, needle: &str, timeout: Duration) -> bool {
@@ -939,7 +939,7 @@ fn test_sse_memory_soft_limit_keeps_serving() -> Result<()> {
 }
 
 /// An SSE server behind systemd-socket-activate, which stands in for
-/// narsil-mcp@.socket: it listens on `socket_port` and starts the server on the
+/// narsil-xref@.socket: it listens on `socket_port` and starts the server on the
 /// first connection. None when systemd-socket-activate is not installed.
 fn spawn_socket_activated_sse(
     socket_port: u16,
@@ -996,7 +996,7 @@ fn test_sse_serves_on_the_socket_from_systemd() -> Result<()> {
     };
     // The first ping is what makes systemd-socket-activate start the server.
     let answered = wait_until_mcp_ready(socket_port);
-    let registry = std::fs::read_to_string(xdg.path().join("narsil-mcp").join("servers.json"));
+    let registry = std::fs::read_to_string(xdg.path().join("narsil-xref").join("servers.json"));
     let _ = server.kill();
     let _ = server.wait();
 

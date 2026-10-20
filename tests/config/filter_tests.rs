@@ -4,15 +4,15 @@
 /// 1. Feature flags (git_enabled → Git tools)
 /// 2. Tool overrides
 /// 3. Expose groups
-use narsil_mcp::config::schema::{ToolConfig, ToolOverride};
-use narsil_mcp::config::ConfigLoader;
-use narsil_mcp::index::EngineOptions;
-use narsil_mcp::tool_metadata::{FeatureFlag, TOOL_METADATA};
+use narsil_xref::config::schema::{ToolConfig, ToolOverride};
+use narsil_xref::config::ConfigLoader;
+use narsil_xref::index::EngineOptions;
+use narsil_xref::tool_metadata::{FeatureFlag, TOOL_METADATA};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 // Import ToolFilter (will be implemented)
-use narsil_mcp::config::{ExposeGroup, ToolFilter};
+use narsil_xref::config::{ExposeGroup, ToolFilter};
 
 #[test]
 fn test_filter_by_feature_flags_git() {
@@ -86,7 +86,7 @@ fn test_filter_by_feature_flags_all_enabled() {
         call_graph_enabled: true,
         persist_enabled: true,
         watch_enabled: true,
-        lsp_config: narsil_mcp::lsp::LspConfig {
+        lsp_config: narsil_xref::lsp::LspConfig {
             enabled: true,
             ..Default::default()
         },
@@ -235,7 +235,7 @@ fn test_feature_flag_conversion_from_engine_options() {
         git_enabled: true,
         call_graph_enabled: false,
         persist_enabled: true,
-        lsp_config: narsil_mcp::lsp::LspConfig {
+        lsp_config: narsil_xref::lsp::LspConfig {
             enabled: true,
             ..Default::default()
         },
@@ -281,7 +281,7 @@ fn test_empty_config_with_all_flags_enabled() {
         call_graph_enabled: true,
         persist_enabled: true,
         watch_enabled: true,
-        lsp_config: narsil_mcp::lsp::LspConfig {
+        lsp_config: narsil_xref::lsp::LspConfig {
             enabled: true,
             ..Default::default()
         },
@@ -320,7 +320,7 @@ fn all_features_enabled() -> EngineOptions {
         call_graph_enabled: true,
         persist_enabled: true,
         watch_enabled: true,
-        lsp_config: narsil_mcp::lsp::LspConfig {
+        lsp_config: narsil_xref::lsp::LspConfig {
             enabled: true,
             ..Default::default()
         },

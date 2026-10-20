@@ -1,10 +1,10 @@
-# narsil-mcp Playbooks
+# narsil-xref Playbooks
 
-Practical guides showing how AI assistants use narsil-mcp's code intelligence tools.
+Practical guides showing how AI assistants use narsil-xref's code intelligence tools.
 
 ## How It Works
 
-narsil-mcp is an **MCP server** - it gives AI assistants like Claude direct access to code intelligence tools. When you chat with Claude about your codebase, Claude automatically calls these tools to:
+narsil-xref is an **MCP server** - it gives AI assistants like Claude direct access to code intelligence tools. When you chat with Claude about your codebase, Claude automatically calls these tools to:
 
 - Navigate and understand code
 - Search for patterns and symbols
@@ -83,9 +83,9 @@ No. Claude automatically picks the right tools based on context. But you can be 
 
 ### "What makes this different from just reading files?"
 
-narsil-mcp gives Claude **semantic understanding**:
+narsil-xref gives Claude **semantic understanding**:
 
-| Without narsil-mcp | With narsil-mcp |
+| Without narsil-xref | With narsil-xref |
 |-------------------|-----------------|
 | Claude reads raw text | Claude understands symbols, types, relationships |
 | "grep for function name" | Cross-reference aware symbol search |
@@ -94,6 +94,6 @@ narsil-mcp gives Claude **semantic understanding**:
 
 ## Next Steps
 
-1. **[Install narsil-mcp](../INSTALL.md)** - install script or from source (Linux)
+1. **[Install narsil-xref](../INSTALL.md)** - install script or from source (Linux)
 2. **[Configure for your editor](getting-started.md)** - Claude Desktop, VS Code, Cursor
 3. **Try a workflow** - start with [Understand a Codebase](workflows/understand-codebase.md)

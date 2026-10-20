@@ -1,4 +1,4 @@
-# Getting Started with narsil-mcp
+# Getting Started with narsil-xref
 
 Get code intelligence working in 5 minutes.
 
@@ -8,7 +8,7 @@ Linux only. Choose one:
 
 ```bash
 # Install script, downloads the latest release
-curl -fsSL https://raw.githubusercontent.com/postrv/narsil-mcp/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bsbernd/narsil-xref/main/install.sh | bash
 
 # From a clone of the repository
 bash setup.sh
@@ -16,8 +16,8 @@ bash setup.sh
 
 Verify installation:
 ```bash
-narsil-mcp --version
-# narsil-mcp 1.1.4
+narsil-xref --version
+# narsil-xref 1.1.4
 ```
 
 ## 2. Configure Your AI Tool
@@ -29,8 +29,8 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", "/path/to/your/project", "--git", "--call-graph"]
     }
   }
@@ -46,8 +46,8 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", ".", "--git", "--call-graph"]
     }
   }
@@ -61,8 +61,8 @@ Create `.vscode/mcp.json` in your workspace:
 ```json
 {
   "servers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", "${workspaceFolder}", "--git", "--call-graph"]
     }
   }
@@ -76,8 +76,8 @@ Create `.cursor/mcp.json` in your project:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", ".", "--git", "--call-graph"]
     }
   }
@@ -88,7 +88,7 @@ Create `.cursor/mcp.json` in your project:
 
 Ask your AI assistant:
 
-> "List the repositories that narsil-mcp has indexed"
+> "List the repositories that narsil-xref has indexed"
 
 You should see your project listed. If not, check:
 - The path in `--repos` is correct
@@ -127,7 +127,7 @@ Enable features with flags:
 
 Recommended starter config:
 ```bash
-narsil-mcp --repos /path/to/project --git --call-graph --persist
+narsil-xref --repos /path/to/project --git --call-graph --persist
 ```
 
 ## Troubleshooting
@@ -136,7 +136,7 @@ narsil-mcp --repos /path/to/project --git --call-graph --persist
 
 1. Verify the binary is in your PATH:
    ```bash
-   which narsil-mcp
+   which narsil-xref
    ```
 
 2. Check the config path is correct for your platform
@@ -149,14 +149,14 @@ narsil-mcp --repos /path/to/project --git --call-graph --persist
 2. Check file permissions
 3. Try explicit indexing:
    ```bash
-   narsil-mcp --repos /path/to/project --reindex
+   narsil-xref --repos /path/to/project --reindex
    ```
 
 ### Tool calls failing
 
 Enable debug logging:
 ```bash
-RUST_LOG=debug narsil-mcp --repos /path/to/project
+RUST_LOG=debug narsil-xref --repos /path/to/project
 ```
 
 ## Next Steps

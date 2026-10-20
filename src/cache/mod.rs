@@ -14,7 +14,7 @@
 //! # Examples
 //!
 //! ```rust,ignore
-//! use narsil_mcp::cache::AnalysisCache;
+//! use narsil_xref::cache::AnalysisCache;
 //! use std::time::Duration;
 //!
 //! let cache = AnalysisCache::new(1000, Duration::from_secs(1800));

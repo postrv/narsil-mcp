@@ -1,4 +1,4 @@
-# Pre-commit hooks for narsil-mcp
+# Pre-commit hooks for narsil-xref
 # Install: pip install pre-commit && pre-commit install
 # Run manually: pre-commit run --all-files
 

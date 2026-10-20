@@ -1,6 +1,6 @@
 # Tool reference
 
-narsil-mcp exposes 42 MCP tools. This page says what each one answers, which
+narsil-xref exposes 42 MCP tools. This page says what each one answers, which
 group it belongs to, and which ones not to trust.
 
 Tool schemas cost context on **every** request, not once per session: the MCP
@@ -12,9 +12,9 @@ day.
 ## Choosing groups
 
 ```console
-$ narsil-mcp --expose code,git            # recommended default
-$ narsil-mcp --expose code                # navigation only
-$ narsil-mcp --expose code,git,analysis   # when you want metrics and graphs
+$ narsil-xref --expose code,git            # recommended default
+$ narsil-xref --expose code                # navigation only
+$ narsil-xref --expose code,git,analysis   # when you want metrics and graphs
 ```
 
 Comma-separated and composable. `base` is always included. An empty `--expose`
@@ -25,7 +25,7 @@ the invocation comes from an editor plugin. First match wins:
 
 | where | example |
 |---|---|
-| `--expose` flag | `narsil-mcp --expose code,git` |
+| `--expose` flag | `narsil-xref --expose code,git` |
 | `NARSIL_EXPOSE` env | `NARSIL_EXPOSE=code,git` |
 | the selected profile | `profiles: { dev: { expose: [code, git] } }` |
 | top-level config | `expose: [code, git]` in `config.yaml` |
@@ -118,7 +118,7 @@ takes ~13 s for one function and emits the false positives described below.
 
 ## Tools by group
 
-<!-- BEGIN GENERATED: narsil-mcp tools list --format markdown -->
+<!-- BEGIN GENERATED: narsil-xref tools list --format markdown -->
 
 ### `base`
 
@@ -215,7 +215,7 @@ to refuse it.
 ## Caveats
 
 Behaviour verified by measurement, not read off the descriptions. Each is
-tracked in `../../CLAUDE-narsil-mcp.issues`.
+tracked in `../../CLAUDE-narsil-xref.issues`.
 
 **`get_data_flow` — false positives, both C and Rust.** The dataflow engine
 does not seed function parameters as definitions and treats a write that
@@ -237,7 +237,7 @@ The section between the `BEGIN GENERATED` and `END GENERATED` markers is
 produced from the tool registry:
 
 ```console
-$ narsil-mcp tools list --format markdown > /tmp/tools.md
+$ narsil-xref tools list --format markdown > /tmp/tools.md
 ```
 
 Everything outside the markers is hand-written. CI checks that the generated

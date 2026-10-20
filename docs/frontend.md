@@ -1,6 +1,6 @@
 # Visualization Frontend
 
-narsil-mcp includes an optional web-based visualization frontend for exploring call graphs, import dependencies, and code structure interactively.
+narsil-xref includes an optional web-based visualization frontend for exploring call graphs, import dependencies, and code structure interactively.
 
 ## Quick Start
 
@@ -13,7 +13,7 @@ Build with the `frontend` feature to embed the visualization UI in the binary:
 cargo build --release --features frontend
 
 # Run with HTTP server (MCP server still works on stdio)
-./target/release/narsil-mcp --repos ~/project --http --call-graph
+./target/release/narsil-xref --repos ~/project --http --call-graph
 
 # Open http://localhost:3000 in your browser
 ```
@@ -26,7 +26,7 @@ For frontend development, run the backend and frontend separately:
 
 ```bash
 # Terminal 1: Start the API server
-./target/release/narsil-mcp --repos ~/project --http --call-graph
+./target/release/narsil-xref --repos ~/project --http --call-graph
 
 # Terminal 2: Start the frontend dev server
 cd frontend
@@ -76,7 +76,7 @@ GET /graph?repo=myrepo&view=call&depth=3&function=main
 
 ```bash
 # Use custom port (default: 3000)
-narsil-mcp --repos ~/project --http --http-port 8080
+narsil-xref --repos ~/project --http --http-port 8080
 ```
 
 ### With Editor Integration
@@ -86,8 +86,8 @@ The HTTP server runs alongside the MCP server on stdio:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", ".",
         "--git",
@@ -101,7 +101,7 @@ The HTTP server runs alongside the MCP server on stdio:
 ```
 
 This allows you to:
-1. Use narsil-mcp tools in your editor via MCP
+1. Use narsil-xref tools in your editor via MCP
 2. Open `http://localhost:3000` to visualize the same data
 
 ## Build Sizes

@@ -2,7 +2,7 @@ import type { GraphRequest, GraphResponse, ToolCallRequest, ToolCallResponse } f
 
 /**
  * Determine the API base URL:
- * - In development (Vite dev server): use localhost:3000 where narsil-mcp runs
+ * - In development (Vite dev server): use localhost:3000 where narsil-xref runs
  * - In production (embedded): use same origin (empty string for relative URLs)
  */
 function getDefaultBaseUrl(): string {

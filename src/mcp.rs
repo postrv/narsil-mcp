@@ -15,7 +15,7 @@ pub use crate::tool_handlers::ToolRegistry;
 
 /// MCP Protocol Version
 const MCP_VERSION: &str = "2024-11-05";
-const SERVER_NAME: &str = "narsil-mcp";
+const SERVER_NAME: &str = crate::APP_NAME;
 const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Maximum size of a single JSON-RPC message (10 MB).

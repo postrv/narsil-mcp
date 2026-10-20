@@ -4,9 +4,9 @@
 /// 1. CLI flags (handled in main.rs)
 /// 2. Environment variables (NARSIL_*)
 /// 3. Project config (.narsil.yaml in repo root)
-/// 4. User config (~/.config/narsil-mcp/config.yaml)
+/// 4. User config (~/.config/narsil-xref/config.yaml)
 /// 5. Default config (built-in)
-use narsil_mcp::config::ConfigLoader;
+use narsil_xref::config::ConfigLoader;
 use std::env;
 use std::fs;
 use std::path::PathBuf;

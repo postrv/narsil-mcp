@@ -74,7 +74,7 @@ jobs:
       - name: Verify binary version matches
         run: |
           CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          BINARY_VERSION=$(./target/release/narsil-mcp --version | awk '{print $2}')
+          BINARY_VERSION=$(./target/release/narsil-xref --version | awk '{print $2}')
 
           echo "Cargo.toml version: $CARGO_VERSION"
           echo "Binary --version:   $BINARY_VERSION"
@@ -157,9 +157,9 @@ jobs:
           for dir in artifacts/*/; do
             artifact_name=$(basename "$dir")
 
-            (cd "$dir" && tar -czf "${RELEASE_DIR}/narsil-mcp-v${VERSION}-${artifact_name#narsil-mcp-}.tar.gz" narsil-mcp)
+            (cd "$dir" && tar -czf "${RELEASE_DIR}/narsil-xref-v${VERSION}-${artifact_name#narsil-xref-}.tar.gz" narsil-xref)
             # Generate SHA256
-            (cd release-assets && shasum -a 256 "narsil-mcp-v${VERSION}-${artifact_name#narsil-mcp-}.tar.gz" > "narsil-mcp-v${VERSION}-${artifact_name#narsil-mcp-}.tar.gz.sha256")
+            (cd release-assets && shasum -a 256 "narsil-xref-v${VERSION}-${artifact_name#narsil-xref-}.tar.gz" > "narsil-xref-v${VERSION}-${artifact_name#narsil-xref-}.tar.gz.sha256")
           done
 
           ls -la release-assets/

@@ -3,8 +3,8 @@
 /// Tests configuration, file handling, and path resolution across
 /// macOS, Linux, and Windows platforms.
 use anyhow::Result;
-use narsil_mcp::config::ConfigLoader;
-use narsil_mcp::index::{CodeIntelEngine, EngineOptions};
+use narsil_xref::config::ConfigLoader;
+use narsil_xref::index::{CodeIntelEngine, EngineOptions};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -28,10 +28,10 @@ fn test_config_path_resolution() {
     // Platform-specific checks
     #[cfg(target_os = "windows")]
     {
-        // Windows: Should be in %APPDATA%\narsil-mcp\config.yaml
+        // Windows: Should be in %APPDATA%\narsil-xref\config.yaml
         let path_str = config_path.to_string_lossy();
         assert!(
-            path_str.contains("AppData") || path_str.contains("narsil-mcp"),
+            path_str.contains("AppData") || path_str.contains("narsil-xref"),
             "Windows config path should be in AppData: {:?}",
             config_path
         );
@@ -39,12 +39,12 @@ fn test_config_path_resolution() {
 
     #[cfg(target_os = "macos")]
     {
-        // macOS: Should be in ~/Library/Application Support/narsil-mcp/config.yaml
-        // or ~/.config/narsil-mcp/config.yaml
+        // macOS: Should be in ~/Library/Application Support/narsil-xref/config.yaml
+        // or ~/.config/narsil-xref/config.yaml
         let path_str = config_path.to_string_lossy();
         assert!(
             path_str.contains("Library/Application Support")
-                || path_str.contains(".config/narsil-mcp"),
+                || path_str.contains(".config/narsil-xref"),
             "macOS config path should be in Library/Application Support or .config: {:?}",
             config_path
         );
@@ -52,10 +52,10 @@ fn test_config_path_resolution() {
 
     #[cfg(target_os = "linux")]
     {
-        // Linux: Should be in ~/.config/narsil-mcp/config.yaml
+        // Linux: Should be in ~/.config/narsil-xref/config.yaml
         let path_str = config_path.to_string_lossy();
         assert!(
-            path_str.contains(".config/narsil-mcp"),
+            path_str.contains(".config/narsil-xref"),
             "Linux config path should be in .config: {:?}",
             config_path
         );

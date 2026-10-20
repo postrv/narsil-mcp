@@ -1,4 +1,4 @@
-// Swift example file for narsil-mcp testing
+// Swift example file for narsil-xref testing
 
 import Foundation
 

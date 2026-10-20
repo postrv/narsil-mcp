@@ -1,16 +1,16 @@
-//! Per-process status files for running narsil-mcp servers.
+//! Per-process status files for running narsil-xref servers.
 //!
-//! Every long-running narsil-mcp process (SSE listener, stdio process with a
+//! Every long-running narsil-xref process (SSE listener, stdio process with a
 //! local index, or stdio process proxying to an SSE upstream) writes a status
 //! file named `<pid>.status` so an out-of-band observer — chiefly
-//! `narsil-mcp stats` — can see which processes are alive, what role each
+//! `narsil-xref stats` — can see which processes are alive, what role each
 //! plays, the SSE URL it listens on or delegates to, and the per-repo symbol
 //! counts. This is the data source that makes a stdio→SSE connection problem
 //! diagnosable from a plain shell.
 //!
-//! Location: `/run/narsil-mcp/<pid>.status` when that directory is creatable
+//! Location: `/run/narsil-xref/<pid>.status` when that directory is creatable
 //! and writable (system-wide, visible across users), otherwise
-//! `$XDG_RUNTIME_DIR/narsil-mcp/<pid>.status` (or the per-user cache dir when
+//! `$XDG_RUNTIME_DIR/narsil-xref/<pid>.status` (or the per-user cache dir when
 //! XDG is unset) — the same per-user base the SSE discovery file uses. Because
 //! a write can land in either location, readers scan both.
 //!
@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
 
-/// What a narsil-mcp process is doing, as recorded in its status file.
+/// What a narsil-xref process is doing, as recorded in its status file.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum ProcessRole {
@@ -46,7 +46,7 @@ pub struct RepoStatus {
     pub file_count: usize,
 }
 
-/// On-disk status record for one running narsil-mcp process.
+/// On-disk status record for one running narsil-xref process.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PidStatus {
     pub pid: u32,
@@ -169,10 +169,10 @@ pub fn read_all() -> Result<Vec<PidStatus>> {
 // ── internals ────────────────────────────────────────────────────────────
 
 /// Directories that may hold status files, most-preferred first. The
-/// system-wide `/run/narsil-mcp` is tried before the per-user runtime dir;
+/// system-wide `/run/narsil-xref` is tried before the per-user runtime dir;
 /// both are returned so readers cover files written under either privilege.
 fn candidate_dirs() -> Vec<PathBuf> {
-    let mut dirs = vec![PathBuf::from("/run/narsil-mcp")];
+    let mut dirs = vec![Path::new("/run").join(crate::APP_NAME)];
     if let Some(user) = user_runtime_dir() {
         if !dirs.contains(&user) {
             dirs.push(user);
@@ -181,17 +181,17 @@ fn candidate_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Per-user runtime directory: `$XDG_RUNTIME_DIR/narsil-mcp` when XDG is set
-/// to an absolute path, else the per-user cache dir joined with `narsil-mcp`.
+/// Per-user runtime directory: `$XDG_RUNTIME_DIR/narsil-xref` when XDG is set
+/// to an absolute path, else the per-user cache dir joined with `narsil-xref`.
 /// Matches the base the SSE discovery file uses.
 fn user_runtime_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
         let dir = PathBuf::from(dir);
         if dir.is_absolute() {
-            return Some(dir.join("narsil-mcp"));
+            return Some(dir.join(crate::APP_NAME));
         }
     }
-    directories::BaseDirs::new().map(|dirs| dirs.cache_dir().join("narsil-mcp"))
+    directories::BaseDirs::new().map(|dirs| dirs.cache_dir().join(crate::APP_NAME))
 }
 
 fn now_unix() -> u64 {
@@ -235,7 +235,7 @@ fn ensure_dir(dir: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        // Best-effort: a pre-existing root-owned /run/narsil-mcp may reject the
+        // Best-effort: a pre-existing root-owned /run/narsil-xref may reject the
         // chmod; the subsequent write decides whether this dir is usable.
         if let Ok(meta) = fs::metadata(dir) {
             let mut perms = meta.permissions();

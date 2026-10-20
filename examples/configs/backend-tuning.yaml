@@ -1,6 +1,6 @@
 # Per-repo and per-group C/C++ backend tuning
 #
-# narsil-mcp can run up to three C/C++ backends per repository: clangd and ccls
+# narsil-xref can run up to three C/C++ backends per repository: clangd and ccls
 # (language servers) and GNU Global / gtags. Each backend has its own settings
 # block, settable either as a profile-group default — inherited by every repo in
 # the profile — or on a single repo entry, which wins field by field.
@@ -11,7 +11,7 @@
 # parallelism and resident cache but are not absolute limits.
 #
 # Select this profile at startup:
-#   narsil-mcp --profile dev
+#   narsil-xref --profile dev
 #
 # Full field reference: docs/configuration.md, section
 # "Per-repo and per-group backend tuning".

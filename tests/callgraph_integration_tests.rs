@@ -1,6 +1,6 @@
-use narsil_mcp::callgraph::CallGraph;
-use narsil_mcp::parser::LanguageParser;
-use narsil_mcp::response_budget::ListWindow;
+use narsil_xref::callgraph::CallGraph;
+use narsil_xref::parser::LanguageParser;
+use narsil_xref::response_budget::ListWindow;
 use std::path::Path;
 
 #[test]
@@ -725,8 +725,8 @@ fn write_hot_function_repo(root: &std::path::Path, count: usize) -> std::io::Res
 async fn hot_function_engine(
     repo: &std::path::Path,
     index_dir: &std::path::Path,
-) -> narsil_mcp::index::CodeIntelEngine {
-    use narsil_mcp::index::{CodeIntelEngine, EngineOptions};
+) -> narsil_xref::index::CodeIntelEngine {
+    use narsil_xref::index::{CodeIntelEngine, EngineOptions};
 
     let options = EngineOptions {
         call_graph_enabled: true,
@@ -762,7 +762,7 @@ async fn get_callers_caps_and_reports_the_total() {
             false,
             5,
             None,
-            ListWindow::new(0, narsil_mcp::response_budget::DEFAULT_LIST_LIMIT),
+            ListWindow::new(0, narsil_xref::response_budget::DEFAULT_LIST_LIMIT),
         )
         .await
         .unwrap();
@@ -843,7 +843,7 @@ async fn get_callers_and_get_callees_report_unparsed_regions() {
             false,
             5,
             None,
-            ListWindow::new(0, narsil_mcp::response_budget::DEFAULT_LIST_LIMIT),
+            ListWindow::new(0, narsil_xref::response_budget::DEFAULT_LIST_LIMIT),
         )
         .await
         .unwrap();
@@ -860,7 +860,7 @@ async fn get_callers_and_get_callees_report_unparsed_regions() {
             false,
             5,
             None,
-            ListWindow::new(0, narsil_mcp::response_budget::DEFAULT_LIST_LIMIT),
+            ListWindow::new(0, narsil_xref::response_budget::DEFAULT_LIST_LIMIT),
         )
         .await
         .unwrap();
@@ -887,7 +887,7 @@ async fn get_callers_omits_the_degraded_note_when_the_graph_is_complete() {
             false,
             5,
             None,
-            ListWindow::new(0, narsil_mcp::response_budget::DEFAULT_LIST_LIMIT),
+            ListWindow::new(0, narsil_xref::response_budget::DEFAULT_LIST_LIMIT),
         )
         .await
         .unwrap();

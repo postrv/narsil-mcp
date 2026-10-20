@@ -2,8 +2,8 @@
 ///
 /// These tests verify that invalid configurations are caught
 /// and that helpful error messages are provided.
-use narsil_mcp::config::schema::{RepoProfile, ToolConfig, ToolOverride, ToolsConfig};
-use narsil_mcp::config::validate_config;
+use narsil_xref::config::schema::{RepoProfile, ToolConfig, ToolOverride, ToolsConfig};
+use narsil_xref::config::validate_config;
 use std::collections::HashMap;
 
 fn override_named(name: &str, enabled: bool) -> HashMap<String, ToolOverride> {

@@ -1,4 +1,4 @@
-narsil-mcp v1.7.0 (/home/bernd/src/mcp/narsil-mcp)
+narsil-xref v1.7.0 (/home/bernd/src/mcp/narsil-mcp)
 ├── anyhow v1.0.102
 ├── async-stream v0.3.6
 │   ├── async-stream-impl v0.3.6 (proc-macro)

@@ -1,11 +1,11 @@
 # Cursor Integration
 
-Set up narsil-mcp with Cursor IDE for enhanced AI-powered development.
+Set up narsil-xref with Cursor IDE for enhanced AI-powered development.
 
 ## Prerequisites
 
 - Cursor IDE installed ([download](https://cursor.sh))
-- narsil-mcp installed (see [INSTALL.md](../../INSTALL.md))
+- narsil-xref installed (see [INSTALL.md](../../INSTALL.md))
 
 ## Configuration
 
@@ -14,8 +14,8 @@ Create `.cursor/mcp.json` in your project root:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", ".",
         "--git",
@@ -33,8 +33,8 @@ For all projects, create `~/.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", ".",
         "--git",
@@ -52,8 +52,8 @@ For faster startup:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", ".",
         "--git",
@@ -75,8 +75,8 @@ For monorepos or multi-project setups:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", "./packages/frontend",
         "--repos", "./packages/backend",
@@ -112,7 +112,7 @@ Who last modified auth.py?
 Ask Cursor:
 
 ```
-List the repositories indexed by narsil-mcp
+List the repositories indexed by narsil-xref
 ```
 
 You should see your project.
@@ -122,7 +122,7 @@ You should see your project.
 ```
 You: How does the payment flow work?
 
-Cursor: [Uses narsil-mcp tools]
+Cursor: [Uses narsil-xref tools]
 Let me trace the payment flow through your codebase...
 
 The payment flow:
@@ -154,7 +154,7 @@ handle_payment_request() → PaymentService.process_payment()
 
 ### Composer Mode
 
-When using Cursor's Composer for multi-file edits, narsil-mcp helps by:
+When using Cursor's Composer for multi-file edits, narsil-xref helps by:
 - Understanding code relationships before edits
 - Identifying all files that need changes
 - Checking for breaking changes
@@ -167,7 +167,7 @@ Combine with file mentions:
 @auth.py What functions in this file are called from other modules?
 ```
 
-Cursor uses narsil-mcp's `get_callers` to find cross-module usage.
+Cursor uses narsil-xref's `get_callers` to find cross-module usage.
 
 ## Tips
 
@@ -180,7 +180,7 @@ Cursor uses narsil-mcp's `get_callers` to find cross-module usage.
 ### MCP server not connecting
 
 1. Check Cursor's developer console for errors
-2. Verify narsil-mcp path: `which narsil-mcp`
+2. Verify narsil-xref path: `which narsil-xref`
 3. Restart Cursor after config changes
 
 ### Slow performance

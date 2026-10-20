@@ -1,6 +1,6 @@
 # Workflow: Code Review
 
-Use narsil-mcp to review code changes effectively, understanding context and implications.
+Use narsil-xref to review code changes effectively, understanding context and implications.
 
 ## The Scenario
 

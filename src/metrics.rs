@@ -1,8 +1,8 @@
 //! Performance metrics tracking for tool operations.
 //!
 //! Counters are stored ccache-style in a global per-`index_path` file under
-//! `~/.cache/narsil-mcp/stats/<hash>.bin`. The same file is shared by every
-//! narsil-mcp instance that uses the same `--index-path`; concurrent writers
+//! `~/.cache/narsil-xref/stats/<hash>.bin`. The same file is shared by every
+//! narsil-xref instance that uses the same `--index-path`; concurrent writers
 //! coordinate via an advisory file lock and a delta-based merge so that no
 //! instance's contribution is clobbered.
 //!
@@ -215,7 +215,7 @@ pub struct PersistedMemoryReport {
 pub struct PersistedMetrics {
     pub version: u32,
     /// Canonical filesystem path of the index this stats file describes —
-    /// kept readable for `narsil-mcp stats --list` output.
+    /// kept readable for `narsil-xref stats --list` output.
     pub index_path: String,
     /// Unix seconds when this metrics file was first created.
     pub first_started_at: u64,
@@ -460,12 +460,12 @@ pub fn index_path_hash(canonical_path: &Path) -> String {
 
 /// Directory holding all per-`index_path` stats files. Created on demand.
 pub fn global_stats_dir() -> PathBuf {
-    if let Some(dirs) = ProjectDirs::from("", "", "narsil-mcp") {
+    if let Some(dirs) = ProjectDirs::from("", "", crate::APP_NAME) {
         dirs.cache_dir().join("stats")
     } else {
-        // Fallback: $HOME/.cache/narsil-mcp/stats. ProjectDirs only fails when
+        // Fallback: $HOME/.cache/narsil-xref/stats. ProjectDirs only fails when
         // the platform has no notion of a home directory, which is rare.
-        PathBuf::from("/tmp/narsil-mcp/stats")
+        Path::new("/tmp").join(crate::APP_NAME).join("stats")
     }
 }
 
@@ -663,7 +663,7 @@ impl Metrics {
     }
 
     /// Create a Metrics instance backed by the global per-`index_path` stats
-    /// file. The actual file is `~/.cache/narsil-mcp/stats/<hash>.bin`.
+    /// file. The actual file is `~/.cache/narsil-xref/stats/<hash>.bin`.
     pub fn with_persistence(index_path: PathBuf) -> Self {
         let stats_path = stats_file_for(&index_path);
         let canonical_str = std::fs::canonicalize(&index_path)
@@ -743,7 +743,7 @@ impl Metrics {
 
     /// Record one query to a reference backend (an LSP backend or language id
     /// such as "clangd", "ccls", "rust", or "gtags"). Call counts only —
-    /// surfaced by `narsil-mcp stats` so a user can see which backends are
+    /// surfaced by `narsil-xref stats` so a user can see which backends are
     /// actually being exercised.
     pub fn record_backend_call(&self, label: &str) {
         *self
@@ -1458,7 +1458,7 @@ pub fn list_stats_files() -> Result<Vec<PathBuf>> {
 }
 
 /// Aggregate counters across many persisted snapshots and render them as a
-/// markdown report. Used by `narsil-mcp stats`.
+/// markdown report. Used by `narsil-xref stats`.
 pub fn render_aggregate_markdown(snapshots: &[PersistedMetrics]) -> Result<String> {
     let mut merged = CounterSet::default();
     let mut total_uptime: u64 = 0;
@@ -1478,7 +1478,7 @@ pub fn render_aggregate_markdown(snapshots: &[PersistedMetrics]) -> Result<Strin
     }
 
     let mut output = String::new();
-    output.push_str("# narsil-mcp Lifetime Stats\n\n");
+    output.push_str("# narsil-xref Lifetime Stats\n\n");
     output.push_str(&format!("**Index paths covered**: {}\n", snapshots.len()));
     output.push_str(&format!("**Total Requests**: {}\n", total_requests));
     output.push_str(&format!(
@@ -1529,10 +1529,10 @@ pub fn render_aggregate_markdown(snapshots: &[PersistedMetrics]) -> Result<Strin
     Ok(output)
 }
 
-/// One-row-per-stats-file summary for `narsil-mcp stats --list`.
+/// One-row-per-stats-file summary for `narsil-xref stats --list`.
 pub fn render_list_markdown(snapshots: &[(PathBuf, PersistedMetrics)]) -> String {
     let mut output = String::new();
-    output.push_str("# narsil-mcp Stats Files\n\n");
+    output.push_str("# narsil-xref Stats Files\n\n");
     if snapshots.is_empty() {
         output.push_str("*No stats files found.*\n");
         return output;
@@ -1833,7 +1833,7 @@ mod tests {
     use tempfile::TempDir;
 
     // Override the global stats dir for tests so we don't touch the real
-    // ~/.cache/narsil-mcp. We do this by giving each test a temp directory
+    // ~/.cache/narsil-xref. We do this by giving each test a temp directory
     // and feeding it as the `index_path` — the stats file lands under the
     // global cache regardless, but with a unique hash it won't collide.
     // For tests that need exact path control we use Metrics with
@@ -2069,7 +2069,7 @@ mod tests {
 
     #[test]
     fn test_index_path_hash_stable() {
-        let path = Path::new("/home/foo/.cache/narsil-mcp");
+        let path = Path::new("/home/foo/.cache/narsil-xref");
         let a = index_path_hash(path);
         let b = index_path_hash(path);
         assert_eq!(a, b);
@@ -2194,7 +2194,7 @@ mod tests {
     #[test]
     fn test_render_aggregate_markdown_empty() {
         let out = render_aggregate_markdown(&[]).unwrap();
-        assert!(out.contains("narsil-mcp Lifetime Stats"));
+        assert!(out.contains("narsil-xref Lifetime Stats"));
         assert!(out.contains("No tool calls recorded"));
     }
 

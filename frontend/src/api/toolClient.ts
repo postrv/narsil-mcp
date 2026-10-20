@@ -1,7 +1,7 @@
 import { codeIntelClient } from './client';
 
 // -------------------------------------------------------------------
-// Typed wrappers around callTool for common narsil-mcp tools.
+// Typed wrappers around callTool for common narsil-xref tools.
 // These parse the markdown/JSON responses into structured data.
 // -------------------------------------------------------------------
 
@@ -46,7 +46,7 @@ export async function getProjectStructure(repo: string): Promise<ProjectStructur
   if (!resp.success) throw new Error(resp.error ?? 'Failed to get project structure');
   const tree = parseProjectStructure(resp.result as string);
 
-  // The backend wraps everything under the repo root directory (e.g. "narsil-mcp/").
+  // The backend wraps everything under the repo root directory (e.g. "narsil-xref/").
   // Unwrap it so paths are relative to the repo root, as get_file expects.
   if (tree.length === 1 && tree[0].isDir) {
     const root = tree[0];

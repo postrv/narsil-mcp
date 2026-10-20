@@ -359,7 +359,7 @@ pub(crate) fn is_double_encoded(text: &str) -> bool {
 ///
 /// # Examples
 /// ```
-/// use narsil_mcp::extract::is_test_file;
+/// use narsil_xref::extract::is_test_file;
 /// assert!(is_test_file("tests/integration_tests.rs"));
 /// assert!(is_test_file("src/foo_test.rs"));
 /// assert!(!is_test_file("src/main.rs"));

@@ -28,9 +28,9 @@ pub fn gtags_binary_present() -> bool {
 fn gtags_lock_base_path(repo_path: &Path) -> PathBuf {
     let canonical = std::fs::canonicalize(repo_path).unwrap_or_else(|_| repo_path.to_path_buf());
     let hash = crate::metrics::index_path_hash(&canonical);
-    let dir = match ProjectDirs::from("", "", "narsil-mcp") {
+    let dir = match ProjectDirs::from("", "", crate::APP_NAME) {
         Some(dirs) => dirs.cache_dir().join("gtags-locks"),
-        None => PathBuf::from("/tmp/narsil-mcp/gtags-locks"),
+        None => Path::new("/tmp").join(crate::APP_NAME).join("gtags-locks"),
     };
     dir.join(hash)
 }
@@ -44,9 +44,9 @@ fn gtags_lock_base_path(repo_path: &Path) -> PathBuf {
 fn gtags_db_dir(repo_path: &Path) -> PathBuf {
     let canonical = std::fs::canonicalize(repo_path).unwrap_or_else(|_| repo_path.to_path_buf());
     let hash = crate::metrics::index_path_hash(&canonical);
-    let dir = match ProjectDirs::from("", "", "narsil-mcp") {
+    let dir = match ProjectDirs::from("", "", crate::APP_NAME) {
         Some(dirs) => dirs.cache_dir().join("gtags-db"),
-        None => PathBuf::from("/tmp/narsil-mcp/gtags-db"),
+        None => Path::new("/tmp").join(crate::APP_NAME).join("gtags-db"),
     };
     dir.join(hash)
 }

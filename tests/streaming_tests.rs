@@ -1,4 +1,4 @@
-use narsil_mcp::streaming::{
+use narsil_xref::streaming::{
     ProgressToken, Streamable, StreamableSearchResults, StreamableSymbols, StreamingConfig,
     StreamingResponse,
 };

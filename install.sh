@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# narsil-mcp installer
-# One-click installation for narsil-mcp MCP server
+# narsil-xref installer
+# One-click installation for narsil-xref MCP server
 #
-# Usage: curl -fsSL https://raw.githubusercontent.com/postrv/narsil-mcp/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/bsbernd/narsil-xref/main/install.sh | bash
 #
 
 set -e
@@ -16,8 +16,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO="postrv/narsil-mcp"
-BINARY_NAME="narsil-mcp"
+REPO="bsbernd/narsil-xref"
+BINARY_NAME="narsil-xref"
 INSTALL_DIR="${HOME}/.local/bin"
 
 # Detect platform
@@ -70,18 +70,18 @@ install_binary() {
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
 
-    echo -e "${BLUE}Downloading narsil-mcp ${version} for ${platform}...${NC}"
+    echo -e "${BLUE}Downloading narsil-xref ${version} for ${platform}...${NC}"
 
-    local download_url="https://github.com/${REPO}/releases/download/${version}/narsil-mcp-${version}-${platform}.tar.gz"
+    local download_url="https://github.com/${REPO}/releases/download/${version}/narsil-xref-${version}-${platform}.tar.gz"
 
-    if ! curl -fsSL "$download_url" -o "$tmpdir/narsil-mcp.tar.gz" 2>/dev/null; then
+    if ! curl -fsSL "$download_url" -o "$tmpdir/narsil-xref.tar.gz" 2>/dev/null; then
         echo -e "${YELLOW}Pre-built binary not available. Building from source...${NC}"
         install_from_source
         return
     fi
 
     echo -e "${BLUE}Extracting...${NC}"
-    tar -xzf "$tmpdir/narsil-mcp.tar.gz" -C "$tmpdir"
+    tar -xzf "$tmpdir/narsil-xref.tar.gz" -C "$tmpdir"
 
     # Create install directory if needed
     mkdir -p "$INSTALL_DIR"
@@ -90,7 +90,7 @@ install_binary() {
     mv "$tmpdir/${BINARY_NAME}" "$INSTALL_DIR/"
     chmod +x "$INSTALL_DIR/${BINARY_NAME}"
 
-    echo -e "${GREEN}Installed narsil-mcp to ${INSTALL_DIR}/${NC}"
+    echo -e "${GREEN}Installed narsil-xref to ${INSTALL_DIR}/${NC}"
 }
 
 # Install from source using cargo
@@ -105,7 +105,7 @@ install_from_source() {
         source "$HOME/.cargo/env"
     fi
 
-    echo -e "${BLUE}Building narsil-mcp (this may take a few minutes)...${NC}"
+    echo -e "${BLUE}Building narsil-xref (this may take a few minutes)...${NC}"
     if [ -n "$features" ]; then
         echo -e "${BLUE}Features: ${features}${NC}"
         cargo install --git "https://github.com/${REPO}" --locked --features "$features"
@@ -113,7 +113,7 @@ install_from_source() {
         cargo install --git "https://github.com/${REPO}" --locked
     fi
 
-    echo -e "${GREEN}Installed narsil-mcp via cargo${NC}"
+    echo -e "${GREEN}Installed narsil-xref via cargo${NC}"
 }
 
 # Ask about features
@@ -152,10 +152,10 @@ configure_path() {
             ;;
     esac
 
-    if [ -n "$shell_rc" ] && ! grep -q "narsil-mcp" "$shell_rc" 2>/dev/null; then
+    if [ -n "$shell_rc" ] && ! grep -q "narsil-xref" "$shell_rc" 2>/dev/null; then
         {
             echo ""
-            echo "# narsil-mcp"
+            echo "# narsil-xref"
             echo "$path_line"
         } >> "$shell_rc"
         echo -e "${BLUE}Added ${INSTALL_DIR} to PATH in ${shell_rc}${NC}"
@@ -175,13 +175,13 @@ configure_ide() {
 
     if [ -n "$claude_config" ]; then
         echo -e "${GREEN}Found Claude Desktop${NC}"
-        if [ ! -f "$claude_config" ] || ! grep -q "narsil-mcp" "$claude_config" 2>/dev/null; then
+        if [ ! -f "$claude_config" ] || ! grep -q "narsil-xref" "$claude_config" 2>/dev/null; then
             echo -e "${YELLOW}To configure Claude Desktop, add this to ${claude_config}:${NC}"
             cat << 'EOF'
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", "/path/to/your/projects"]
     }
   }
@@ -199,8 +199,8 @@ EOF
         cat << 'EOF'
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", "."]
     }
   }
@@ -215,8 +215,8 @@ EOF
         cat << 'EOF'
 {
   "servers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", "${workspaceFolder}"]
     }
   }
@@ -229,7 +229,7 @@ EOF
 main() {
     echo ""
     echo -e "${GREEN}╔════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║       narsil-mcp installer                 ║${NC}"
+    echo -e "${GREEN}║       narsil-xref installer                 ║${NC}"
     echo -e "${GREEN}║   Blazing-fast MCP server for code intel   ║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════════╝${NC}"
     echo ""
@@ -260,13 +260,13 @@ main() {
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${BLUE}VERIFY INSTALLATION:${NC}"
-    echo "  \$ narsil-mcp --version"
+    echo "  \$ narsil-xref --version"
     echo ""
     echo -e "${BLUE}QUICK START - Claude Code:${NC}"
     echo "  1. Restart your terminal (or run: source ~/.bashrc)"
     echo ""
     echo "  2. Create .mcp.json in your project root:"
-    echo '     {"mcpServers":{"narsil-mcp":{"command":"narsil-mcp","args":["--repos",".","--git"]}}}'
+    echo '     {"mcpServers":{"narsil-xref":{"command":"narsil-xref","args":["--repos",".","--git"]}}}'
     echo ""
     echo "  3. Start Claude Code in your project:"
     echo "     \$ cd /path/to/project && claude"

@@ -36,11 +36,11 @@ export function AppShell() {
           </div>
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Connection Failed</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">
-            Could not connect to the narsil-mcp server. Make sure it's running with the{' '}
+            Could not connect to the narsil-xref server. Make sure it's running with the{' '}
             <code className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-xs font-mono">--http</code> flag.
           </p>
           <code className="block bg-slate-900 dark:bg-slate-800 text-slate-100 p-4 rounded-lg text-xs text-left font-mono">
-            ./narsil-mcp --repos . --http --call-graph
+            ./narsil-xref --repos . --http --call-graph
           </code>
         </div>
       </div>
@@ -71,7 +71,7 @@ export function AppShell() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <h1 className="text-base font-semibold text-slate-900 dark:text-white tracking-tight">narsil-mcp</h1>
+              <h1 className="text-base font-semibold text-slate-900 dark:text-white tracking-tight">narsil-xref</h1>
             </Link>
             <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 rounded-full uppercase tracking-wide">
               v{health?.version ?? '?'}

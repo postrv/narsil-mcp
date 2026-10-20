@@ -1,6 +1,9 @@
 // Library exports for integration tests
 #![recursion_limit = "256"]
 
+/// Program name; also names the config, cache, state and runtime directories.
+pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
+
 // Core modules (always available)
 pub mod cache;
 pub mod callgraph;

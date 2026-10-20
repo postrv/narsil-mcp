@@ -14,7 +14,7 @@
 //! # Examples
 //!
 //! ```rust,ignore
-//! use narsil_mcp::cache::query_cache::{QueryCache, QueryCacheKey};
+//! use narsil_xref::cache::query_cache::{QueryCache, QueryCacheKey};
 //! use std::time::Duration;
 //!
 //! let cache = QueryCache::new(1000, Duration::from_secs(1800));

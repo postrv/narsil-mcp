@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
 // Re-use the library's test utilities
-use narsil_mcp::index::{CodeIntelEngine, EngineOptions};
+use narsil_xref::index::{CodeIntelEngine, EngineOptions};
 
 #[tokio::test]
 async fn test_engine_creation_is_fast() {
@@ -232,7 +232,7 @@ async fn test_get_branch_info_works_before_indexing_completes() {
     let result = engine
         .get_branch_info(
             repo_path.to_str().unwrap(),
-            narsil_mcp::response_budget::ListWindow::new(0, 0),
+            narsil_xref::response_budget::ListWindow::new(0, 0),
         )
         .await;
 

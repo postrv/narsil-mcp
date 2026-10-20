@@ -1601,7 +1601,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 
 [[package]]
-name = "narsil-mcp"
+name = "narsil-xref"
 version = "1.7.0"
 dependencies = [
  "anyhow",

@@ -1,4 +1,4 @@
-//! Build-time checks for narsil-mcp.
+//! Build-time checks for narsil-xref.
 //!
 //! When the `frontend` feature is enabled but `frontend/dist/index.html`
 //! is missing, the embedded UI will be empty and every web request will
@@ -30,7 +30,7 @@ fn main() {
 
     if !dist_index.exists() {
         println!(
-            "cargo:warning=narsil-mcp: --features frontend was enabled, but \
+            "cargo:warning=narsil-xref: --features frontend was enabled, but \
              frontend/dist/index.html is missing. The embedded web UI will \
              return 404 for every request. To populate it, run: \
              `cd frontend && npm ci && npm run build`."

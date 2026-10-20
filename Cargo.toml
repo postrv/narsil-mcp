@@ -1,11 +1,11 @@
 [package]
-name = "narsil-mcp"
+name = "narsil-xref"
 version = "1.7.0"
 edition = "2021"
-authors = ["postrv"]
-description = "A blazingly fast MCP server for code intelligence - enumerates repos, data structures, algorithms, and returns relevant code context"
+authors = ["postrv", "Bernd Schubert"]
+description = "MCP server for code indexing: symbols, call graphs and git history; C and C++ cross-checked between tree-sitter, clangd/ccls and gtags"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/postrv/narsil-mcp"
+repository = "https://github.com/bsbernd/narsil-xref"
 readme = "README.md"
 keywords = ["mcp", "code-intelligence", "tree-sitter", "lsp", "ai"]
 categories = ["development-tools", "command-line-utilities", "parsing"]
@@ -143,10 +143,10 @@ panic = "unwind"
 strip = true
 
 [lib]
-name = "narsil_mcp"
+name = "narsil_xref"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "narsil-mcp"
+name = "narsil-xref"
 path = "src/main.rs"

@@ -1,4 +1,4 @@
-# Integration Tests for narsil-mcp
+# Integration Tests for narsil-xref
 
 This directory contains comprehensive end-to-end integration tests for the MCP (Model Context Protocol) server.
 
@@ -121,7 +121,7 @@ class UserService {
 
 ## Requirements
 
-- The `narsil-mcp` binary must be built before running tests
+- The `narsil-xref` binary must be built before running tests
 - Tests use the `tempfile` crate for isolated test fixtures
 - Each test spawns a fresh server process to ensure isolation
 
@@ -129,7 +129,7 @@ class UserService {
 
 ```bash
 # Build the binary first
-cargo build --bin narsil-mcp
+cargo build --bin narsil-xref
 
 # Then run tests
 cargo test --test integration_tests
@@ -157,7 +157,7 @@ These tests are suitable for CI/CD pipelines:
 ```yaml
 - name: Run integration tests
   run: |
-    cargo build --bin narsil-mcp
+    cargo build --bin narsil-xref
     cargo test --test integration_tests -- --test-threads=1
 ```
 
@@ -167,7 +167,7 @@ If tests fail:
 
 1. Check the binary builds successfully:
    ```bash
-   cargo build --bin narsil-mcp
+   cargo build --bin narsil-xref
    ```
 
 2. Run individual tests with output:

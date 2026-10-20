@@ -1,8 +1,8 @@
-//! HTTP Server for narsil-mcp visualization frontend
+//! HTTP Server for narsil-xref visualization frontend
 //!
 //! This module provides a REST API layer over the MCP tools,
 //! enabling the web-based visualization frontend to communicate
-//! with the narsil-mcp engine.
+//! with the narsil-xref engine.
 //!
 //! When compiled with the `frontend` feature, the server also serves
 //! the embedded visualization frontend at the root path.

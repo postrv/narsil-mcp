@@ -1,11 +1,11 @@
 # Claude Code (CLI) Integration
 
-Set up narsil-mcp with Claude Code for enhanced terminal-based code intelligence.
+Set up narsil-xref with Claude Code for enhanced terminal-based code intelligence.
 
 ## Prerequisites
 
 - Claude Code installed (`npm install -g @anthropic-ai/claude-code`)
-- narsil-mcp installed (see [INSTALL.md](../../INSTALL.md))
+- narsil-xref installed (see [INSTALL.md](../../INSTALL.md))
 
 ## Configuration
 
@@ -16,8 +16,8 @@ Edit `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", ".",
         "--git",
@@ -37,8 +37,8 @@ Create `.claude/settings.json` in your project root:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", ".",
         "--git",
@@ -83,8 +83,8 @@ For multi-repo setups:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", "/path/to/frontend",
         "--repos", "/path/to/backend",
@@ -122,7 +122,7 @@ Then add flags:
 cd /path/to/project
 claude
 
-> List the repositories indexed by narsil-mcp
+> List the repositories indexed by narsil-xref
 
 # Should show your project
 ```
@@ -159,11 +159,11 @@ Key files:
 
 ## Troubleshooting
 
-### "Command not found: narsil-mcp"
+### "Command not found: narsil-xref"
 
-Ensure narsil-mcp is in your PATH or use absolute path:
+Ensure narsil-xref is in your PATH or use absolute path:
 ```json
-"command": "/usr/local/bin/narsil-mcp"
+"command": "/usr/local/bin/narsil-xref"
 ```
 
 ### Slow startup

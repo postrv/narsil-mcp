@@ -1,4 +1,4 @@
-//! Common test utilities for narsil-mcp integration testing.
+//! Common test utilities for narsil-xref integration testing.
 //!
 //! This module provides shared infrastructure for testing:
 //! - `TestHarness` - manages MCP server processes
@@ -707,9 +707,9 @@ impl TestMetrics {
 
 fn get_binary_path() -> PathBuf {
     let path = if cfg!(debug_assertions) {
-        "target/debug/narsil-mcp"
+        "target/debug/narsil-xref"
     } else {
-        "target/release/narsil-mcp"
+        "target/release/narsil-xref"
     };
     PathBuf::from(path)
 }

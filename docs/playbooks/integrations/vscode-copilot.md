@@ -1,12 +1,12 @@
 # VS Code with Copilot Integration
 
-Set up narsil-mcp with Visual Studio Code and GitHub Copilot.
+Set up narsil-xref with Visual Studio Code and GitHub Copilot.
 
 ## Prerequisites
 
 - VS Code with MCP support
 - GitHub Copilot extension
-- narsil-mcp installed (see [INSTALL.md](../../INSTALL.md))
+- narsil-xref installed (see [INSTALL.md](../../INSTALL.md))
 
 ## Configuration
 
@@ -15,8 +15,8 @@ Create `.vscode/mcp.json` in your workspace root:
 ```json
 {
   "servers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", "${workspaceFolder}",
         "--git",
@@ -36,8 +36,8 @@ For multi-root workspaces, index all roots:
 ```json
 {
   "servers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", "${workspaceFolder:frontend}",
         "--repos", "${workspaceFolder:backend}",
@@ -56,8 +56,8 @@ For all workspaces, add to VS Code settings (`settings.json`):
 ```json
 {
   "mcp.servers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": ["--repos", "${workspaceFolder}", "--git", "--call-graph"]
     }
   }
@@ -71,8 +71,8 @@ For faster startup on large projects:
 ```json
 {
   "servers": {
-    "narsil-mcp": {
-      "command": "narsil-mcp",
+    "narsil-xref": {
+      "command": "narsil-xref",
       "args": [
         "--repos", "${workspaceFolder}",
         "--git",
@@ -118,7 +118,7 @@ You should see your workspace listed.
 ```
 You: @workspace How does error handling work in this project?
 
-Copilot: [Uses narsil-mcp tools]
+Copilot: [Uses narsil-xref tools]
 Looking at the error handling patterns in your codebase...
 
 This project uses a centralized error handling approach:
@@ -153,7 +153,7 @@ Key files:
 ### Tools not available
 
 1. Check MCP server logs in VS Code output panel
-2. Verify narsil-mcp is in PATH
+2. Verify narsil-xref is in PATH
 3. Reload VS Code window after config changes
 
 ### Slow for large projects

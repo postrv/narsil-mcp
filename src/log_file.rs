@@ -31,7 +31,7 @@ impl LogFile {
             if let Err(e) = rotate(path, keep) {
                 // The logger does not exist yet.
                 eprintln!(
-                    "narsil-mcp: cannot rotate {}: {}; appending to it",
+                    "narsil-xref: cannot rotate {}: {}; appending to it",
                     path.display(),
                     e
                 );
@@ -88,7 +88,7 @@ impl Write for &LogFile {
                 Ok(file) => current.file = file,
                 // Logging here would recurse into this writer.
                 Err(e) => eprintln!(
-                    "narsil-mcp: cannot rotate {}: {}; still writing the old file",
+                    "narsil-xref: cannot rotate {}: {}; still writing the old file",
                     self.path.display(),
                     e
                 ),

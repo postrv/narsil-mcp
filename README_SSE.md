@@ -1,6 +1,6 @@
 # SSE Transport
 
-The MCP HTTP+SSE transport lets a single persistent `narsil-mcp` process serve
+The MCP HTTP+SSE transport lets a single persistent `narsil-xref` process serve
 multiple editor sessions simultaneously. Instead of each session spawning its
 own subprocess and re-indexing from scratch, all sessions share one warm index.
 
@@ -18,26 +18,26 @@ own subprocess and re-indexing from scratch, all sessions share one warm index.
 Start the server once, pointing it at the repositories to index:
 
 ```bash
-narsil-mcp --transport sse --repos /path/to/project
+narsil-xref --transport sse --repos /path/to/project
 ```
 
 Multiple repos:
 
 ```bash
-narsil-mcp --transport sse --repos /path/to/repo1 --repos /path/to/repo2
+narsil-xref --transport sse --repos /path/to/repo1 --repos /path/to/repo2
 ```
 
 `--sse-host` and `--sse-port` also implicitly activate SSE transport, so this
 is equivalent:
 
 ```bash
-narsil-mcp --sse-host localhost --repos /path/to/project
+narsil-xref --sse-host localhost --repos /path/to/project
 ```
 
 The server binds to `127.0.0.1:7557` by default and logs:
 
 ```
-INFO narsil_mcp: Starting MCP SSE transport on http://127.0.0.1:7557/mcp/sse
+INFO narsil_xref: Starting MCP SSE transport on http://127.0.0.1:7557/mcp/sse
 ```
 
 ## Connecting Claude Code
@@ -47,7 +47,7 @@ Add the server to your project's `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
+    "narsil-xref": {
       "type": "sse",
       "url": "http://localhost:7557/mcp/sse"
     }
@@ -58,7 +58,7 @@ Add the server to your project's `.mcp.json`:
 Or register it from the command line:
 
 ```bash
-claude mcp add --transport sse narsil-mcp http://localhost:7557/mcp/sse
+claude mcp add --transport sse narsil-xref http://localhost:7557/mcp/sse
 ```
 
 ## Connecting Claude Desktop
@@ -69,7 +69,7 @@ or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 ```json
 {
   "mcpServers": {
-    "narsil-mcp": {
+    "narsil-xref": {
       "type": "sse",
       "url": "http://localhost:7557/mcp/sse"
     }
@@ -79,7 +79,7 @@ or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ## Remote server (SSH)
 
-When `narsil-mcp` runs on a remote host, forward the port locally:
+When `narsil-xref` runs on a remote host, forward the port locally:
 
 ```bash
 ssh -L 7557:localhost:7557 user@remote-host
@@ -113,46 +113,46 @@ authentication.
 Add `--persist` to save the index to disk so restarts are fast:
 
 ```bash
-narsil-mcp --transport sse --repos /path/to/project --persist --git --call-graph
+narsil-xref --transport sse --repos /path/to/project --persist --git --call-graph
 ```
 
 ## Running as a systemd user unit
 
-`bash setup.sh --systemd` installs the template unit `narsil-mcp@.service`,
-whose instance name is a profile from `~/.config/narsil-mcp/config.yaml`:
+`bash setup.sh --systemd` installs the template unit `narsil-xref@.service`,
+whose instance name is a profile from `~/.config/narsil-xref/config.yaml`:
 
 ```bash
-systemctl --user enable --now narsil-mcp@dev
+systemctl --user enable --now narsil-xref@dev
 loginctl enable-linger $USER   # optional: start at boot, not at first login
 ```
 
-The server logs to `~/.local/state/log/narsil-mcp/<profile>.log`
+The server logs to `~/.local/state/log/narsil-xref/<profile>.log`
 (`--log-file`). It moves the file to `<profile>.log.1` at every start and when
 the file passes `--log-max-size` (default `10M`), and keeps `--log-keep`
 (default 5) old files. systemd restarts the server when it exits with an
-error. Change the command line with `systemctl --user edit narsil-mcp@dev`;
+error. Change the command line with `systemctl --user edit narsil-xref@dev`;
 set `Environment=NARSIL_LOG_MAX_SIZE=...` there for one instance only.
 
 ### Socket activation
 
-`narsil-mcp@.socket` makes systemd hold `127.0.0.1:7557`: the first connection
-starts `narsil-mcp@<profile>.service`, and a connection during a restart waits
+`narsil-xref@.socket` makes systemd hold `127.0.0.1:7557`: the first connection
+starts `narsil-xref@<profile>.service`, and a connection during a restart waits
 instead of being refused:
 
 ```bash
-systemctl --user enable --now narsil-mcp@dev.socket
+systemctl --user enable --now narsil-xref@dev.socket
 ```
 
 The server then serves on the socket systemd passes and ignores `--sse-host`
 and `--sse-port`. A second profile needs its own port: run
-`systemctl --user edit narsil-mcp@work.socket`, add an empty `ListenStream=`
+`systemctl --user edit narsil-xref@work.socket`, add an empty `ListenStream=`
 line, then `ListenStream=127.0.0.1:7558`. `Environment=` does not apply to a
 socket unit.
 
-A stdio narsil-mcp finds a server through
-`$XDG_RUNTIME_DIR/narsil-mcp/servers.json`, and a socket-activated server
+A stdio narsil-xref finds a server through
+`$XDG_RUNTIME_DIR/narsil-xref/servers.json`, and a socket-activated server
 writes its entry there only once it runs. With `sse_url` set in
-`~/.config/narsil-mcp/config.yaml` (or `--sse-url` / `NARSIL_SSE_URL`), stdio
+`~/.config/narsil-xref/config.yaml` (or `--sse-url` / `NARSIL_SSE_URL`), stdio
 pings that URL when servers.json has no match; the ping starts the server:
 
 ```yaml
@@ -164,7 +164,7 @@ sse_url: http://127.0.0.1:7557
 An SSE server checks its RSS every 10 s against two limits:
 
 - `--memory-soft-limit` (default `1.5x`): writes a `memory-<pid>-<time>.diag`
-  file next to `--log-file` (else `~/.local/state/narsil-mcp/`), then logs a
+  file next to `--log-file` (else `~/.local/state/narsil-xref/`), then logs a
   per-subsystem memory summary every `--memory-soft-limit-interval-secs`
   (default 300) while RSS stays above it.
 - `--memory-hard-limit` (default `2x`): writes the `.diag` file, shuts the
@@ -173,7 +173,7 @@ An SSE server checks its RSS every 10 s against two limits:
 A limit is `off`, `<N>x` (times the RSS after the last full index pass),
 `<N>M` or `<N>G`. Before the first full index pass an `<N>x` soft limit is not
 checked and an `<N>x` hard limit is half of MemTotal. Set machine-wide values in
-`~/.config/narsil-mcp/config.yaml`:
+`~/.config/narsil-xref/config.yaml`:
 
 ```yaml
 memory_soft_limit: 48G

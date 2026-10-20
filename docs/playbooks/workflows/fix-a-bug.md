@@ -1,6 +1,6 @@
 # Workflow: Fix a Bug
 
-You have a bug report. Here's how Claude uses narsil-mcp to help you diagnose and fix it.
+You have a bug report. Here's how Claude uses narsil-xref to help you diagnose and fix it.
 
 ## The Scenario
 

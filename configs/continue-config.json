@@ -1,8 +1,8 @@
 {
   "mcpServers": [
     {
-      "name": "narsil-mcp",
-      "command": "narsil-mcp",
+      "name": "narsil-xref",
+      "command": "narsil-xref",
       "args": [
         "--repos", "${workspaceFolder}",
         "--git",

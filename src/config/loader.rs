@@ -4,7 +4,7 @@
 /// 1. CLI flags (handled elsewhere)
 /// 2. Environment variables
 /// 3. Project config (.narsil.yaml in repo root)
-/// 4. User config (~/.config/narsil-mcp/config.yaml)
+/// 4. User config (~/.config/narsil-xref/config.yaml)
 /// 5. Default config (built-in)
 use super::schema::{ToolConfig, ToolOverride};
 use anyhow::{Context, Result};
@@ -79,20 +79,20 @@ impl ConfigLoader {
     /// Get the default user config path for the current platform
     ///
     /// Returns the platform-specific configuration directory:
-    /// - macOS: ~/Library/Application Support/narsil-mcp/config.yaml
-    /// - Linux: ~/.config/narsil-mcp/config.yaml
-    /// - Windows: %APPDATA%\narsil-mcp\config.yaml
+    /// - macOS: ~/Library/Application Support/narsil-xref/config.yaml
+    /// - Linux: ~/.config/narsil-xref/config.yaml
+    /// - Windows: %APPDATA%\narsil-xref\config.yaml
     pub fn get_default_user_config_path(&self) -> PathBuf {
         use directories::ProjectDirs;
 
-        if let Some(proj_dirs) = ProjectDirs::from("com", "anthropic", "narsil-mcp") {
+        if let Some(proj_dirs) = ProjectDirs::from("com", "anthropic", crate::APP_NAME) {
             proj_dirs.config_dir().join("config.yaml")
         } else {
             // Fallback to .config in home directory
             if let Some(home) = std::env::var_os("HOME") {
                 PathBuf::from(home)
                     .join(".config")
-                    .join("narsil-mcp")
+                    .join(crate::APP_NAME)
                     .join("config.yaml")
             } else {
                 PathBuf::from("config.yaml")
@@ -113,7 +113,7 @@ impl ConfigLoader {
         Ok(config)
     }
 
-    /// Load user configuration from ~/.config/narsil-mcp/config.yaml
+    /// Load user configuration from ~/.config/narsil-xref/config.yaml
     fn load_user_config(&self) -> Result<Option<ToolConfig>> {
         use std::env;
 
@@ -124,7 +124,7 @@ impl ConfigLoader {
             PathBuf::from(custom_path)
         } else {
             use directories::ProjectDirs;
-            let proj_dirs = ProjectDirs::from("com", "anthropic", "narsil-mcp")
+            let proj_dirs = ProjectDirs::from("com", "anthropic", crate::APP_NAME)
                 .context("Could not determine user config directory")?;
             proj_dirs.config_dir().join("config.yaml")
         };

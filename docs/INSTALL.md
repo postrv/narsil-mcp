@@ -6,7 +6,7 @@ Prebuilt binaries are released for Linux only, on x86_64 and aarch64.
 
 **Install script** (downloads the latest release into `~/.local/bin`):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/postrv/narsil-mcp/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bsbernd/narsil-xref/main/install.sh | bash
 ```
 
 When no release is found, the script builds from source with cargo.
@@ -16,8 +16,8 @@ When no release is found, the script builds from source with cargo.
 After installation, verify it works:
 
 ```bash
-narsil-mcp --version
-# Should output the installed narsil-mcp version
+narsil-xref --version
+# Should output the installed narsil-xref version
 ```
 
 ## Next Steps
@@ -28,8 +28,8 @@ See [README.md](../README.md) for usage instructions and AI assistant configurat
 
 ```bash
 # Clone the repository
-git clone https://github.com/postrv/narsil-mcp.git
-cd narsil-mcp
+git clone https://github.com/bsbernd/narsil-xref.git
+cd narsil-xref
 
 # Build and install to ~/.local/bin
 bash setup.sh
@@ -54,5 +54,5 @@ Run the install script or `bash setup.sh` again.
 ## Uninstalling
 
 ```bash
-rm ~/.local/bin/narsil-mcp
+rm ~/.local/bin/narsil-xref
 ```

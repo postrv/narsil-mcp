@@ -1,4 +1,4 @@
-// Verilog example file for narsil-mcp testing
+// Verilog example file for narsil-xref testing
 
 // Simple counter module
 module counter(
