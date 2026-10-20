@@ -47,6 +47,12 @@ pub struct ToolConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_soft_limit_interval_secs: Option<u64>,
 
+    /// Base URL of an SSE server, e.g. `http://127.0.0.1:7557`, that a stdio
+    /// process pings when servers.json lists no server; a socket-activated
+    /// server has no entry before its first start. Overridden by `--sse-url`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sse_url: Option<String>,
+
     /// Named repository profiles for reusable workspace path sets.
     #[serde(default)]
     pub profiles: HashMap<String, RepoProfile>,
@@ -65,6 +71,7 @@ impl Default for ToolConfig {
             memory_soft_limit: None,
             memory_hard_limit: None,
             memory_soft_limit_interval_secs: None,
+            sse_url: None,
             profiles: HashMap::new(),
             tools: ToolsConfig::default(),
         }

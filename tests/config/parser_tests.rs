@@ -36,6 +36,17 @@ memory_soft_limit_interval_secs: 60
 }
 
 #[test]
+fn test_parse_sse_url() {
+    let yaml = r#"
+version: "1.0"
+sse_url: http://127.0.0.1:7557
+"#;
+
+    let config: ToolConfig = serde_saphyr::from_str(yaml).expect("Should parse sse_url");
+    assert_eq!(config.sse_url.as_deref(), Some("http://127.0.0.1:7557"));
+}
+
+#[test]
 fn test_parse_full_config() {
     let yaml = r#"
 version: "1.0"
@@ -129,6 +140,7 @@ fn test_config_roundtrip() {
         memory_soft_limit: None,
         memory_hard_limit: None,
         memory_soft_limit_interval_secs: None,
+        sse_url: None,
         profiles: HashMap::new(),
         tools: ToolsConfig { overrides },
     };

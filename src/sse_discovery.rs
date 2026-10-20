@@ -177,6 +177,41 @@ pub async fn find_at_with_retry(
     }
 }
 
+/// How long a stdio process waits for the server at `sse_url` to appear in
+/// servers.json: a socket-activated server registers once its engine is built.
+const SSE_URL_REGISTRATION_WAIT: Duration = Duration::from_secs(5);
+
+/// For a caller that found no server in servers.json: the server at `url`
+/// if it answers a ping, with the entries of `repos` it does not list.
+///
+/// The ping may be what starts a socket-activated server. Its servers.json
+/// entry, written once it runs, names the repos it has; asking it to adopt
+/// one of those would redo that repo's whole index pass.
+pub async fn find_server_at_url(url: &str, repos: &[PathBuf]) -> Option<(String, Vec<PathBuf>)> {
+    let probe_url = url.to_string();
+    let probe = tokio::task::spawn_blocking(move || http_probe(&probe_url))
+        .await
+        .ok()?;
+    if !matches!(probe, ProbeResult::Ok) {
+        info!("SSE discovery: no server answers at sse_url {}", url);
+        return None;
+    }
+    let registered = match discovery_file_path() {
+        Ok(path) => find_at_with_retry(&path, repos, SSE_URL_REGISTRATION_WAIT).await,
+        Err(_) => None,
+    };
+    match registered {
+        Some(found) => Some(found),
+        None => {
+            info!(
+                "SSE discovery: {} answers but is not in servers.json; every repo counts as missing",
+                url
+            );
+            Some((url.trim_end_matches('/').to_string(), repos.to_vec()))
+        }
+    }
+}
+
 /// Same as [`find_server_for_repos`] but reads from an explicit path;
 /// used by tests.
 pub fn find_at(path: &Path, repos: &[PathBuf]) -> Option<(String, Vec<PathBuf>)> {

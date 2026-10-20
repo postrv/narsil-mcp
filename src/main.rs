@@ -206,6 +206,12 @@ struct ServerArgs {
     #[arg(long, env = "NARSIL_DISCOVERY_RETRY_SECS", default_value = "0")]
     discovery_retry_secs: u64,
 
+    /// Stdio only: base URL of an SSE server, e.g. http://127.0.0.1:7557, to
+    /// delegate to when servers.json lists none. A socket-activated server has
+    /// no entry there before its first start. Falls back to `sse_url` in config.yaml.
+    #[arg(long, env = "NARSIL_SSE_URL")]
+    sse_url: Option<String>,
+
     /// Expose only these tool groups in tools/list. Example: --expose code,git
     ///
     /// Comma-separated and composable; repo-addressing tools are always
@@ -461,8 +467,13 @@ async fn main() -> Result<()> {
         // this process waits out the race against its SSE counterpart
         // starting moments later — see find_server_for_repos_with_retry.
         let retry_budget = std::time::Duration::from_secs(server_args.discovery_retry_secs);
-        let discovered =
+        let mut discovered =
             sse_discovery::find_server_for_repos_with_retry(&repos, retry_budget).await;
+        if discovered.is_none() {
+            if let Some(sse_url) = &server_args.sse_url {
+                discovered = sse_discovery::find_server_at_url(sse_url, &repos).await;
+            }
+        }
         // A server short of some of these repos is still the right place to
         // send every query — the alternative is a local index that answers for
         // one repo and loses every repo the server has. Ask it to index the
@@ -1041,7 +1052,8 @@ fn apply_machine_wide_defaults(server_args: &mut ServerArgs) {
     let all_set = server_args.adopted_repo_ttl_days.is_some()
         && server_args.memory_soft_limit.is_some()
         && server_args.memory_hard_limit.is_some()
-        && server_args.memory_soft_limit_interval_secs.is_some();
+        && server_args.memory_soft_limit_interval_secs.is_some()
+        && server_args.sse_url.is_some();
     if all_set {
         return;
     }
@@ -1065,6 +1077,9 @@ fn apply_machine_wide_defaults(server_args: &mut ServerArgs) {
     }
     if server_args.memory_soft_limit_interval_secs.is_none() {
         server_args.memory_soft_limit_interval_secs = config.memory_soft_limit_interval_secs;
+    }
+    if server_args.sse_url.is_none() {
+        server_args.sse_url = config.sse_url;
     }
 }
 

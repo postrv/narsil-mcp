@@ -76,6 +76,7 @@ mod tests {
             memory_soft_limit: None,
             memory_hard_limit: None,
             memory_soft_limit_interval_secs: None,
+            sse_url: None,
             profiles: HashMap::new(),
             tools: ToolsConfig {
                 overrides: HashMap::new(),
@@ -94,6 +95,7 @@ mod tests {
             memory_soft_limit: None,
             memory_hard_limit: None,
             memory_soft_limit_interval_secs: None,
+            sse_url: None,
             profiles: HashMap::new(),
             tools: ToolsConfig {
                 overrides: HashMap::new(),
@@ -125,6 +127,7 @@ mod tests {
             memory_soft_limit: None,
             memory_hard_limit: None,
             memory_soft_limit_interval_secs: None,
+            sse_url: None,
             profiles: HashMap::new(),
             tools: ToolsConfig { overrides },
         };

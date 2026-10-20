@@ -149,6 +149,16 @@ and `--sse-port`. A second profile needs its own port: run
 line, then `ListenStream=127.0.0.1:7558`. `Environment=` does not apply to a
 socket unit.
 
+A stdio narsil-mcp finds a server through
+`$XDG_RUNTIME_DIR/narsil-mcp/servers.json`, and a socket-activated server
+writes its entry there only once it runs. With `sse_url` set in
+`~/.config/narsil-mcp/config.yaml` (or `--sse-url` / `NARSIL_SSE_URL`), stdio
+pings that URL when servers.json has no match; the ping starts the server:
+
+```yaml
+sse_url: http://127.0.0.1:7557
+```
+
 ## Memory watchdog
 
 An SSE server checks its RSS every 10 s against two limits:

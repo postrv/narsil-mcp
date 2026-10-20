@@ -31,6 +31,7 @@ fn test_validate_valid_config() {
         memory_soft_limit: None,
         memory_hard_limit: None,
         memory_soft_limit_interval_secs: None,
+        sse_url: None,
         profiles: HashMap::new(),
         tools: ToolsConfig {
             overrides: override_named("list_repos", true),
@@ -68,6 +69,7 @@ fn test_validate_unknown_tool_in_override() {
         memory_soft_limit: None,
         memory_hard_limit: None,
         memory_soft_limit_interval_secs: None,
+        sse_url: None,
         profiles: HashMap::new(),
         tools: ToolsConfig {
             overrides: override_named("nonexistent_tool_xyz", false),

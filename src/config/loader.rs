@@ -178,6 +178,9 @@ impl ConfigLoader {
         if overlay.memory_soft_limit_interval_secs.is_some() {
             base.memory_soft_limit_interval_secs = overlay.memory_soft_limit_interval_secs;
         }
+        if overlay.sse_url.is_some() {
+            base.sse_url = overlay.sse_url;
+        }
 
         // Overlay expose groups if specified. Replaced wholesale rather than
         // appended: "expose these groups" is an absolute statement, and a

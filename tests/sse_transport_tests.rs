@@ -539,8 +539,13 @@ impl StdioProxy {
     /// Spawn `narsil-mcp --repos <repo>` in stdio mode (the default), sharing
     /// `xdg_runtime` so it discovers the SSE server registered there.
     fn spawn(repo: &Path, xdg_runtime: &Path) -> Result<Self> {
+        Self::spawn_with_args(repo, xdg_runtime, &[])
+    }
+
+    fn spawn_with_args(repo: &Path, xdg_runtime: &Path, extra_args: &[&str]) -> Result<Self> {
         let mut child = Command::new(binary_path())
             .args(["--repos", repo.to_str().expect("temp path is utf-8")])
+            .args(extra_args)
             .env("XDG_RUNTIME_DIR", xdg_runtime)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -613,6 +618,31 @@ impl StdioProxy {
                 Ok(line) if line.contains(needle) => return true,
                 Ok(_) | Err(RecvTimeoutError::Timeout) => continue,
                 Err(RecvTimeoutError::Disconnected) => return false,
+            }
+        }
+    }
+
+    /// Stderr lines up to the first one containing `needle`, then those of
+    /// the next `linger`, for lines a background task logs a little later.
+    fn stderr_lines_until(&self, needle: &str, timeout: Duration, linger: Duration) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut deadline = Instant::now() + timeout;
+        let mut found = false;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return lines;
+            }
+            match self.stderr_rx.recv_timeout(remaining) {
+                Ok(line) => {
+                    if !found && line.contains(needle) {
+                        found = true;
+                        deadline = Instant::now() + linger;
+                    }
+                    lines.push(line);
+                }
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => return lines,
             }
         }
     }
@@ -983,6 +1013,83 @@ fn test_sse_serves_on_the_socket_from_systemd() -> Result<()> {
         "servers.json names the --sse-port {}: {}",
         flag_port,
         registry
+    );
+    Ok(())
+}
+
+/// A server registered in another servers.json, reachable only through --sse-url.
+#[test]
+fn test_stdio_delegates_to_sse_url() -> Result<()> {
+    let server_xdg = TempDir::new()?;
+    let stdio_xdg = TempDir::new()?;
+    let repo = TempDir::new()?;
+    let repo_path = repo.path().canonicalize()?;
+    let port = ephemeral_port()?;
+
+    let mut server = spawn_sse_on_port(port, &repo_path, server_xdg.path())?;
+    wait_until_mcp_ready(port)?;
+
+    let sse_url = format!("http://127.0.0.1:{}", port);
+    let mut proxy =
+        StdioProxy::spawn_with_args(&repo_path, stdio_xdg.path(), &["--sse-url", &sse_url])?;
+    assert!(
+        proxy.wait_for_stderr_contains("delegating stdio to", STARTUP_TIMEOUT),
+        "stdio process did not delegate to --sse-url {}",
+        sse_url
+    );
+
+    proxy.send(&initialize(1, "sse-url-test"))?;
+    assert_eq!(response_id(&proxy.next_response(EVENT_TIMEOUT)?)?, json!(1));
+    proxy.send(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))?;
+    proxy.send(&tools_list(2))?;
+    let response = proxy.next_response(EVENT_TIMEOUT)?;
+    assert_eq!(response_id(&response)?, json!(2));
+    assert!(tools_count(&response)? > 0, "tools/list must return tools");
+
+    let _ = server.kill();
+    let _ = server.wait();
+    Ok(())
+}
+
+/// The --sse-url ping starts a socket-activated server that already has the
+/// repo; asking it to adopt the repo would redo the repo's index pass.
+#[test]
+fn test_stdio_sse_url_does_not_adopt_a_repo_the_server_has() -> Result<()> {
+    let xdg = TempDir::new()?;
+    let repo = TempDir::new()?;
+    let repo_path = repo.path().canonicalize()?;
+    let socket_port = ephemeral_port()?;
+
+    let Some(mut server) = spawn_socket_activated_sse(socket_port, &repo_path, xdg.path(), &[])?
+    else {
+        return Ok(());
+    };
+    let sse_url = format!("http://127.0.0.1:{}", socket_port);
+    let proxy = StdioProxy::spawn_with_args(&repo_path, xdg.path(), &["--sse-url", &sse_url])?;
+    // Adoption runs in a background task and may log after the delegation line.
+    let lines = proxy.stderr_lines_until(
+        "delegating stdio to",
+        STARTUP_TIMEOUT,
+        Duration::from_secs(2),
+    );
+    drop(proxy);
+    let _ = server.kill();
+    let _ = server.wait();
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("delegating stdio to")),
+        "stdio process did not delegate to {}: {:#?}",
+        sse_url,
+        lines
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.contains("SSE discovery: asking")),
+        "stdio asked the server to adopt a repo it has: {:#?}",
+        lines
     );
     Ok(())
 }
