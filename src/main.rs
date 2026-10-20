@@ -408,6 +408,27 @@ async fn main() -> Result<()> {
         server_args.transport = Transport::Sse;
     }
 
+    // Before the first child process: fd 3 from systemd is inherited across exec.
+    let sse_listener = match server_args.transport {
+        Transport::Sse => systemd_listener()?,
+        Transport::Stdio => None,
+    };
+    // A socket from systemd fixes the address; --sse-host / --sse-port only pick one to bind.
+    let (sse_host, sse_port) = match &sse_listener {
+        Some(listener) => {
+            let address = listener.local_addr()?;
+            info!("Using the listening socket {} from systemd", address);
+            (address.ip().to_string(), address.port())
+        }
+        None => (
+            server_args
+                .sse_host
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
+            server_args.sse_port.unwrap_or(7557),
+        ),
+    };
+
     // Resolve the final list of repository paths from CLI args, env, and
     // discovery. For stdio transport, fall back to cwd when nothing is
     // specified so bare `narsil-mcp` "just works" inside a project.
@@ -638,16 +659,9 @@ async fn main() -> Result<()> {
     // refreshes it with real symbol counts once indexing finishes.
     let pid_status_role = match server_args.transport {
         Transport::Stdio => pid_status::ProcessRole::StdioLocal,
-        Transport::Sse => {
-            let host = server_args
-                .sse_host
-                .clone()
-                .unwrap_or_else(|| "127.0.0.1".to_string());
-            let port = server_args.sse_port.unwrap_or(7557);
-            pid_status::ProcessRole::Sse {
-                url: format_discovery_url(&host, port),
-            }
-        }
+        Transport::Sse => pid_status::ProcessRole::Sse {
+            url: format_discovery_url(&sse_host, sse_port),
+        },
     };
     let pid_status_transport = match server_args.transport {
         Transport::Stdio => "stdio",
@@ -741,11 +755,6 @@ async fn main() -> Result<()> {
             run_stdio_with_shutdown(server).await
         }
         Transport::Sse => {
-            let sse_host = server_args
-                .sse_host
-                .unwrap_or_else(|| "127.0.0.1".to_string());
-            let sse_port = server_args.sse_port.unwrap_or(7557);
-
             // Refuse non-loopback bind. A network-exposed MCP transport
             // without authentication would let any host on the LAN drive
             // tool calls and read source. Adding network exposure must go
@@ -771,8 +780,11 @@ async fn main() -> Result<()> {
                 "Starting MCP SSE transport on http://{}:{}/mcp/sse",
                 sse_host, sse_port
             );
-            let http_server = http_server::HttpServer::new(Arc::clone(&engine), sse_port)
+            let mut http_server = http_server::HttpServer::new(Arc::clone(&engine), sse_port)
                 .with_mcp_routes(mcp_server, sse_host.clone(), sse_port, keepalive);
+            if let Some(listener) = sse_listener {
+                http_server = http_server.with_listener(listener);
+            }
 
             // Advertise this listener for stdio auto-discovery. The guard
             // is bound in match-arm scope so it drops (and removes the
@@ -821,6 +833,44 @@ fn format_discovery_url(host: &str, port: u16) -> String {
 /// SSE transport.
 fn is_loopback_bind_addr(host: &str) -> bool {
     matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]")
+}
+
+/// The listening socket systemd passed as fd 3, None without socket activation.
+///
+/// LISTEN_PID and LISTEN_FDS stay set: no child has this pid, and changing
+/// the environment is unsound once tokio's worker threads run.
+#[cfg(unix)]
+fn systemd_listener() -> Result<Option<std::net::TcpListener>> {
+    use std::os::fd::FromRawFd;
+    const SD_LISTEN_FDS_START: i32 = 3;
+
+    let own_pid = std::process::id().to_string();
+    if std::env::var("LISTEN_PID").ok().as_deref() != Some(own_pid.as_str()) {
+        return Ok(None);
+    }
+    let Ok(listen_fds) = std::env::var("LISTEN_FDS") else {
+        return Ok(None);
+    };
+    if listen_fds != "1" {
+        bail!(
+            "socket activation passed LISTEN_FDS={}; narsil-mcp takes exactly one socket",
+            listen_fds
+        );
+    }
+    // SAFETY: systemd hands fd 3 to this process, and nothing else here owns it.
+    let inherited = unsafe { std::net::TcpListener::from_raw_fd(SD_LISTEN_FDS_START) };
+    // The copy is close-on-exec, fd 3 is not: clangd and global would inherit it.
+    let listener = inherited
+        .try_clone()
+        .context("cannot copy the socket from systemd")?;
+    drop(inherited);
+    listener.set_nonblocking(true)?;
+    Ok(Some(listener))
+}
+
+#[cfg(not(unix))]
+fn systemd_listener() -> Result<Option<std::net::TcpListener>> {
+    Ok(None)
 }
 
 #[cfg(unix)]

@@ -21,11 +21,13 @@ install_systemd_units()
     unit_dir="${config_home}/systemd/user"
 
     mkdir -p "${unit_dir}"
-    cp contrib/systemd/narsil-mcp@.service "${unit_dir}/"
+    cp contrib/systemd/narsil-mcp@.service contrib/systemd/narsil-mcp@.socket "${unit_dir}/"
     systemctl --user daemon-reload
 
-    echo "✅ Installed the systemd user unit to ${unit_dir}"
-    echo "  # Start the SSE server for a config.yaml profile, e.g. dev:"
+    echo "✅ Installed the systemd user units to ${unit_dir}"
+    echo "  # Start the SSE server for a config.yaml profile, e.g. dev, on the first connection:"
+    echo "  systemctl --user enable --now narsil-mcp@dev.socket"
+    echo "  # Or start it at once:"
     echo "  systemctl --user enable --now narsil-mcp@dev"
     echo "  # Start it at boot instead of at your first login:"
     echo "  loginctl enable-linger $USER"

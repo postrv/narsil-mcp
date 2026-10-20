@@ -907,3 +907,82 @@ fn test_sse_memory_soft_limit_keeps_serving() -> Result<()> {
     assert_eq!(diags.len(), 1, "one .diag file: {:?}", diags);
     assert_full_diagnostics(&diags[0])
 }
+
+/// An SSE server behind systemd-socket-activate, which stands in for
+/// narsil-mcp@.socket: it listens on `socket_port` and starts the server on the
+/// first connection. None when systemd-socket-activate is not installed.
+fn spawn_socket_activated_sse(
+    socket_port: u16,
+    repo: &Path,
+    xdg_runtime: &Path,
+    extra_args: &[&str],
+) -> Result<Option<Child>> {
+    let installed = Command::new("systemd-socket-activate")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !installed {
+        eprintln!("skipped: systemd-socket-activate is not installed");
+        return Ok(None);
+    }
+    let listen_address = format!("127.0.0.1:{}", socket_port);
+    // systemd-socket-activate passes only the variables named with -E.
+    let xdg_setting = format!("XDG_RUNTIME_DIR={}", xdg_runtime.display());
+    let binary = std::fs::canonicalize(binary_path())?;
+    let activator = Command::new("systemd-socket-activate")
+        .args(["--listen", &listen_address])
+        .args(["-E", &xdg_setting, "-E", "HOME", "-E", "PATH"])
+        .arg(&binary)
+        .args([
+            "--transport",
+            "sse",
+            "--repos",
+            repo.to_str().expect("temp path is utf-8"),
+        ])
+        .args(extra_args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("failed to spawn systemd-socket-activate")?;
+    Ok(Some(activator))
+}
+
+#[test]
+fn test_sse_serves_on_the_socket_from_systemd() -> Result<()> {
+    let xdg = TempDir::new()?;
+    let repo = TempDir::new()?;
+    let socket_port = ephemeral_port()?;
+    // Ignored under socket activation.
+    let flag_port = ephemeral_port()?.to_string();
+    let extra_args = ["--sse-port", flag_port.as_str()];
+
+    let Some(mut server) =
+        spawn_socket_activated_sse(socket_port, repo.path(), xdg.path(), &extra_args)?
+    else {
+        return Ok(());
+    };
+    // The first ping is what makes systemd-socket-activate start the server.
+    let answered = wait_until_mcp_ready(socket_port);
+    let registry = std::fs::read_to_string(xdg.path().join("narsil-mcp").join("servers.json"));
+    let _ = server.kill();
+    let _ = server.wait();
+
+    answered?;
+    let registry = registry.context("no servers.json")?;
+    assert!(
+        registry.contains(&format!("http://127.0.0.1:{}", socket_port)),
+        "servers.json lacks the socket's port {}: {}",
+        socket_port,
+        registry
+    );
+    assert!(
+        !registry.contains(&format!(":{}", flag_port)),
+        "servers.json names the --sse-port {}: {}",
+        flag_port,
+        registry
+    );
+    Ok(())
+}

@@ -1,0 +1,12 @@
+# Port of narsil-mcp@.service: the first connection starts the server for
+# profile %i, e.g. `systemctl --user enable --now narsil-mcp@dev.socket`.
+# A second profile needs its own port: `systemctl --user edit narsil-mcp@work.socket`,
+# then an empty `ListenStream=` line and `ListenStream=127.0.0.1:7558`.
+[Unit]
+Description=narsil-mcp SSE server socket (profile %i)
+
+[Socket]
+ListenStream=127.0.0.1:7557
+
+[Install]
+WantedBy=sockets.target

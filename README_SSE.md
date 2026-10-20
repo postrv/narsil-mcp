@@ -133,6 +133,22 @@ the file passes `--log-max-size` (default `10M`), and keeps `--log-keep`
 error. Change the command line with `systemctl --user edit narsil-mcp@dev`;
 set `Environment=NARSIL_LOG_MAX_SIZE=...` there for one instance only.
 
+### Socket activation
+
+`narsil-mcp@.socket` makes systemd hold `127.0.0.1:7557`: the first connection
+starts `narsil-mcp@<profile>.service`, and a connection during a restart waits
+instead of being refused:
+
+```bash
+systemctl --user enable --now narsil-mcp@dev.socket
+```
+
+The server then serves on the socket systemd passes and ignores `--sse-host`
+and `--sse-port`. A second profile needs its own port: run
+`systemctl --user edit narsil-mcp@work.socket`, add an empty `ListenStream=`
+line, then `ListenStream=127.0.0.1:7558`. `Environment=` does not apply to a
+socket unit.
+
 ## Memory watchdog
 
 An SSE server checks its RSS every 10 s against two limits:

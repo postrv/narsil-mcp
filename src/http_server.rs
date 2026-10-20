@@ -78,6 +78,8 @@ pub struct HttpServer {
     port: u16,
     mcp_server: Option<Arc<McpServer>>,
     sse_keepalive: Duration,
+    /// Already listening, e.g. from systemd; `run` binds `host:port` when None.
+    listener: Option<std::net::TcpListener>,
 }
 
 /// One in-flight SSE session.
@@ -159,6 +161,7 @@ impl HttpServer {
             port,
             mcp_server: None,
             sse_keepalive: DEFAULT_SSE_KEEPALIVE,
+            listener: None,
         }
     }
 
@@ -179,6 +182,12 @@ impl HttpServer {
         self.host = host.into();
         self.port = port;
         self.sse_keepalive = keepalive;
+        self
+    }
+
+    /// Serve on `listener` instead of binding `host:port`. It must be non-blocking.
+    pub fn with_listener(mut self, listener: std::net::TcpListener) -> Self {
+        self.listener = Some(listener);
         self
     }
 
@@ -248,7 +257,10 @@ impl HttpServer {
         let addr = format!("{}:{}", self.host, self.port);
         info!("HTTP server starting on http://{}", addr);
 
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
+        let listener = match self.listener {
+            Some(listener) => tokio::net::TcpListener::from_std(listener)?,
+            None => tokio::net::TcpListener::bind(&addr).await?,
+        };
         axum::serve(listener, app).await?;
 
         Ok(())
