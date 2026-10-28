@@ -1718,7 +1718,7 @@ impl MemoryReport {
             ("Repos", self.repos),
             ("Git repos", self.git_repos),
         ];
-        rows.sort_by(|a, b| b.1.cmp(&a.1));
+        rows.sort_by_key(|row| std::cmp::Reverse(row.1));
         rows
     }
 

@@ -7,8 +7,8 @@ use crate::syscall::{syscall_body_of, syscall_define_name, syscall_name_for_body
 use anyhow::Result;
 use dashmap::DashMap;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::OnceLock;
 use tree_sitter::{Node, Tree};
@@ -158,7 +158,8 @@ fn degraded_region_for(node: Node, source: &[u8]) -> Option<DegradedRegion> {
     if !function_like_error_regex().is_match(text) {
         return None;
     }
-    let likely_preprocessor = text.contains("#if") || text.contains("#ifdef") || text.contains("#else");
+    let likely_preprocessor =
+        text.contains("#if") || text.contains("#ifdef") || text.contains("#else");
     Some(DegradedRegion {
         start_line: node.start_position().row + 1,
         end_line: node.end_position().row + 1,
@@ -996,9 +997,8 @@ impl CallGraph {
             .unwrap_or_default();
 
         if matches!(caller_file.rsplit('.').next(), Some("py" | "pyi")) {
-            candidates.retain(|key| {
-                matches!(file_of_key(key).rsplit('.').next(), Some("py" | "pyi"))
-            });
+            candidates
+                .retain(|key| matches!(file_of_key(key).rsplit('.').next(), Some("py" | "pyi")));
         }
 
         match candidates.len() {

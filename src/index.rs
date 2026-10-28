@@ -446,8 +446,10 @@ impl IndexUpdateLeases {
     /// a time this way still cannot deadlock against another updater.
     pub async fn add(&mut self, engine: &CodeIntelEngine, repo_key: &str) {
         if !self.leases.contains_key(repo_key) {
-            self.leases
-                .insert(repo_key.to_string(), engine.index_lease(repo_key).write_owned().await);
+            self.leases.insert(
+                repo_key.to_string(),
+                engine.index_lease(repo_key).write_owned().await,
+            );
         }
     }
 }
@@ -459,9 +461,8 @@ pub struct CodeIntelEngine {
     /// Registered repository paths. Behind a lock because `reindex` takes
     /// `&self` yet may register a repo the server was never started with.
     repo_paths: parking_lot::RwLock<Vec<RegisteredRepo>>,
-    async_file_watcher: parking_lot::Mutex<
-        std::sync::Weak<parking_lot::Mutex<crate::persist::AsyncFileWatcher>>,
-    >,
+    async_file_watcher:
+        parking_lot::Mutex<std::sync::Weak<parking_lot::Mutex<crate::persist::AsyncFileWatcher>>>,
     /// Cached repo metadata
     repos: DashMap<String, RepoMetadata>,
     /// Symbol index: repo -> symbols
@@ -2874,7 +2875,9 @@ impl CodeIntelEngine {
             leases: HashMap::new(),
         };
         for key in repo_keys {
-            tokio::time::timeout(timeout, leases.add(self, key)).await.ok()?;
+            tokio::time::timeout(timeout, leases.add(self, key))
+                .await
+                .ok()?;
         }
         Some(leases)
     }
@@ -3945,7 +3948,11 @@ impl CodeIntelEngine {
         output.push('\n');
         for (offset, line) in lines[start..end].iter().enumerate() {
             let line_num = start + offset + 1;
-            let marker = if line_num == symbol.start_line { "→" } else { " " };
+            let marker = if line_num == symbol.start_line {
+                "→"
+            } else {
+                " "
+            };
             output.push_str(&format!("{} {:4} │ {}\n", marker, line_num, line));
         }
         output.push_str("```\n");
@@ -4033,7 +4040,12 @@ impl CodeIntelEngine {
                         for backend in lsp.active_cxx_backends_for(&repo_path) {
                             for language in ["c", "cpp"] {
                                 match lsp
-                                    .get_workspace_symbols(backend, &repo_path, language, symbol_name)
+                                    .get_workspace_symbols(
+                                        backend,
+                                        &repo_path,
+                                        language,
+                                        symbol_name,
+                                    )
                                     .await
                                 {
                                     Ok(hits) => {
@@ -6225,7 +6237,10 @@ impl CodeIntelEngine {
     ) -> Result<String> {
         let repo_key = self.resolve_repo(repo)?;
         let git_repo = self.git_repos.get(&repo_key).ok_or_else(|| {
-            anyhow!("Git not available for {}. Enable with --git flag.", repo_key)
+            anyhow!(
+                "Git not available for {}. Enable with --git flag.",
+                repo_key
+            )
         })?;
         let range = git_repo.commit_range(base, branch, include_body, window)?;
         let mut output = format!(
@@ -11084,20 +11099,26 @@ similarity index 90%
             .register_unknown_repo(&worktree.to_string_lossy())
             .unwrap();
 
-        let status = engine
-            .get_index_status(Some(&worktree_key))
-            .await
-            .unwrap();
+        let status = engine.get_index_status(Some(&worktree_key)).await.unwrap();
         assert!(
             status.contains(&format!("Worktree of: `{}`", main_key)),
             "{status}"
         );
 
         engine.reindex(Some(&worktree_key)).await.unwrap();
-        let listing = engine.list_repos_scoped(Some(&worktree_key), false).await.unwrap();
-        assert!(listing.contains("Worktree of") && listing.contains(&main_key), "{listing}");
+        let listing = engine
+            .list_repos_scoped(Some(&worktree_key), false)
+            .await
+            .unwrap();
+        assert!(
+            listing.contains("Worktree of") && listing.contains(&main_key),
+            "{listing}"
+        );
 
-        let main_listing = engine.list_repos_scoped(Some(&main_key), false).await.unwrap();
+        let main_listing = engine
+            .list_repos_scoped(Some(&main_key), false)
+            .await
+            .unwrap();
         assert!(!main_listing.contains("Worktree of"), "{main_listing}");
     }
 
@@ -11113,10 +11134,12 @@ similarity index 90%
         let repo_b = temp.path().join("repo_b");
         std::fs::create_dir(&repo_a).unwrap();
         std::fs::create_dir(&repo_b).unwrap();
-        let engine =
-            CodeIntelEngine::new(temp.path().join("index"), vec![repo_a.clone(), repo_b.clone()])
-                .await
-                .unwrap();
+        let engine = CodeIntelEngine::new(
+            temp.path().join("index"),
+            vec![repo_a.clone(), repo_b.clone()],
+        )
+        .await
+        .unwrap();
         let key_a = canonical_repo_key(&repo_a).unwrap();
         let key_b = canonical_repo_key(&repo_b).unwrap();
 

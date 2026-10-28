@@ -175,7 +175,7 @@ fn handle_list(format: StatsFormat) -> Result<()> {
         }
     }
     // Most-recently-updated first.
-    pairs.sort_by(|a, b| b.1.saved_at.cmp(&a.1.saved_at));
+    pairs.sort_by_key(|pair| std::cmp::Reverse(pair.1.saved_at));
 
     match format {
         StatsFormat::Markdown => {

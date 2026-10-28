@@ -1088,7 +1088,10 @@ mod tests {
         run_git(path, &["checkout", "-q", "-b", "side", "fork"]);
         run_git(path, &["commit", "-q", "--allow-empty", "-m", "side"]);
         run_git(path, &["checkout", "-q", "topic"]);
-        run_git(path, &["merge", "-q", "--no-ff", "-m", "merge side", "side"]);
+        run_git(
+            path,
+            &["merge", "-q", "--no-ff", "-m", "merge side", "side"],
+        );
         let merged = git
             .commit_range("base", "topic", false, ListWindow::new(0, 0))
             .unwrap();
@@ -1241,7 +1244,7 @@ mod tests {
         );
     }
 
-/// One more commit than [`MAX_LOG_COMMITS`] allows, so a caller-visible
+    /// One more commit than [`MAX_LOG_COMMITS`] allows, so a caller-visible
     /// count strictly under the created total proves the cap took effect
     /// rather than every commit simply falling outside `--since`.
     #[test]

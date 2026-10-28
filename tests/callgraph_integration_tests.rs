@@ -891,5 +891,9 @@ async fn get_callers_omits_the_degraded_note_when_the_graph_is_complete() {
         )
         .await
         .unwrap();
-    assert!(!output.contains("could not be parsed by tree-sitter"), "{}", output);
+    assert!(
+        !output.contains("could not be parsed by tree-sitter"),
+        "{}",
+        output
+    );
 }

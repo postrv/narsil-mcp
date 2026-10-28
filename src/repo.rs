@@ -164,7 +164,10 @@ pub fn worktree_main_repo(path: &Path) -> Option<PathBuf> {
         return None;
     }
     let common_dir = String::from_utf8(output.stdout).ok()?;
-    let root = PathBuf::from(common_dir.trim()).parent()?.canonicalize().ok()?;
+    let root = PathBuf::from(common_dir.trim())
+        .parent()?
+        .canonicalize()
+        .ok()?;
     if root == canonical_path {
         None
     } else {
@@ -253,7 +256,10 @@ mod tests {
     fn worktree_main_repo_finds_the_main_checkout_of_a_linked_worktree() {
         let main = tempdir().unwrap();
         run_git(main.path(), &["init", "-q"]);
-        run_git(main.path(), &["commit", "--allow-empty", "-q", "-m", "init"]);
+        run_git(
+            main.path(),
+            &["commit", "--allow-empty", "-q", "-m", "init"],
+        );
 
         let worktree_parent = tempdir().unwrap();
         let worktree_path = worktree_parent.path().join("wt");

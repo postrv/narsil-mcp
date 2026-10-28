@@ -685,7 +685,8 @@ mod tests {
     fn test_search_index() {
         let mut index = SearchIndex::new();
 
-        index.index_file("test", 
+        index.index_file(
+            "test",
             "user.rs",
             r#"
             pub fn get_user_by_id(id: u32) -> User {
@@ -694,7 +695,8 @@ mod tests {
         "#,
         );
 
-        index.index_file("test", 
+        index.index_file(
+            "test",
             "order.rs",
             r#"
             pub fn create_order(user: &User) -> Order {
@@ -736,7 +738,9 @@ mod tests {
         assert!(
             kept.iter().all(|hit| hit.document.repo == "keep"),
             "only the kept repo may score: {:?}",
-            kept.iter().map(|hit| &hit.document.repo).collect::<Vec<_>>()
+            kept.iter()
+                .map(|hit| &hit.document.repo)
+                .collect::<Vec<_>>()
         );
 
         let after = index.stats();
@@ -755,10 +759,15 @@ mod tests {
         // A fresh index still holds the static synonym table, so the baseline
         // is non-zero; indexing real content must push it strictly higher.
         let baseline = index.heap_bytes();
-        index.index_file("test", "user.rs", "pub fn get_user_by_id(id: u32) -> User { user }");
+        index.index_file(
+            "test",
+            "user.rs",
+            "pub fn get_user_by_id(id: u32) -> User { user }",
+        );
         let after_one = index.heap_bytes();
         assert!(after_one > baseline, "indexing a file must grow heap_bytes");
-        index.index_file("test", 
+        index.index_file(
+            "test",
             "order.rs",
             "pub fn create_order(user: &User) -> Order { order }",
         );
