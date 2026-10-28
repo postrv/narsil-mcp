@@ -160,6 +160,12 @@ jobs:
             (cd "$dir" && tar -czf "${RELEASE_DIR}/narsil-xref-v${VERSION}-${artifact_name#narsil-xref-}.tar.gz" narsil-xref)
             # Generate SHA256
             (cd release-assets && shasum -a 256 "narsil-xref-v${VERSION}-${artifact_name#narsil-xref-}.tar.gz" > "narsil-xref-v${VERSION}-${artifact_name#narsil-xref-}.tar.gz.sha256")
+
+            for deb in "$dir"*.deb; do
+              deb_name=$(basename "$deb")
+              cp "$deb" release-assets/
+              (cd release-assets && shasum -a 256 "$deb_name" > "$deb_name.sha256")
+            done
           done
 
           ls -la release-assets/

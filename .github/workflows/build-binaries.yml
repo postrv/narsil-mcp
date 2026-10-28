@@ -22,7 +22,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             artifact: narsil-xref-linux-x86_64
             binary: narsil-xref
           # Native ARM64 Linux build via GitHub-hosted Graviton runners.
@@ -30,7 +30,7 @@ jobs:
           # for Raspberry Pi, AWS Graviton, and Apple-silicon-via-Docker
           # users who previously had no prebuilt binary.
           - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
+            target: aarch64-unknown-linux-musl
             artifact: narsil-xref-linux-aarch64
             binary: narsil-xref
 
@@ -49,6 +49,13 @@ jobs:
           key: ${{ matrix.target }}
           cache-on-failure: true
 
+      # cc builds the C code of the tree-sitter grammars and mimalloc with musl-gcc.
+      - name: Install musl C compiler
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
       - name: Build release binary
         run: |
           if [ -n "${{ inputs.features }}" ]; then
@@ -62,9 +69,37 @@ jobs:
         shell: bash
         run: strip target/${{ matrix.target }}/release/narsil-xref
 
+      # file prints "static-pie linked" for Rust's musl targets.
+      - name: Check that the binary is statically linked
+        shell: bash
+        run: |
+          binary=target/${{ matrix.target }}/release/narsil-xref
+          file "$binary"
+          if ! file "$binary" | grep -q static; then
+            echo "$binary is dynamically linked"
+            exit 1
+          fi
+
+      - name: Install cargo-deb
+        uses: taiki-e/install-action@cargo-deb
+
+      # The .deb installs the binary to /usr/bin, not to ~/.local/bin.
+      - name: Build .deb package
+        shell: bash
+        run: |
+          mkdir -p target/systemd
+          sed 's|%h/.local/bin/narsil-xref|/usr/bin/narsil-xref|' contrib/systemd/narsil-xref@.service > target/systemd/narsil-xref@.service
+          if ! grep -q '^ExecStart=/usr/bin/narsil-xref ' target/systemd/narsil-xref@.service; then
+            echo "ExecStart of narsil-xref@.service was not rewritten"
+            exit 1
+          fi
+          cargo deb --no-build --target ${{ matrix.target }} --output target/${{ matrix.target }}/release/
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          path: |
+            target/${{ matrix.target }}/release/${{ matrix.binary }}
+            target/${{ matrix.target }}/release/*.deb
           if-no-files-found: error

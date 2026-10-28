@@ -153,3 +153,24 @@ crate-type = ["cdylib", "rlib"]
 [[bin]]
 name = "narsil-xref"
 path = "src/main.rs"
+
+[package.metadata.deb]
+maintainer = "Bernd Schubert <bernd@bsbernd.com>"
+extended-description = """\
+Fork of narsil-mcp: an MCP server that indexes symbols, call graphs and
+git history of local repositories in several languages. For C and C++,
+symbols and call graphs from tree-sitter, clangd, ccls and gtags are
+checked against each other. One SSE server per config profile serves the
+editors' stdio sessions, with systemd socket activation and a memory
+watchdog.
+Removed from narsil-mcp: security and supply-chain scanning, the knowledge
+graph, neural embeddings, remote repositories, the WASM build and the lint
+tools."""
+depends = ""  # static musl binary
+recommends = "clangd, ccls, global"
+assets = [
+    ["target/release/narsil-xref", "usr/bin/", "755"],
+    # The release CI writes this unit with ExecStart=/usr/bin/narsil-xref.
+    ["target/systemd/narsil-xref@.service", "usr/lib/systemd/user/", "644"],
+    ["contrib/systemd/narsil-xref@.socket", "usr/lib/systemd/user/", "644"],
+]
