@@ -13,19 +13,22 @@ read-only checks, so a stop shows up in a dry run too.
 
 ## prepare
 
-Needs `git`, `rustup` and `cargo-audit`. Stops, before it writes anything,
-when:
+Needs `git`, `cargo`, `rustc`, `rustup` and `cargo-audit`. Stops, before it
+writes anything, when:
 
 - `X.Y.Z` is not a version like `2.1.0` or `2.1.0-rc1`.
 - A tracked file has uncommitted changes.
 - The tag `vX.Y.Z` exists locally or on `origin`.
 - The first `## [` heading of `CHANGELOG.md` has a date, so no section is open.
 
-Then it runs the checks of the `CI` workflow, with `rustup run stable`:
-`cargo fmt --check`, both clippy runs, `scripts/check-docs-tools.sh`,
-`cargo audit`, `cargo build --release` and the CI test command. CI installs
-the latest stable Rust, so run `rustup update stable` first. A failure stops
-the script with nothing written. `--skip-test` leaves out the tests.
+CI installs the latest stable Rust, so `prepare` stops when the `rustc` on
+PATH is not rustup's stable one. Put `~/.cargo/bin` first in PATH and run
+`rustup update stable` first.
+
+Then it runs the checks of the `CI` workflow: `cargo fmt --check`, both
+clippy runs, `scripts/check-docs-tools.sh`, `cargo audit`,
+`cargo build --release` and the CI test command. A failure stops the script
+with nothing written. `--skip-test` leaves out the tests.
 
 Then it:
 

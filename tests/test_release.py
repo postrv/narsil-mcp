@@ -188,6 +188,20 @@ def which_nothing(name):
     return None
 
 
+def distro_rustc_output(argv):
+    """Stand in for output() on a host whose PATH finds an older distro rustc."""
+    if argv[0] == 'rustup':
+        return 'rustc 1.100.0'
+    return 'rustc 1.97.1'
+
+
+def test_require_stable_rustc_stops_on_another_rustc(monkeypatch, capsys):
+    monkeypatch.setattr(release, 'output', distro_rustc_output)
+    with pytest.raises(SystemExit):
+        release.require_stable_rustc()
+    assert 'put ~/.cargo/bin first in PATH' in capsys.readouterr().err
+
+
 def test_require_tools_names_every_missing_program(monkeypatch, capsys):
     monkeypatch.setattr(release.shutil, 'which', which_nothing)
     with pytest.raises(SystemExit):
@@ -204,7 +218,7 @@ def run_git(repo, *args):
 
 @pytest.fixture
 def release_repo(tmp_path, monkeypatch):
-    """A clean repository with a bare origin, and rustup, cargo-audit and gh stubs.
+    """A clean repository with a bare origin, and stubs of the Rust tools and gh.
 
     The stubs append their command line to stub-calls.log in tmp_path, so a
     test can check that they were not run.
@@ -228,7 +242,7 @@ def release_repo(tmp_path, monkeypatch):
     stub_dir = tmp_path / 'stubs'
     stub_dir.mkdir()
     log_file = tmp_path / 'stub-calls.log'
-    for name in ['rustup', 'cargo-audit', 'gh']:
+    for name in ['cargo', 'rustc', 'rustup', 'cargo-audit', 'gh']:
         stub = stub_dir / name
         stub.write_text('#!/bin/sh\necho "%s $@" >> "%s"\n' % (name, log_file))
         stub.chmod(0o755)
@@ -249,16 +263,19 @@ def test_prepare_dry_run_shows_the_steps_and_changes_nothing(release_repo,
                                                              capsys):
     release.main(['--dry-run', 'prepare', '2.0.1'])
     shown = capsys.readouterr().out
-    assert 'would run: rustup run stable cargo fmt --check' in shown
-    assert 'cargo clippy --all-targets -- -D warnings' in shown
-    assert 'cargo clippy --all-targets --features native -- -D warnings' in shown
-    assert 'would run: rustup run stable scripts/check-docs-tools.sh' in shown
-    assert 'would run: rustup run stable cargo audit' in shown
-    assert ('would run: rustup run stable cargo test --features native -- '
+    assert 'would run: cargo fmt --check' in shown
+    assert 'would run: cargo clippy --all-targets -- -D warnings' in shown
+    assert ('would run: cargo clippy --all-targets --features native -- '
+            '-D warnings') in shown
+    assert 'would run: scripts/check-docs-tools.sh' in shown
+    assert 'would run: cargo audit' in shown
+    assert ('would run: cargo test --features native -- '
             '--test-threads=1') in shown
     assert 'git commit -a -m \'Release 2.0.1\'' in shown
     assert 'git push origin main' in shown
-    assert stub_calls(release_repo) == ''
+    # Only the read-only rustc check ran a stub.
+    assert stub_calls(release_repo) == ('rustc --version\n'
+                                        'rustup run stable rustc --version\n')
     assert (release_repo / 'Cargo.toml').read_text() == SAMPLE_CARGO_TOML
     assert (release_repo / 'CHANGELOG.md').read_text() == SAMPLE_CHANGELOG
     assert run_git(release_repo, 'status', '--porcelain') == ''

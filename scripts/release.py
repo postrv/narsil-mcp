@@ -402,41 +402,42 @@ def read_at_head(path):
     return git('show', 'HEAD:' + path)
 
 
-def on_stable(command):
-    """Return a command that runs with the stable Rust of rustup.
+def require_stable_rustc():
+    """Fail unless the rustc on PATH is the stable Rust of rustup.
 
-    CI installs the latest stable Rust. An older distribution Rust earlier
-    on PATH misses the clippy lints CI fails on.
+    CI installs the latest stable Rust. A distribution Rust earlier on PATH
+    misses clippy lints CI fails on, and has no musl target. "rustup run"
+    does not help: the cargo it starts finds rustc on PATH.
     """
-    argv = ['rustup', 'run', 'stable']
-    argv.extend(command)
-    return argv
+    on_path = output(['rustc', '--version'])
+    stable = output(['rustup', 'run', 'stable', 'rustc', '--version'])
+    if on_path != stable:
+        fail('PATH finds "%s", rustup stable is "%s": put ~/.cargo/bin first '
+             'in PATH, and run "rustup update stable"' % (on_path, stable))
 
 
 def ci_checks():
     """Return the checks of the CI workflow except its test run."""
     checks = []
-    checks.append(on_stable(['cargo', 'fmt', '--check']))
-    checks.append(on_stable(['cargo', 'clippy', '--all-targets', '--',
-                             '-D', 'warnings']))
-    checks.append(on_stable(['cargo', 'clippy', '--all-targets',
-                             '--features', CI_FEATURES, '--',
-                             '-D', 'warnings']))
-    checks.append(on_stable(['scripts/check-docs-tools.sh']))
-    checks.append(on_stable(['cargo', 'audit']))
-    checks.append(on_stable(['cargo', 'build', '--release']))
+    checks.append(['cargo', 'fmt', '--check'])
+    checks.append(['cargo', 'clippy', '--all-targets', '--', '-D', 'warnings'])
+    checks.append(['cargo', 'clippy', '--all-targets', '--features',
+                   CI_FEATURES, '--', '-D', 'warnings'])
+    checks.append(['scripts/check-docs-tools.sh'])
+    checks.append(['cargo', 'audit'])
+    checks.append(['cargo', 'build', '--release'])
     return checks
 
 
 def ci_test_command():
     """Return the test run of the CI workflow."""
-    return on_stable(['cargo', 'test', '--features', CI_FEATURES, '--',
-                      '--test-threads=1'])
+    return ['cargo', 'test', '--features', CI_FEATURES, '--',
+            '--test-threads=1']
 
 
 def cargo_lock_command():
     """Return the command that makes Cargo.lock follow the Cargo.toml version."""
-    return on_stable(['cargo', 'update', '-p', PACKAGE, '--offline'])
+    return ['cargo', 'update', '-p', PACKAGE, '--offline']
 
 
 def wait_for_release_run(tag, commit):
@@ -487,7 +488,7 @@ def prepare(args):
     dry_run = args.dry_run
     tag = tag_name(version)
     require_valid_version(version)
-    require_tools(['git', 'rustup', 'cargo-audit'])
+    require_tools(['git', 'cargo', 'rustc', 'rustup', 'cargo-audit'])
     require_clean_worktree()
 
     if local_tag_commit(tag) != '':
@@ -501,6 +502,7 @@ def prepare(args):
         fail('CHANGELOG.md has no open section to release')
 
     # Nothing is written before the checks of the CI workflow have passed.
+    require_stable_rustc()
     for check in ci_checks():
         act(dry_run, check)
     if args.skip_test:
