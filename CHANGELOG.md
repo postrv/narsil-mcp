@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Renamed to narsil-xref**, a fork of narsil-mcp 1.7.0, at version 2.0.0.
+- **Renamed to narsil-xref**, a fork of narsil-mcp 1.7.0, at version 1.0.0.
   The package, the binary and the config, cache, state and runtime
   directories are `narsil-xref`. `NARSIL_*` variables and `.narsil.yaml`
   keep their names. Move `~/.config/narsil-mcp` to `~/.config/narsil-xref`
