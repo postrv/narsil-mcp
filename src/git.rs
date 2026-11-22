@@ -424,8 +424,8 @@ impl GitRepo {
             "--",
         ])?;
         let fields: Vec<&str> = output.split_terminator('\0').collect();
-        let mut records = fields.chunks_exact(7);
-        for record in &mut records {
+        let (records, remainder) = fields.as_chunks::<7>();
+        for record in records {
             result.commits.push(FileCommit {
                 hash: record[0].to_string(),
                 short_hash: record[1].to_string(),
@@ -439,7 +439,7 @@ impl GitRepo {
                 deletions: 0,
             });
         }
-        if !records.remainder().is_empty() {
+        if !remainder.is_empty() {
             return Err(anyhow!("Incomplete git commit record"));
         }
         Ok(result)
