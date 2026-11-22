@@ -18,8 +18,8 @@
 # Linux: Use mold for fastest linking (5x faster than GNU ld, 2x faster than lld)
 # Note: lld is already the default on Linux with Rust 1.90+, so this is optional
 # ============================================================================
-[target.'cfg(target_os = "linux")']
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+# [target.'cfg(target_os = "linux")']
+# rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
 # ============================================================================
 # macOS: Use zld for faster linking (~40-50% faster than default Apple linker)
