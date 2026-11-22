@@ -13,7 +13,7 @@ exclude = ["frontend/", "docs/", ".github/", "*.md", "!README.md"]
 
 [features]
 default = ["native"]
-native = ["dep:notify", "dep:tokio", "dep:async-trait", "dep:reqwest", "dep:lsp-types", "dep:lsp-server", "dep:tempfile", "dep:axum", "dep:tower", "dep:tower-http", "dep:async-stream", "dep:tokio-stream", "dep:redb"]
+native = ["dep:notify", "dep:tokio", "dep:async-trait", "dep:reqwest", "dep:lsp-types", "dep:axum", "dep:tower", "dep:tower-http", "dep:async-stream", "dep:tokio-stream", "dep:redb"]
 frontend = ["native", "dep:rust-embed", "dep:mime_guess"]  # Embeds visualization frontend in binary
 
 [dependencies]
@@ -83,8 +83,6 @@ glob = "0.3"
 # Note: notify is optional and enabled via the "native" feature
 
 # Indexing and search
-tantivy = { version = "0.22", default-features = false, features = ["lz4-compression"] }  # Full-text search engine (no mmap for wasm compat)
-memmap2 = "0.9"   # Memory-mapped files for speed
 postcard = { version = "1.1", default-features = false, features = ["use-std"] }   # Binary serialization for index persistence
 redb = { version = "2", optional = true }   # Embedded KV store: per-file index records (native only)
 regex = "1.10"    # Regular expression support
@@ -106,14 +104,11 @@ hdrhistogram = { version = "7", default-features = false, features = ["serializa
 fs4 = "0.13"  # Cross-platform advisory file locking for the global stats file
 rayon = "1.10"  # Parallel iteration
 dashmap = "6.0"  # Concurrent hashmap
-uuid = { version = "1.0", features = ["v4"] }  # For generating unique streaming tokens
+uuid = { version = "1.0", features = ["v4", "serde"] }  # For generating unique streaming tokens
 chrono = "0.4"  # Date/time handling
-
-tempfile = { version = "3.8", optional = true }
 
 # LSP integration (native only)
 lsp-types = { version = "0.95", optional = true }  # LSP protocol types
-lsp-server = { version = "0.7", optional = true }  # LSP server utilities
 
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc = "0.1"  # musl malloc serializes all threads on one global lock

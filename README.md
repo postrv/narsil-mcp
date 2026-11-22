@@ -16,7 +16,8 @@ repositories and answers an AI coding agent's questions about symbols,
 references, call graphs and git history.
 
 - Index: tree-sitter parses each file and extracts functions, types and
-  methods. Tantivy, a full-text search library, ranks keyword search.
+  methods. Keyword search ranks files with BM25, by how often the query
+  words occur in each file.
   `--persist` saves the index, so a restart re-parses only changed files.
 - `--call-graph`: callers, callees and call paths between functions.
 - `--git`: blame, file and symbol history, commit diffs, branch state.
