@@ -239,6 +239,10 @@ mod tests {
         let status = std::process::Command::new("git")
             .args(args)
             .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@e")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@e")
             .status()
             .unwrap();
         assert!(status.success(), "git {:?} failed in {:?}", args, dir);
