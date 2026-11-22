@@ -128,7 +128,8 @@ impl TestMcpServer {
 
             let response = self.call_tool("list_repos", json!({}))?;
             if let Some(content) = response["result"]["content"][0]["text"].as_str() {
-                if content.contains(repo_name) {
+                // An indexed repo gets a "**Repo**:" line, one still being indexed only a list entry.
+                if content.contains(&format!("**Repo**: `{repo_name}`")) {
                     return Ok(());
                 }
             }
