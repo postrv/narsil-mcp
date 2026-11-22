@@ -165,6 +165,7 @@ takes ~13 s for one function and emits the false positives described below.
 | `get_blame` | path | Get git blame information for a file |
 | `get_branch_info` | — | Get current branch name and repository status |
 | `get_commit_diff` | commit | Get the diff for a specific commit |
+| `get_commit_range` | base | List commits in base..branch and their merge-base, oldest first |
 | `get_contributors` | — | Get contributors to a file or repository |
 | `get_file_history` | path | Get git commit history for a file |
 | `get_hotspots` | — | Find code hotspots - files with high churn and complexity |
