@@ -204,7 +204,7 @@ def run_git(repo, *args):
 
 @pytest.fixture
 def release_repo(tmp_path, monkeypatch):
-    """A clean repository with a bare origin, and cargo and gh stubs.
+    """A clean repository with a bare origin, and rustup, cargo-audit and gh stubs.
 
     The stubs append their command line to stub-calls.log in tmp_path, so a
     test can check that they were not run.
@@ -228,7 +228,7 @@ def release_repo(tmp_path, monkeypatch):
     stub_dir = tmp_path / 'stubs'
     stub_dir.mkdir()
     log_file = tmp_path / 'stub-calls.log'
-    for name in ['cargo', 'gh']:
+    for name in ['rustup', 'cargo-audit', 'gh']:
         stub = stub_dir / name
         stub.write_text('#!/bin/sh\necho "%s $@" >> "%s"\n' % (name, log_file))
         stub.chmod(0o755)
@@ -238,7 +238,7 @@ def release_repo(tmp_path, monkeypatch):
 
 
 def stub_calls(repo):
-    """Return the cargo and gh command lines the stubs recorded."""
+    """Return the command lines the stubs recorded."""
     log_file = repo.parent / 'stub-calls.log'
     if not log_file.exists():
         return ''
@@ -249,9 +249,13 @@ def test_prepare_dry_run_shows_the_steps_and_changes_nothing(release_repo,
                                                              capsys):
     release.main(['--dry-run', 'prepare', '2.0.1'])
     shown = capsys.readouterr().out
-    assert 'would run: cargo build --release' in shown
+    assert 'would run: rustup run stable cargo fmt --check' in shown
     assert 'cargo clippy --all-targets -- -D warnings' in shown
-    assert 'would run: cargo test' in shown
+    assert 'cargo clippy --all-targets --features native -- -D warnings' in shown
+    assert 'would run: rustup run stable scripts/check-docs-tools.sh' in shown
+    assert 'would run: rustup run stable cargo audit' in shown
+    assert ('would run: rustup run stable cargo test --features native -- '
+            '--test-threads=1') in shown
     assert 'git commit -a -m \'Release 2.0.1\'' in shown
     assert 'git push origin main' in shown
     assert stub_calls(release_repo) == ''

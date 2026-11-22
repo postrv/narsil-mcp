@@ -27,6 +27,9 @@ PACKAGE = 'narsil-xref'
 CI_WORKFLOW = 'CI'
 RELEASE_WORKFLOW = 'Release'
 
+# CI_FEATURES of ci.yml, used by its second clippy run and its tests.
+CI_FEATURES = 'native'
+
 # One entry per build in build-binaries.yml: the artifact name its tarball
 # carries and the architecture name cargo-deb puts in the .deb file name.
 ARCHITECTURES = [
@@ -399,9 +402,41 @@ def read_at_head(path):
     return git('show', 'HEAD:' + path)
 
 
+def on_stable(command):
+    """Return a command that runs with the stable Rust of rustup.
+
+    CI installs the latest stable Rust. An older distribution Rust earlier
+    on PATH misses the clippy lints CI fails on.
+    """
+    argv = ['rustup', 'run', 'stable']
+    argv.extend(command)
+    return argv
+
+
+def ci_checks():
+    """Return the checks of the CI workflow except its test run."""
+    checks = []
+    checks.append(on_stable(['cargo', 'fmt', '--check']))
+    checks.append(on_stable(['cargo', 'clippy', '--all-targets', '--',
+                             '-D', 'warnings']))
+    checks.append(on_stable(['cargo', 'clippy', '--all-targets',
+                             '--features', CI_FEATURES, '--',
+                             '-D', 'warnings']))
+    checks.append(on_stable(['scripts/check-docs-tools.sh']))
+    checks.append(on_stable(['cargo', 'audit']))
+    checks.append(on_stable(['cargo', 'build', '--release']))
+    return checks
+
+
+def ci_test_command():
+    """Return the test run of the CI workflow."""
+    return on_stable(['cargo', 'test', '--features', CI_FEATURES, '--',
+                      '--test-threads=1'])
+
+
 def cargo_lock_command():
     """Return the command that makes Cargo.lock follow the Cargo.toml version."""
-    return ['cargo', 'update', '-p', PACKAGE, '--offline']
+    return on_stable(['cargo', 'update', '-p', PACKAGE, '--offline'])
 
 
 def wait_for_release_run(tag, commit):
@@ -452,7 +487,7 @@ def prepare(args):
     dry_run = args.dry_run
     tag = tag_name(version)
     require_valid_version(version)
-    require_tools(['git', 'cargo'])
+    require_tools(['git', 'rustup', 'cargo-audit'])
     require_clean_worktree()
 
     if local_tag_commit(tag) != '':
@@ -465,13 +500,13 @@ def prepare(args):
     if find_open_heading(changelog.split('\n')) < 0:
         fail('CHANGELOG.md has no open section to release')
 
-    # Nothing is written before the build, clippy and test have passed.
-    act(dry_run, ['cargo', 'build', '--release'])
-    act(dry_run, ['cargo', 'clippy', '--all-targets', '--', '-D', 'warnings'])
+    # Nothing is written before the checks of the CI workflow have passed.
+    for check in ci_checks():
+        act(dry_run, check)
     if args.skip_test:
         print('skipped: cargo test')
     else:
-        act(dry_run, ['cargo', 'test'])
+        act(dry_run, ci_test_command())
 
     cargo_toml_path = REPO_ROOT / 'Cargo.toml'
     announce(dry_run, 'set version = "%s" in Cargo.toml' % version)
