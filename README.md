@@ -1,8 +1,137 @@
 # narsil-xref
 
-narsil-xref is a fork of [narsil-mcp](https://github.com/postrv/narsil-mcp).
+narsil-xref is a fork of [narsil-mcp](https://github.com/postrv/narsil-mcp)
+with a different goal: correct cross-references (definitions, references,
+callers and callees) in large local repositories, C and C++ first, for AI
+coding agents. One SSE server per profile in `config.yaml` keeps the index of
+that profile's repositories in memory, and every agent session uses it instead
+of indexing again. narsil-mcp offers a broad set of analysis tools instead.
+[Differences from narsil-mcp](#differences-from-narsil-mcp) lists what
+changed.
 
-It removes these narsil-mcp features:
+## What it does
+
+narsil-xref is an MCP (Model Context Protocol) server. It indexes local
+repositories and answers an AI coding agent's questions about symbols,
+references, call graphs and git history.
+
+- Index: tree-sitter parses each file and extracts functions, types and
+  methods. Tantivy, a full-text search library, ranks keyword search.
+  `--persist` saves the index, so a restart re-parses only changed files.
+- `--call-graph`: callers, callees and call paths between functions.
+- `--git`: blame, file and symbol history, commit diffs, branch state.
+- `--lsp`: hover, types, definitions and references from a language
+  server: clangd and ccls for C and C++, rust-analyzer, pyright,
+  typescript-language-server and gopls. For C and C++, GNU Global (gtags)
+  adds references when `global` is on `PATH`; `--gtags-generate` builds
+  its database. The results of tree-sitter, clangd, ccls and gtags are
+  compared, so a reference one backend misses can come from another.
+- `--transport sse`: one server per config profile keeps the index in
+  memory. A stdio session that the editor starts forwards its requests to
+  that server instead of indexing again.
+
+## Install
+
+Prebuilt binaries exist for Linux on x86_64 and aarch64, as a tarball and
+as a `.deb` package, on the
+[releases page](https://github.com/bsbernd/narsil-xref/releases).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bsbernd/narsil-xref/main/install.sh | bash
+```
+
+From source, into `~/.local/bin`:
+
+```bash
+git clone https://github.com/bsbernd/narsil-xref.git
+cd narsil-xref
+bash setup.sh             # add --systemd to install the systemd user units
+```
+
+`--lsp` and gtags use only the servers found on `PATH` (`clangd`, `ccls`,
+`global`, ...); each one is optional.
+
+## Run
+
+```bash
+narsil-xref --repos . --git --call-graph --persist --watch --lsp
+```
+
+`--watch` re-indexes files when they change. An MCP client starts the
+server from its config, for example `.mcp.json` in the project root:
+
+```json
+{
+  "mcpServers": {
+    "narsil-xref": {
+      "command": "narsil-xref",
+      "args": ["--repos", ".", "--git", "--call-graph", "--persist", "--lsp"]
+    }
+  }
+}
+```
+
+With the systemd units from `setup.sh --systemd`, one SSE server per
+profile starts on the first connection:
+
+```bash
+systemctl --user enable --now narsil-xref@dev.socket
+```
+
+[README_SSE.md](README_SSE.md) describes the SSE server, how stdio
+sessions find it, and the memory watchdog that restarts it above
+`--memory-hard-limit`.
+
+## Configuration
+
+Settings come from, highest priority first: command-line options,
+`NARSIL_*` environment variables, `.narsil.yaml` in the repository,
+`~/.config/narsil-xref/config.yaml`.
+
+A profile in `config.yaml` names a set of repositories and options:
+
+```yaml
+version: "1.0"
+profiles:
+  dev:
+    repos:
+      - ~/src/api
+      - ~/src/web
+    git: true
+    call_graph: true
+    persist: true
+    expose: [code, git]
+```
+
+```bash
+narsil-xref --profile dev
+narsil-xref config show        # effective configuration
+```
+
+[docs/configuration.md](docs/configuration.md) lists every setting.
+
+## Tools
+
+`narsil-xref tools list` prints every tool with its description.
+`--expose code,git` offers only those tool groups to the client; each
+offered tool's description costs context in every request.
+[docs/tools.md](docs/tools.md) describes the tools and groups.
+
+## Languages
+
+Symbols are extracted from Rust, Python, JavaScript, TypeScript, Go, C,
+C++, Java, C#, Bash, Ruby, Kotlin, PHP, Swift, Verilog/SystemVerilog,
+Scala, Lua, Haskell, Elixir, Clojure, Dart, Julia, R, Perl, Zig, Erlang,
+Elm, Fortran, PowerShell, Nix and Groovy.
+
+## Visualization
+
+`cargo build --release --features frontend` embeds a web UI that draws
+call graphs; [docs/frontend.md](docs/frontend.md) explains it.
+
+## Differences from narsil-mcp
+
+Removed:
 
 - security scanning and taint analysis
 - supply-chain analysis (SBOM, licences, dependency and upgrade checks)
@@ -14,7 +143,7 @@ It removes these narsil-mcp features:
 - the import-graph and chunk/similarity retrieval tools
 - tool presets and editor detection
 
-In their place it improves code indexing:
+Added or fixed:
 
 - C and C++ symbols and call graphs from tree-sitter, clangd, ccls and gtags
   are checked against each other
@@ -27,662 +156,15 @@ Most of these changes could go back to narsil-mcp, but that would probably be
 a lot of work. Most code changes since the fork were generated by an AI coding
 agent.
 
-> The blazing-fast, privacy-first MCP server for deep code intelligence
-
-[![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/bsbernd/narsil-xref)
-[![MCP](https://img.shields.io/badge/MCP-compatible-blue.svg)](https://modelcontextprotocol.io)
-
-A Rust-powered MCP (Model Context Protocol) server providing AI assistants with deep code understanding through 90 specialized tools.
-
-## Why narsil-xref?
-
-| Feature | narsil-xref | XRAY | Serena | GitHub MCP |
-|---------|------------|------|--------|------------|
-| **Languages** | 32 | 4 | 30+ (LSP) | N/A |
-| **Offline/Local** | Yes | Yes | Yes | No |
-| **Call Graphs** | Yes | Partial | No | No |
-
-## Key Features
-
-- **Code Intelligence** - Symbol extraction, semantic search, call graph analysis
-- **Analysis** - Control flow graphs, data flow analysis, complexity and hotspots
-
-### Why Choose narsil-xref?
-
-- **Written in Rust** - Blazingly fast, memory-safe, single binary (~30MB)
-- **Tree-sitter powered** - Accurate, incremental parsing for 32 languages
-- **Zero config** - Point at repos and go
-- **MCP compliant** - Works with Claude, Cursor, VS Code Copilot, Zed, and any MCP client
-- **Privacy-first** - Fully local, no data leaves your machine
-- **Parallel indexing** - Uses all cores via Rayon
-- **Smart excerpts** - Expands to complete syntactic scopes
-- **Real-time streaming** - Results as indexing progresses for large repos
-
-## Supported Languages
-
-| Language | Extensions | Symbols Extracted |
-|----------|------------|-------------------|
-| Rust | `.rs` | functions, structs, enums, traits, impls, mods |
-| Python | `.py`, `.pyi` | functions, classes |
-| JavaScript | `.js`, `.jsx`, `.mjs` | functions, classes, methods, variables |
-| TypeScript | `.ts`, `.tsx` | functions, classes, interfaces, types, enums |
-| Go | `.go` | functions, methods, types |
-| C | `.c`, `.h` | functions, structs, enums, typedefs |
-| C++ | `.cpp`, `.cc`, `.hpp` | functions, classes, structs, namespaces |
-| Java | `.java` | methods, classes, interfaces, enums |
-| C# | `.cs` | methods, classes, interfaces, structs, enums, delegates, namespaces |
-| **Bash** | `.sh`, `.bash`, `.zsh` | functions, variables |
-| **Ruby** | `.rb`, `.rake`, `.gemspec` | methods, classes, modules |
-| **Kotlin** | `.kt`, `.kts` | functions, classes, objects, interfaces |
-| **PHP** | `.php`, `.phtml` | functions, methods, classes, interfaces, traits |
-| **Swift** | `.swift` | classes, structs, enums, protocols, functions |
-| **Verilog/SystemVerilog** | `.v`, `.vh`, `.sv`, `.svh` | modules, tasks, functions, interfaces, classes |
-| **Scala** | `.scala`, `.sc` | classes, objects, traits, functions, vals |
-| **Lua** | `.lua` | functions, methods |
-| **Haskell** | `.hs`, `.lhs` | functions, data types, type classes |
-| **Elixir** | `.ex`, `.exs` | modules, functions |
-| **Clojure** | `.clj`, `.cljs`, `.cljc`, `.edn` | lists (basic AST) |
-| **Dart** | `.dart` | functions, classes, methods |
-| **Julia** | `.jl` | functions, modules, structs |
-| **R** | `.R`, `.r`, `.Rmd` | functions |
-| **Perl** | `.pl`, `.pm`, `.t` | functions, packages |
-| **Zig** | `.zig` | functions, variables |
-| **Erlang** | `.erl`, `.hrl` | functions, modules, records |
-| **Elm** | `.elm` | functions, types |
-| **Fortran** | `.f90`, `.f95`, `.f03`, `.f08`, `.f`, `.for`, `.fpp` | programs, subroutines, functions, modules |
-| **PowerShell** | `.ps1`, `.psm1`, `.psd1` | functions, classes, enums |
-| **Nix** | `.nix` | bindings |
-| **Groovy** | `.groovy`, `.gradle` | methods, classes, interfaces, enums, functions |
-
-## Installation
-
-Prebuilt binaries are released for Linux only, on x86_64 and aarch64.
-
-### Install Script
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/bsbernd/narsil-xref/main/install.sh | bash
-```
-
-### From Source
-
-```bash
-# Clone, build and install to ~/.local/bin
-git clone git@github.com:bsbernd/narsil-xref.git
-cd narsil-xref
-bash setup.sh
-```
-
-### Feature Builds
-
-narsil-xref supports different feature sets for different use cases:
-
-```bash
-# Default build - native MCP server (~30MB)
-cargo build --release
-
-# With embedded visualization frontend (~31MB)
-cargo build --release --features frontend
-```
-
-| Feature | Description | Size |
-|---------|-------------|------|
-| `native` (default) | Full MCP server with all tools | ~30MB |
-| `frontend` | + Embedded visualization web UI | ~31MB |
-
-> **For detailed installation instructions, troubleshooting, and platform-specific guides**, see [docs/INSTALL.md](docs/INSTALL.md).
-
-## Usage
-
-### Basic Usage
-
-```bash
-# Index a single repository
-narsil-xref --repos /path/to/your/project
-
-# Index multiple repositories
-narsil-xref --repos ~/projects/project1 --repos ~/projects/project2
-
-# Enable verbose logging
-narsil-xref --repos /path/to/project --verbose
-
-# Force re-index on startup
-narsil-xref --repos /path/to/project --reindex
-```
-
-### Full Feature Set
-
-```bash
-narsil-xref \
-  --repos ~/projects/my-app \
-  --git \           # Enable git blame, history, contributors
-  --call-graph \    # Enable function call analysis
-  --persist \       # Save index to disk for fast startup
-  --watch \         # Auto-reindex on file changes
-  --lsp \           # Enable LSP for hover, go-to-definition
-  --streaming       # Stream large result sets
-```
-
-### Configuration
-
-**v1.1.0+ introduces optional configuration** for fine-grained control over tools and performance. **All existing usage continues to work** - configuration is completely optional!
-
-#### Quick Start
-
-```bash
-# List available tools
-narsil-xref tools list
-
-# Expose only the code and git tool groups
-narsil-xref --repos ~/project --expose code,git
-```
-
-#### Configuration Files
-
-**User config** (`~/.config/narsil-xref/config.yaml`):
-
-```yaml
-version: "1.0"
-expose: [code, git]
-
-tools:
-  # Disable slow tools
-  overrides:
-    semantic_search:
-      enabled: false
-      reason: "Too slow for interactive use"
-```
-
-**Project config** (`.narsil.yaml` in repo root):
-
-```yaml
-version: "1.0"
-expose: [code, git, analysis]  # Override the user config's groups
-```
-
-**Named repository profiles** are useful for multi-repo workspaces:
-
-```yaml
-version: "1.0"
-profiles:
-  platform:
-    repos:
-      - ~/src/api
-      - ~/src/web
-    git: true
-    call_graph: true
-    persist: true
-    expose: [code, git]
-```
-
-```bash
-narsil-xref --profile platform
-narsil-xref config profiles
-```
-
-**Priority:** CLI flags > Environment vars > Project config > User config > Defaults
-
-#### Environment Variables
-
-```bash
-# Select repos/profile
-export NARSIL_REPOS=~/src/api,~/src/web
-export NARSIL_PROFILE=platform
-
-# Expose only these tool groups
-export NARSIL_EXPOSE=code,git
-
-# Disable specific tools
-export NARSIL_DISABLED_TOOLS=semantic_search,get_call_graph
-```
-
-#### CLI Commands
-
-```bash
-# View effective config
-narsil-xref config show
-
-# Validate config file
-narsil-xref config validate ~/.config/narsil-xref/config.yaml
-
-# List tools by category
-narsil-xref tools list --category Search
-
-# Search for tools
-narsil-xref tools search "git"
-
-# Export config
-narsil-xref config export > my-config.yaml
-
-# List named repository profiles
-narsil-xref config profiles
-```
-
-**Learn More:**
-- [Tool Reference](docs/tools.md) - All 71 tools, the `--expose` groups, and known caveats
-- [Configuration Guide](docs/configuration.md) - Full configuration reference
-- [Installation Guide](docs/INSTALL.md) - Platform-specific installation
-
-### Visualization Frontend
-
-Explore call graphs, imports, symbol references, and control flow interactively in your browser.
-
-```bash
-# Build with embedded frontend
-cargo build --release --features frontend
-
-# Run with HTTP server
-narsil-xref --repos ~/project --http --call-graph
-# Open http://localhost:3000
-```
-
-**Five graph views:**
-
-| View | Description |
-|------|-------------|
-| **Call Graph** | Function call relationships with depth control and direction filtering |
-| **Import Graph** | File-level import dependencies across the codebase |
-| **Symbol Graph** | All references to a symbol, with file clustering |
-| **Hybrid** | Combined call + import graph with split budget |
-| **Control Flow** | Real CFG with basic blocks, branches, and loop back-edges |
-
-**Features:**
-- Interactive Cytoscape.js graphs with drag, zoom, and double-click drill-down
-- Complexity metrics overlay with color coding (green/yellow/orange/red)
-- Six layout algorithms (dagre, force-directed, breadthfirst, concentric, circle, grid)
-- File tree sidebar with syntax-highlighted code viewer
-- URL-driven state (shareable links, browser back/forward)
-- Dark mode support
-- Node detail panel with code excerpts and navigation to source
-
-> **Full documentation:** See [docs/frontend.md](docs/frontend.md) for setup, API endpoints, and development mode.
-
-### Forgemax Integration (Experimental)
-
-For large-scale agentic workflows, narsil-xref can be used through [Forgemax](https://github.com/postrv/forgemax) — a Code Mode MCP gateway that collapses all 90 tools into just 2 (`search` + `execute`), reducing tool schema overhead from ~12,000 tokens to ~1,000.
-
-```bash
-# Install Forgemax
-cargo install forgemax
-
-# Run narsil-xref through Forgemax (uses forge.toml in repo root)
-forgemax
-```
-
-The included `forge.toml` configures narsil-xref with sensible defaults:
-
-```toml
-[servers.narsil]
-command = "narsil-xref"
-args = ["--repos", ".", "--git", "--call-graph", "--persist", "--watch"]
-transport = "stdio"
-
-[sandbox]
-timeout_secs = 10
-max_heap_mb = 64
-max_concurrent = 8
-```
-
-The LLM writes JavaScript that calls through typed proxy objects inside a sandboxed V8 isolate — credentials, file paths, and internal state never leave the host. This approach is particularly useful when working with multiple MCP servers simultaneously, as it keeps the total tool context small and predictable.
-
-### MCP Configuration
-
-Add narsil-xref to your AI assistant by creating a configuration file. Here are the recommended setups:
-
----
-
-**Claude Code** (`.mcp.json` in project root - Recommended):
-
-Create `.mcp.json` in your project directory for per-project configuration:
-```json
-{
-  "mcpServers": {
-    "narsil-xref": {
-      "command": "narsil-xref",
-      "args": ["--repos", ".", "--git", "--call-graph"]
-    }
-  }
-}
-```
-
-Then start Claude Code in your project:
-```bash
-cd /path/to/project
-claude
-```
-
-Using `.` for `--repos` automatically indexes the current directory. Claude now has access to 90 code intelligence tools.
-
-> **Tip**: Add `--persist --index-path .claude/cache` for faster startup on subsequent runs.
-
-For global configuration, edit `~/.claude/settings.json` instead. See [Claude Code Integration](docs/playbooks/integrations/claude-code.md) for advanced setups.
-
----
-
-**Cursor** (`.cursor/mcp.json`):
-```json
-{
-  "mcpServers": {
-    "narsil-xref": {
-      "command": "narsil-xref",
-      "args": ["--repos", ".", "--git", "--call-graph"]
-    }
-  }
-}
-```
-
----
-
-**VS Code + GitHub Copilot** (`.vscode/mcp.json`):
-```json
-{
-  "servers": {
-    "narsil-xref": {
-      "command": "narsil-xref",
-      "args": ["--repos", ".", "--git", "--call-graph"]
-    }
-  }
-}
-```
-
-> **Note for Copilot Enterprise**: MCP support requires VS Code 1.102+ and must be enabled by your organization administrator.
-
----
-
-**Claude Desktop** (`claude_desktop_config.json`):
-```json
-{
-  "mcpServers": {
-    "narsil-xref": {
-      "command": "narsil-xref",
-      "args": ["--repos", "/path/to/your/projects", "--git"]
-    }
-  }
-}
-```
-
----
-
-**Zed** (`settings.json` → Context Servers):
-```json
-{
-  "context_servers": {
-    "narsil-xref": {
-      "command": "narsil-xref",
-      "args": ["--repos", ".", "--git"]
-    }
-  }
-}
-```
-
-> **Note for Zed**: narsil-xref starts immediately and indexes in the background, preventing initialization timeouts.
-
----
-
-### Playbooks & Tutorials
-
-See **[docs/playbooks](docs/playbooks/)** for practical usage guides:
-
-| Guide | Description |
-|-------|-------------|
-| [Getting Started](docs/playbooks/getting-started.md) | Quick setup and first tool calls |
-| [Understand a Codebase](docs/playbooks/workflows/understand-codebase.md) | Explore unfamiliar projects |
-| [Fix a Bug](docs/playbooks/workflows/fix-a-bug.md) | Debug with call graphs |
-| [Code Review](docs/playbooks/workflows/code-review.md) | Review changes effectively |
-
-Each playbook shows the exact tool chains Claude uses to answer your questions.
-
-## Available Tools (42)
-
-### Repository & File Management
-
-| Tool | Description |
-|------|-------------|
-| `list_repos` | List all indexed repositories with metadata |
-| `get_project_structure` | Get directory tree with file icons and sizes |
-| `get_file` | Get file contents with optional line range |
-| `get_excerpt` | Extract code around specific lines with context |
-| `reindex` | Trigger re-indexing of repositories |
-| `discover_repos` | Auto-discover repositories in a directory |
-| `validate_repo` | Check if path is a valid repository |
-| `get_index_status` | Show index stats and enabled features |
-
-### Symbol Search & Navigation
-
-| Tool | Description |
-|------|-------------|
-| `find_symbols` | Find structs, classes, functions by type/pattern |
-| `get_symbol_definition` | Get symbol source with surrounding context |
-| `find_references` | Find all references to a symbol |
-| `get_dependencies` | Analyze imports and dependents |
-| `find_symbol_usages` | Cross-file symbol usage with imports |
-| `get_export_map` | Get exported symbols from a file/module |
-
-### Code Search
-
-| Tool | Description |
-|------|-------------|
-| `search_code` | Keyword search with relevance ranking |
-| `semantic_search` | BM25-ranked semantic search |
-| `hybrid_search` | Combined BM25 + TF-IDF with rank fusion |
-
-### Call Graph Analysis (requires `--call-graph`)
-
-| Tool | Description |
-|------|-------------|
-| `get_call_graph` | Get call graph for repository/function |
-| `get_callers` | Find functions that call a function |
-| `get_callees` | Find functions called by a function |
-| `find_call_path` | Find path between two functions |
-| `get_complexity` | Get cyclomatic/cognitive complexity |
-| `get_function_hotspots` | Find highly connected functions |
-
-### Control Flow Analysis
-
-| Tool | Description |
-|------|-------------|
-| `get_control_flow` | Get CFG showing basic blocks and branches |
-
-### Data Flow Analysis
-
-| Tool | Description |
-|------|-------------|
-| `get_data_flow` | Variable definitions and uses |
-| `get_reaching_definitions` | Which assignments reach each point |
-
-### Git Integration (requires `--git`)
-
-| Tool | Description |
-|------|-------------|
-| `get_blame` | Git blame for file |
-| `get_file_history` | Commit history for file |
-| `get_recent_changes` | Recent commits in repository |
-| `get_hotspots` | Files with high churn and complexity |
-| `get_contributors` | Repository/file contributors |
-| `get_commit_diff` | Diff for specific commit |
-| `get_symbol_history` | Commits that changed a symbol |
-| `get_branch_info` | Current branch and status |
-| `get_modified_files` | Working tree changes |
-
-### LSP Integration (requires `--lsp`)
-
-| Tool | Description |
-|------|-------------|
-| `get_hover_info` | Type info and documentation |
-| `get_type_info` | Precise type information |
-| `go_to_definition` | Find definition location |
-
-### Metrics
-
-| Tool | Description |
-|------|-------------|
-| `get_metrics` | Performance stats and timing |
-
-## Architecture
-
-```
-+-----------------------------------------------------------------+
-|                         MCP Server                               |
-|  +-----------------------------------------------------------+  |
-|  |                   JSON-RPC over stdio                      |  |
-|  +-----------------------------------------------------------+  |
-|                              |                                   |
-|  +---------------------------v-------------------------------+  |
-|  |                   Code Intel Engine                        |  |
-|  |  +------------+ +------------+ +------------------------+  |  |
-|  |  |  Symbol    | |   File     | |    Search Engine       |  |  |
-|  |  |  Index     | |   Cache    | |  (Tantivy + TF-IDF)    |  |  |
-|  |  | (DashMap)  | | (DashMap)  | +------------------------+  |  |
-|  |  +------------+ +------------+                              |  |
-|  |  +------------+ +------------+                              |  |
-|  |  | Call Graph | |  CFG/DFG   |                              |  |
-|  |  |  Analysis  | |  Analysis  |                              |  |
-|  |  +------------+ +------------+                              |  |
-|  +-----------------------------------------------------------+  |
-|                              |                                   |
-|  +---------------------------v-------------------------------+  |
-|  |                Tree-sitter Parser                          |  |
-|  |  +------+ +------+ +------+ +------+ +------+             |  |
-|  |  | Rust | |Python| |  JS  | |  TS  | | Go   | ...         |  |
-|  |  +------+ +------+ +------+ +------+ +------+             |  |
-|  +-----------------------------------------------------------+  |
-|                              |                                   |
-|  +---------------------------v-------------------------------+  |
-|  |                Repository Walker                           |  |
-|  |           (ignore crate - respects .gitignore)             |  |
-|  +-----------------------------------------------------------+  |
-+-----------------------------------------------------------------+
-```
-
-## Performance
-
-Benchmarked on Apple M1 (criterion.rs):
-
-### Parsing Throughput
-
-| Language | Input Size | Time | Throughput |
-|----------|------------|------|------------|
-| Rust (large file) | 278 KB | 131 µs | **1.98 GiB/s** |
-| Rust (medium file) | 27 KB | 13.5 µs | 1.89 GiB/s |
-| Python | ~4 KB | 16.7 µs | - |
-| TypeScript | ~5 KB | 13.9 µs | - |
-| Mixed (5 files) | ~15 KB | 57 µs | - |
-
-### Search Latency
-
-| Operation | Corpus Size | Time |
-|-----------|-------------|------|
-| Symbol exact match | 1,000 symbols | **483 ns** |
-| Symbol prefix match | 1,000 symbols | 2.7 µs |
-| Symbol fuzzy match | 1,000 symbols | 16.5 µs |
-| BM25 full-text | 1,000 docs | 80 µs |
-| TF-IDF similarity | 1,000 docs | 130 µs |
-| Hybrid (BM25+TF-IDF) | 1,000 docs | 151 µs |
-
-### End-to-End Indexing
-
-| Repository | Files | Symbols | Time | Memory |
-|------------|-------|---------|------|--------|
-| narsil-xref (this repo) | 53 | 1,733 | 220 ms | ~50 MB |
-| rust-analyzer | 2,847 | ~50K | 2.1s | 89 MB |
-| linux kernel | 78,000+ | ~500K | 45s | 2.1 GB |
-
-**Key metrics:**
-- Tree-sitter parsing: **~2 GiB/s** sustained throughput
-- Symbol lookup: **<1µs** for exact match
-- Full-text search: **<1ms** for most queries
-- Hybrid search runs BM25 + TF-IDF in parallel via rayon
-
 ## Development
 
 ```bash
-# Run the full test suite
 cargo test
-
-# Run benchmarks (criterion.rs)
-cargo bench
-
-# Run with debug logging
-RUST_LOG=debug cargo run -- --repos ./test-fixtures
-
-# Format code
-cargo fmt
-
-# Lint
-cargo clippy
-
-# Test with MCP Inspector
-npx @modelcontextprotocol/inspector ./target/release/narsil-xref --repos ./path/to/repo
+cargo clippy --all-targets -- -D warnings
+cargo fmt --check
 ```
-
-## Troubleshooting
-
-### Tree-sitter Build Errors
-
-If you see errors about missing C compilers or tree-sitter during build:
-
-```bash
-# macOS
-xcode-select --install
-
-# Ubuntu/Debian
-sudo apt install build-essential
-```
-
-### Index Not Finding Files
-
-```bash
-# Check .gitignore isn't excluding files
-narsil-xref --repos /path --verbose  # Shows skipped files
-
-# Force reindex
-narsil-xref --repos /path --reindex
-```
-
-### Memory Issues with Large Repos
-
-```bash
-# For very large repos (>50K files), increase stack size
-RUST_MIN_STACK=8388608 narsil-xref --repos /path/to/huge-repo
-
-# Or index specific subdirectories
-narsil-xref --repos /path/to/repo/src --repos /path/to/repo/lib
-```
-
-## Roadmap
-
-### Completed
-
-- [x] Multi-language symbol extraction (32 languages)
-- [x] Full-text search with Tantivy (BM25 ranking)
-- [x] Hybrid search (BM25 + TF-IDF with RRF)
-- [x] Git blame/history integration
-- [x] Call graph analysis with complexity metrics
-- [x] Control flow graph (CFG) analysis
-- [x] Data flow analysis (DFG) with reaching definitions
-- [x] Cross-language symbol resolution
-- [x] Incremental indexing with Merkle trees
-- [x] Index persistence
-- [x] Watch mode for file changes
-- [x] LSP integration
-- [x] Streaming responses
 
 ## License
 
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
-
-## Credits
-
-Built with:
-- [tree-sitter](https://tree-sitter.github.io/) - Incremental parsing
-- [tantivy](https://github.com/quickwit-oss/tantivy) - Full-text search
-- [tokio](https://tokio.rs/) - Async runtime
-- [rayon](https://github.com/rayon-rs/rayon) - Data parallelism
-- [serde](https://serde.rs/) - Serialization
+Apache License 2.0 ([LICENSE-APACHE](LICENSE-APACHE)) or MIT
+([LICENSE-MIT](LICENSE-MIT)), at your option.
