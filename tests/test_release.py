@@ -269,7 +269,8 @@ def test_prepare_dry_run_shows_the_steps_and_changes_nothing(release_repo,
             '-D warnings') in shown
     assert 'would run: scripts/check-docs-tools.sh' in shown
     assert 'would run: cargo audit' in shown
-    assert ('would run: cargo test --features native -- '
+    assert ('would run: env GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 '
+            'cargo test --no-fail-fast --features native -- '
             '--test-threads=1') in shown
     assert 'git commit -a -m \'Release 2.0.1\'' in shown
     assert 'git push origin main' in shown

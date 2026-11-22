@@ -430,9 +430,15 @@ def ci_checks():
 
 
 def ci_test_command():
-    """Return the test run of the CI workflow."""
-    return ['cargo', 'test', '--features', CI_FEATURES, '--',
-            '--test-threads=1']
+    """Return the test run of the CI workflow, with git configured as on CI.
+
+    The GitHub runner has no git user.name or user.email. The GIT_CONFIG_*
+    variables hide ~/.gitconfig and /etc/gitconfig, so a test that commits
+    without its own identity fails here as it fails in CI.
+    """
+    return ['env', 'GIT_CONFIG_GLOBAL=/dev/null', 'GIT_CONFIG_NOSYSTEM=1',
+            'cargo', 'test', '--no-fail-fast', '--features', CI_FEATURES,
+            '--', '--test-threads=1']
 
 
 def cargo_lock_command():

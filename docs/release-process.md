@@ -27,8 +27,10 @@ PATH is not rustup's stable one. Put `~/.cargo/bin` first in PATH and run
 
 Then it runs the checks of the `CI` workflow: `cargo fmt --check`, both
 clippy runs, `scripts/check-docs-tools.sh`, `cargo audit`,
-`cargo build --release` and the CI test command. A failure stops the script
-with nothing written. `--skip-test` leaves out the tests.
+`cargo build --release` and the CI test command. The tests run without
+`~/.gitconfig` and `/etc/gitconfig`, because the GitHub runner has no git
+`user.name` or `user.email`. A failure stops the script with nothing
+written. `--skip-test` leaves out the tests.
 
 Then it:
 
