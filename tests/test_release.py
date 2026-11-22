@@ -118,6 +118,19 @@ def test_changelog_section_fails_when_absent_or_empty(capsys):
     assert 'is empty' in capsys.readouterr().err
 
 
+def test_github_repo_from_https_and_ssh_urls():
+    for url in ['https://github.com/owner/name',
+                'https://github.com/owner/name.git',
+                'git@github.com:owner/name.git']:
+        assert release.github_repo(url) == 'owner/name'
+
+
+def test_github_repo_fails_for_another_host(capsys):
+    with pytest.raises(SystemExit):
+        release.github_repo('https://gitlab.com/owner/name')
+    assert 'not a github.com repository URL' in capsys.readouterr().err
+
+
 def test_remote_tag_decision():
     assert release.remote_tag_decision('', 'aaa') == release.TAG_CREATE
     assert release.remote_tag_decision('aaa', 'aaa') == release.TAG_REUSE

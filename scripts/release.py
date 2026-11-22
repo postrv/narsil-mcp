@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import re
 import shlex
 import shutil
@@ -116,6 +117,19 @@ def git(*args):
     for arg in args:
         argv.append(arg)
     return output(argv)
+
+
+def github_repo(url):
+    """Return the owner/name of a github.com remote URL; fail for another host.
+
+    url is an https URL (https://github.com/owner/name) or an ssh one
+    (git@github.com:owner/name), each with or without a trailing ".git".
+    """
+    match = re.match(r'^(https://github\.com/|git@github\.com:)'
+                     r'([^/]+/[^/]+?)(\.git)?/?$', url)
+    if match is None:
+        fail('%s is not a github.com repository URL' % url)
+    return match.group(2)
 
 
 def gh_json(*args):
@@ -546,7 +560,11 @@ def publish(args):
     require_tools(['git', 'gh'])
     require_clean_worktree()
 
-    version = version_in_cargo_toml(read_at_head('Cargo.toml'))
+    # In a fork, gh run watch and gh release ask which of the fork and its
+    # parent to use, and stop. GH_REPO answers for every gh call below.
+    os.environ['GH_REPO'] = github_repo(git('remote', 'get-url', REMOTE))
+
+    version =version_in_cargo_toml(read_at_head('Cargo.toml'))
     tag = tag_name(version)
     head = git('rev-parse', 'HEAD')
 
