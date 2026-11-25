@@ -22,6 +22,8 @@ A Rust-powered MCP (Model Context Protocol) server providing AI assistants with 
 | **Call Graphs** | Yes | Partial | No | No |
 | **Type Inference** | Yes | No | No | No |
 
+[ClickHouse Loom](https://github.com/ClickHouse/loom) is a shared-server option for code search, symbol lookup, and call graphs. Loom builds a ClickHouse-backed index from committed branches, which several agents can query. Use a local tool such as narsil-mcp for analysis of working-tree edits. [Loom code index overview](https://github.com/ClickHouse/loom/blob/v1.3.0/docs/features/code-index/overview.md)
+
 ## Key Features
 
 - **Code Intelligence** - Symbol extraction, semantic search, call graph analysis
